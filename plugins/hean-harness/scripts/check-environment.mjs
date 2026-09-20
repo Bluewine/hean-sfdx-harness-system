@@ -7,7 +7,7 @@
 import { init } from './lib/manifest.mjs';
 import { recordExternal } from './lib/install.mjs';
 import { allChecks, reportChecks, checkSuperpowers, currentRepo,
-         present, run, SUPERPOWERS, javaFix, jqFix } from './lib/environment.mjs';
+         present, run, SUPERPOWERS, javaFix, pythonFix } from './lib/environment.mjs';
 
 const doInstall = process.argv.includes('--install');
 const log = (...a) => console.log(...a);

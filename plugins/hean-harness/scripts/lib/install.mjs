@@ -38,15 +38,22 @@ export function installFile(source, dest) {
   const existed = existsSync(dest);
   const saved = existed ? backup(dest) : null;
   mkdirSync(dirname(dest), { recursive: true });
-  copyFileSync(source, dest);
 
   // Remember which file this came from, relative to the plugin, so a later
   // check compares against the right one. Several files share a name across
   // folders, so looking one up by name alone finds the wrong copy. Relative,
   // because the plugin's own folder moves whenever the plugin updates.
   const from = relative(PLUGIN_ROOT, source);
+
+  // Recorded before the write, not after. A run killed between the two would
+  // otherwise leave the user's file overwritten with no entry to reverse it,
+  // and the next setup would read our copy as though it were theirs. Reversing
+  // an entry whose write never happened is harmless: it restores a backup
+  // identical to what is already on disk.
   record({ type: 'file-copy', target: dest, backup: saved, existedBefore: existed,
            source: from.startsWith('..') ? null : from });
+
+  copyFileSync(source, dest);
   return { existed, replaced: existed };
 }
 
@@ -61,6 +68,13 @@ export function installBlock(file, marker, body, style = 'hash') {
   const existed = existsSync(file);
   const saved = existed ? backup(file) : null;
 
+  // One entry, always the same type. Recording a file-copy here as well would
+  // leave a second entry that revert honours by deleting the whole file, taking
+  // anything the user wrote into it since. Recorded before the edit, so an
+  // interrupted run still leaves something to reverse.
+  record({ type: 'marker-block', target: file, marker, style,
+           backup: saved, existedBefore: existed });
+
   if (existed) stripBlock(file, marker, style);
   else mkdirSync(dirname(file), { recursive: true });
 
@@ -68,12 +82,6 @@ export function installBlock(file, marker, body, style = 'hash') {
   const head = current.trim() ? current.replace(/\n+$/, '\n') : '';
   const blk = block(marker, body, style);
   writeFileSync(file, head ? head + blk : blk.replace(/^\n/, ''));
-
-  // One entry, always the same type. Recording a file-copy here as well would
-  // leave a second entry that revert honours by deleting the whole file, taking
-  // anything the user wrote into it since.
-  record({ type: 'marker-block', target: file, marker, style,
-           backup: saved, existedBefore: existed });
 
   return { existed, replaced: existed };
 }
@@ -93,14 +101,16 @@ export function installJsonKey(file, key, value) {
   const had = existed && getJsonKey(json, key) !== undefined;
   const previous = had ? getJsonKey(json, key) : undefined;
 
+  // As above: one entry, recorded before the write. `fileExisted` says whether
+  // the file itself is ours to remove; `existedBefore` says whether the key had
+  // a value to put back. On a repeat setup the manifest keeps the value from the
+  // first run, because by now the file holds ours rather than the user's.
+  record({ type: 'json-key', target: file, key, backup: saved,
+           existedBefore: had, previousValue: previous, fileExisted: existed });
+
   setJsonKey(json, key, value);
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, JSON.stringify(json, null, 2) + '\n');
-
-  // As above: one entry. `fileExisted` says whether the file itself is ours to
-  // remove; `existedBefore` says whether the key had a value to put back.
-  record({ type: 'json-key', target: file, key, backup: saved,
-           existedBefore: had, previousValue: previous, fileExisted: existed });
 
   return { existed, hadKey: had, previous };
 }

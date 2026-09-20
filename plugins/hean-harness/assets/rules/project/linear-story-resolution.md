@@ -31,7 +31,7 @@ Map `cycleId` with `list_cycles`, called once per distinct `teamId`, matching on
 
 **Cycle numbers and titles are per-team and not comparable across teams.** Each team numbers its cycles from 1 on its own scheme. `ABC` cycle 6 is `2026.07c` running Jul 27–Aug 10; `XYZ` cycle 6 is `2026.7b` running Jul 27–Aug 3. Always call `list_cycles` for the story's own `teamId`.
 
-`XYZ` work IDs appear in this repo's history, so cross-team resolution is a real case, not hypothetical.
+A work ID from another team's prefix is a normal occurrence once a feature spans more than one repository, not an edge case.
 
 ## Ordering
 
@@ -45,4 +45,4 @@ Cycle assignment is read live. A report reflects Linear at generation time, not 
 
 ## Unresolvable IDs
 
-Never silently drop an unresolvable ID and never guess a substitute. Common causes are a typo'd prefix in a commit subject (`DESRWO-117` for `ABC-117`) or a non-Linear tracker ID. Surface every unresolved ID and ask.
+Never silently drop an unresolvable ID and never guess a substitute. Common causes are a typo'd prefix in a commit subject (`ABD-117` for `ABC-117`) or a non-Linear tracker ID. Surface every unresolved ID and ask.

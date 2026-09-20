@@ -21,14 +21,14 @@ Everything this skill produces lives in `.claude/skills/open-work-report/output/
 mkdir -p .claude/skills/open-work-report/output
 rm -f .claude/skills/open-work-report/output/open-work.json .claude/skills/open-work-report/output/open-work.md
 git fetch origin
-.claude/scripts/verify-remote-refs.sh integration || exit 1
+node "${CLAUDE_PLUGIN_ROOT}/scripts/verify-remote-refs.mjs" integration || exit 1
 node "${CLAUDE_PLUGIN_ROOT}/skills/open-work-report/scripts/open-work.mjs" \
   > .claude/skills/open-work-report/output/open-work.json
 ```
 
 Never run the fetch under `--quiet` — it hides a failure, and a stale `origin/integration` silently inflates the report with work that is already merged.
 
-**The verify step is not optional and its failure is not advisory.** `origin/integration` is a local copy of the remote, only as fresh as the last *successful* fetch, and a failed fetch is silent — the stale ref simply keeps answering. `verify-remote-refs.sh` compares it against what GitHub actually has and exits non-zero on any mismatch; stop the run there rather than reporting merged stories as open work. The same script guards `/release-pr`, so the check lives in one place and cannot drift between the two skills.
+**The verify step is not optional and its failure is not advisory.** `origin/integration` is a local copy of the remote, only as fresh as the last *successful* fetch, and a failed fetch is silent — the stale ref simply keeps answering. `verify-remote-refs.mjs` compares it against what GitHub actually has and exits non-zero on any mismatch; stop the run there rather than reporting merged stories as open work. The same script guards `/release-pr`, so the check lives in one place and cannot drift between the two skills.
 
 The script emits `{ integration, rows, mentionOnly }`:
 
@@ -114,7 +114,7 @@ Push state says nothing about delivery — every row here is unmerged by definit
 | Reading `⚠ also in integration` as partial delivery | It usually means two different efforts share one work ID |
 | Scanning `--all` instead of `--branches --remotes` | `--all` walks the stash and tags; a stash entry is not work in flight |
 | Skipping `git fetch`, or running it `--quiet` | A stale `origin/integration` reports merged work as still open |
-| Continuing past a non-zero `verify-remote-refs.sh` | A failed fetch is silent and the stale ref keeps answering; stop and re-fetch instead |
+| Continuing past a non-zero `verify-remote-refs.mjs` | A failed fetch is silent and the stale ref keeps answering; stop and re-fetch instead |
 | Reading `origin/integration` as "my local integration branch" | It is the remote's state as of the last fetch; the local branch can be many merges behind |
 | Sorting work IDs as text | Compare the numeric part as a number — `-96` precedes `-146` |
 | Giving a mention-only ID a row | Require that it owns a commit; resolving in Linear proves nothing |

@@ -76,10 +76,16 @@ export function checkSuperpowers() {
     : { ok: false, state: 'disabled', detail: 'installed but switched off' };
 }
 
-export function checkJq() {
-  return present('jq')
+/**
+ * Python is not needed to install or run the harness. Two skills shell out to
+ * it for JSON and XML work against a live org, so it is reported rather than
+ * required: everything else works without it.
+ */
+export function checkPython() {
+  return present('python3')
     ? { ok: true, detail: 'installed' }
-    : { ok: false, detail: 'not installed, so the status line prints nothing' };
+    : { ok: true, optional: true,
+        detail: 'not installed — only /deprecate-flow and /soql-bindvar-resolver need it' };
 }
 
 export function javaFix() {
@@ -87,8 +93,8 @@ export function javaFix() {
   return present('brew') ? 'brew install --cask zulu@17' : 'install a JDK 11 or newer from http://sfdc.co/openjdk';
 }
 
-export function jqFix() {
-  return platform() === 'darwin' ? 'brew install jq' : 'sudo apt install jq';
+export function pythonFix() {
+  return platform() === 'darwin' ? 'brew install python' : 'sudo apt install python3';
 }
 
 /**
@@ -154,7 +160,7 @@ export function allChecks(repo) {
     { name: 'superpowers',   result: sp,
       fix: sp.state === 'disabled' ? `claude plugin enable ${SUPERPOWERS}`
                                    : `claude plugin install ${SUPERPOWERS}` },
-    { name: 'jq',            result: checkJq(),               fix: jqFix() }
+    { name: 'python3',       result: checkPython(),           fix: pythonFix() }
   ];
 }
 

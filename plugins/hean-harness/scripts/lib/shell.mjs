@@ -55,10 +55,19 @@ export function detectShell({ env = process.env, home = homedir(), os = platform
  * alias could not be installed. One definition, so the two cannot differ.
  * The path to the rules file must already be absolute.
  */
+export function shQuote(value) {
+  // Single quotes, because inside them the shell expands nothing. A single
+  // quote in the value itself closes the quoting, so it is spliced back in as
+  // an escaped quote. Without this, a home directory containing a space splits
+  // into two arguments and the rules file is never loaded — silently, because
+  // the alias still exists and still starts Claude Code.
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
 export function claudeCommand(promptPath, { skipPermissions = true } = {}) {
   const flags = [
     skipPermissions ? '--dangerously-skip-permissions' : null,
-    `--append-system-prompt-file ${promptPath}`
+    `--append-system-prompt-file ${shQuote(promptPath)}`
   ].filter(Boolean).join(' ');
   return `claude ${flags}`;
 }

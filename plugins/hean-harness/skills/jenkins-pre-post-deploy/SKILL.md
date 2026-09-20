@@ -20,11 +20,26 @@ These are real, irreversible deploys. Components deleted by the destructive step
 
 3. In one `AskUserQuestion` call, ask which phases to run — `pre`, `post`, or `both`. State the resolved alias in the question text. The user's answer is the confirmation of both the org and the phases. Do not ask a second time.
 
-4. Invoke the script exactly once, in the foreground:
+4. Check the script is present before going further. This skill drives a script
+   the project supplies; the plugin ships none, because the steps belong to your
+   pipeline rather than to Salesforce:
+
+   ```bash
+   test -f .claude/scripts/jenkins-pre-post-deploy.sh || {
+     echo "Missing .claude/scripts/jenkins-pre-post-deploy.sh, which this project does not have."
+     echo "It must accept <pre|post|both> --org <alias>, run those phases, and print a summary table."
+     exit 1
+   }
+   ```
+
+   When it is absent, stop and tell the user exactly that. Never substitute steps
+   of your own for it.
+
+5. Invoke the script exactly once, in the foreground:
 
    `bash .claude/scripts/jenkins-pre-post-deploy.sh <answer> --org <alias>`
 
-5. Relay the script's summary table and exit code. Report the "Components the org could not find" block verbatim if it appears.
+6. Relay the script's summary table and exit code. Report the "Components the org could not find" block verbatim if it appears.
 
 ## Constraints
 

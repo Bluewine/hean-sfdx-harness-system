@@ -270,14 +270,19 @@ WHERE  field = 'resolved_value'   -- bindVarN
 
 ### Step R2 — Generate the PDF
 
-**Do not use Chrome headless or `textutil`.** Both produce PDFs with system-font fallback issues. Use **WeasyPrint**, which is installed at `/opt/homebrew/bin/weasyprint` and embeds fonts correctly.
+**Do not use Chrome headless or `textutil`.** Both produce PDFs with system-font fallback issues. Use **WeasyPrint**, which embeds fonts correctly. Find it with `command -v weasyprint`; install it with `brew install weasyprint` or your distribution's package manager if it is absent.
 
 WeasyPrint requires its own Python path. Resolve the exact path first, then use it in the script:
 
 ```bash
-# Resolve version-agnostic site-packages path
-WEASY_SITE=$(find /opt/homebrew/Cellar/weasyprint -name "site-packages" -path "*/libexec/*" | head -1)
-WEASY_PY=$(find /opt/homebrew/Cellar/weasyprint -name "python3*" -path "*/bin/*" | head -1)
+# Ask the package manager where WeasyPrint lives rather than assuming a
+# directory layout: it differs between Homebrew on Intel and on Apple silicon,
+# and again on Linux.
+WEASY_BIN=$(command -v weasyprint) || { echo "weasyprint is not installed"; exit 1; }
+WEASY_REAL=$(readlink "$WEASY_BIN" 2>/dev/null || printf '%s' "$WEASY_BIN")
+WEASY_PREFIX=$(dirname "$(dirname "$WEASY_REAL")")
+WEASY_SITE=$(find "$WEASY_PREFIX" -name "site-packages" -type d | head -1)
+WEASY_PY=$(find "$WEASY_PREFIX" -name "python3*" -type f -perm -u+x | head -1)
 echo "$WEASY_SITE"   # verify before proceeding
 ```
 

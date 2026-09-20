@@ -18,20 +18,60 @@ try { input = JSON.parse(readFileSync(0, 'utf8')); } catch { process.exit(0); }
 const cmd = input?.tool_input?.command ?? '';
 
 /**
- * Does this one command stage a file past the ignore list?
+ * Blank out anything that is text rather than a command.
  *
- * Checked per command rather than across the whole line: a line that stages a
- * file and separately removes a temporary one contains both halves while
- * forcing nothing. Short flags also bundle, so a group containing f counts
- * even though it is not a standalone flag.
+ * Quoted strings and comments can hold the same words as a real command. A
+ * script that prints an explanation, or a commit message that mentions the
+ * flag, is not staging anything — refusing it blocks work for no reason and
+ * gives no clue why. Each run of text becomes spaces so that positions, and
+ * therefore the word boundaries around them, stay as they were.
  */
-function forcesPastIgnore(segment) {
-  if (!/\bgit\s+add\b/.test(segment)) return false;
-  if (/(^|\s)--force(\s|=|$)/.test(segment)) return true;
-  return /(^|\s)-[A-Za-z]*f[A-Za-z]*(\s|$)/.test(segment);
+function blankOutText(source) {
+  let out = '';
+  let quote = null;          // which quote character we are inside, if any
+  let inComment = false;
+  for (let i = 0; i < source.length; i++) {
+    const c = source[i];
+    if (inComment) { out += c === '\n' ? (inComment = false, c) : ' '; continue; }
+    if (quote) {
+      // inside double quotes a backslash escapes the next character; inside
+      // single quotes it does not, and nothing but the closing quote ends them
+      if (quote === '"' && c === '\\') { out += '  '; i++; continue; }
+      if (c === quote) quote = null;
+      out += c === '\n' ? c : ' ';
+      continue;
+    }
+    if (c === '\\') { out += ' '; if (source[i + 1] !== undefined) { out += ' '; i++; } continue; }
+    if (c === '"' || c === "'") { quote = c; out += ' '; continue; }
+    // a # starts a comment only at the start of a word
+    if (c === '#' && (i === 0 || /\s/.test(source[i - 1]))) { inComment = true; out += ' '; continue; }
+    out += c;
+  }
+  return out;
 }
 
-const segments = cmd.split(/&&|\|\||;|\|/);
+/**
+ * Does this one command stage a file past the ignore list?
+ *
+ * Checked per command rather than across the whole script: a script that
+ * stages a file on one line and tests for one with `-f` on another contains
+ * both halves while forcing nothing. Short flags bundle, so a group containing
+ * f counts even though it is not a standalone flag.
+ *
+ * The flag must also come after `git add`, not before it: `test -f x && git add y`
+ * has both words in one command and forces nothing.
+ */
+function forcesPastIgnore(segment) {
+  const m = /\bgit\s+add\b/.exec(segment);
+  if (!m) return false;
+  const after = segment.slice(m.index + m[0].length);
+  if (/(^|\s)--force(\s|=|$)/.test(after)) return true;
+  return /(^|\s)-[A-Za-z]*f[A-Za-z]*(\s|$)/.test(after);
+}
+
+// Newlines separate commands exactly as ; does. Leaving them out made a whole
+// multi-line script one segment, so any -f anywhere in it denied the run.
+const segments = blankOutText(cmd).split(/&&|\|\||;|\||\n/);
 
 if (segments.some(forcesPastIgnore)) {
   process.stdout.write(JSON.stringify({

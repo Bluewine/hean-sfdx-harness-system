@@ -23,7 +23,7 @@ Manifest-based deployment is the only deployment strategy that guarantees reprod
 - A valid metadata manifest XML file created from the deployable changed files
 - Transitive Apex class dependencies of every target class resolved and included in the manifest — direct and chained calls, bounded to force-app/ classes only
 - Deployment performed exclusively with `sf project deploy --manifest` — never `--source-dir`
-- `.claude/scripts/coverage.sh` executed after every successful deployment
+- `.claude/scripts/coverage.sh` executed after every successful deployment. The project supplies this script; the plugin does not ship one. Check that it exists before planning coverage work, and when it is absent say so plainly, report what was deployed and tested, and state that coverage could not be measured. Never put an estimate in its place.
 - Coverage analysis based only on actual script output or artifacts — never guessed
 - All relevant classes confirmed at 100% coverage, OR Plan Mode entered and implementation-ready per-class plans produced
 - Parent caller receives enough detail to delegate implementation without redoing analysis

@@ -54,9 +54,10 @@ Setup shows you everything it is going to do first, and changes nothing until yo
 It then runs six steps in order.
 
 **1. Environment.** Reports on six things it needs: a real Java installation, the `sf` command,
-the Salesforce code analyzer, your project's installed packages, the superpowers plugin, and `jq`.
-It installs nothing here. Java and `jq` need administrator rights on most machines, so it prints
-the exact command for your system and leaves it to you.
+the Salesforce code analyzer, your project's installed packages, the superpowers plugin, and
+Python. It installs nothing here. Java needs administrator rights on most machines, so it prints
+the exact command for your system and leaves it to you. Python is optional: only two commands use
+it, and everything else works without it.
 
 **2. Rules and the `claude` alias.** Copies the rules file into your home folder, then adds a line
 to your shell startup file so that typing `claude` loads those rules every time. If your shell is
@@ -79,8 +80,7 @@ in a session that never touches Apex.
 - 45 notes belonging to individual agents, into this repository
 
 **5. Status line.** Adds the line at the bottom of your terminal showing the folder, branch,
-Salesforce org and token usage. This one needs `jq`; without it the line is simply blank and
-nothing else is affected.
+Salesforce org and token usage. It runs on Node, so it needs nothing you do not already have.
 
 **6. Your project's own conventions.** Lists four things the plugin can follow if your team has
 them, and tells you which are not yet recorded. It asks nothing here — a script cannot hold a
@@ -153,8 +153,9 @@ Open a new terminal afterwards — the alias is still loaded in the one you are 
 - Claude Code
 - Node.js — you already have it if the `sf` command works
 - Git
-- `jq`, for the status line only. Without it the status line is blank and everything else works.
-  Install it with `brew install jq` on macOS, or `sudo apt install jq` on Linux.
+- Python, for two commands only: `/deprecate-flow` and `/soql-bindvar-resolver`. Everything else
+  works without it. Install it with `brew install python` on macOS, or `sudo apt install python3`
+  on Linux.
 
 ## Status
 

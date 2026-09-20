@@ -55,10 +55,10 @@ Collect these. Take any the invoking request already supplied.
 
 ```bash
 git fetch origin
-.claude/scripts/verify-remote-refs.sh {BASE} {HEAD} || exit 1
+node "${CLAUDE_PLUGIN_ROOT}/scripts/verify-remote-refs.mjs" {BASE} {HEAD} || exit 1
 ```
 
-`verify-remote-refs.sh` compares each `origin/<branch>` against what the GitHub API reports and exits non-zero on any mismatch, missing ref, or unreadable branch. It never exits 0 on a check it could not perform.
+`verify-remote-refs.mjs` compares each `origin/<branch>` against what the GitHub API reports and exits non-zero on any mismatch, missing ref, or unreadable branch. It never exits 0 on a check it could not perform.
 
 **Do not inline this check or reimplement it with `sed`.** The extraction it performs — pulling `owner/repo` out of the remote URL — was previously written with a lazy quantifier `[^/]+?`, which is not valid POSIX regex: BSD sed rejects it outright while GNU sed may accept it. Because sed writes its error to stderr, the command substitution captured an empty string and the run continued, turning every call into a request against an empty repo path and returning 404. The comparison then printed a JSON error blob where a SHA belonged, so the guard looked broken rather than triggered, and the freshness check was silently dead on one platform for as long as it was there.
 
@@ -327,7 +327,7 @@ Confirm each against real output, not intent:
 | Straddling story dropped as a back-merge tail | Provenance decides: reached `BASE` via a `HEAD` → `BASE` merge means keep |
 | Rows filtered by whether the diff touches deployable metadata | Wrong discriminator — a version-only fix still ships; ask whether it reached `BASE` |
 | A prior release PR's body cited as precedent | Prior bodies reproduce prior errors; re-derive from the range every run |
-| Stale refs after a failed fetch | Run `.claude/scripts/verify-remote-refs.sh {BASE} {HEAD}`; a non-zero exit stops the run |
+| Stale refs after a failed fetch | Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/verify-remote-refs.mjs" {BASE} {HEAD}`; a non-zero exit stops the run |
 | Reimplementing the freshness check inline | It lives in one shared script so it cannot drift; a `sed`-based rewrite already broke it silently on one platform |
 | Issue URL slugified from the title | Copy `url` from `get_issue` verbatim |
 | Workspace slug hardcoded in the sprint link | Take it from the `url` Linear returned |

@@ -11,7 +11,7 @@
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync,
-         rmSync, readdirSync, rmdirSync } from 'node:fs';
+         rmSync, readdirSync, rmdirSync, renameSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -40,7 +40,49 @@ export function load() {
 
 export function save(m) {
   mkdirSync(STATE_DIR, { recursive: true });
-  writeFileSync(MANIFEST, JSON.stringify(m, null, 2) + '\n');
+  // Write beside the manifest and rename over it. A rename within one directory
+  // is atomic, so a reader never sees a half-written file and a process killed
+  // mid-write leaves the previous manifest intact rather than a truncated one.
+  const tmp = `${MANIFEST}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(m, null, 2) + '\n');
+  renameSync(tmp, MANIFEST);
+}
+
+const LOCK = join(STATE_DIR, 'manifest.lock');
+const LOCK_STALE_MS = 30_000;
+
+/**
+ * Run fn while holding the manifest lock.
+ *
+ * Creating a directory is the one filesystem operation that both succeeds for
+ * exactly one caller and fails for the rest, on every platform, so it is the
+ * lock. Without it two setups running at once each read the manifest, each add
+ * their own entry, and whichever saves last erases the other's — leaving files
+ * changed on disk that uninstall will never reverse.
+ *
+ * A lock older than 30 seconds belonged to a process that died holding it, and
+ * is broken rather than waited on.
+ */
+function withLock(fn) {
+  mkdirSync(STATE_DIR, { recursive: true });
+  const deadline = Date.now() + LOCK_STALE_MS;
+  for (;;) {
+    try { mkdirSync(LOCK); break; } catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+      let age = Infinity;
+      try { age = Date.now() - statSync(LOCK).mtimeMs; } catch { age = Infinity; }
+      if (age > LOCK_STALE_MS) { try { rmSync(LOCK, { recursive: true, force: true }); } catch {} continue; }
+      if (Date.now() > deadline) {
+        throw new Error(
+          `Another setup is still running: ${LOCK} has been held for ${Math.round(age / 1000)}s. ` +
+          `Wait for it to finish, or remove that directory if no setup is running.`);
+      }
+      // busy-wait briefly; this lock is held for a single read-modify-write
+      const until = Date.now() + 25;
+      while (Date.now() < until) { /* spin */ }
+    }
+  }
+  try { return fn(); } finally { try { rmSync(LOCK, { recursive: true, force: true }); } catch {} }
 }
 
 /**
@@ -74,24 +116,35 @@ export function init(version) {
  * entry rather than appending, so re-running setup never grows the manifest.
  * The original backup is preserved — it represents the true pre-install state.
  */
+// What a change must remember about the state it replaced. On a second setup
+// the machine no longer holds the user's original — it holds ours — so these
+// fields are taken from the first recording and never overwritten. Losing
+// `previousValue` this way replaced a user's own status line with the plugin's
+// on uninstall, because the second run read our value as though it were theirs.
+const RESTORE_FIELDS = ['backup', 'existedBefore', 'previousValue', 'fileExisted'];
+
 export function record(change) {
   if (!REVERSIBLE[change.type]) {
     throw new Error(`Unknown change type: ${change.type}`);
   }
-  const m = load();
-  const i = m.changes.findIndex(c => c.type === change.type && c.target === change.target);
-  if (i >= 0) {
-    change.backup = m.changes[i].backup ?? change.backup ?? null;
-    change.existedBefore = m.changes[i].existedBefore ?? change.existedBefore;
-    change.recordedAt = m.changes[i].recordedAt;
-    change.updatedAt = new Date().toISOString();
-    m.changes[i] = change;
-  } else {
-    change.recordedAt = new Date().toISOString();
-    m.changes.push(change);
-  }
-  save(m);
-  return change;
+  return withLock(() => {
+    const m = load();
+    const i = m.changes.findIndex(c => c.type === change.type && c.target === change.target);
+    if (i >= 0) {
+      const first = m.changes[i];
+      // `in` rather than a truthiness test: a previous value of null, false, 0
+      // or undefined is still the value to put back.
+      for (const k of RESTORE_FIELDS) if (k in first) change[k] = first[k];
+      change.recordedAt = first.recordedAt;
+      change.updatedAt = new Date().toISOString();
+      m.changes[i] = change;
+    } else {
+      change.recordedAt = new Date().toISOString();
+      m.changes.push(change);
+    }
+    save(m);
+    return change;
+  });
 }
 
 /**
