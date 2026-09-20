@@ -1,0 +1,19 @@
+{
+  "name": "hean-harness",
+  "version": "0.1.0",
+  "description": "Bootstraps a proven Claude Code working environment into any Salesforce SFDX repository: enforced rules, agents, skills, memories, hooks, and status line.",
+  "author": {
+    "name": "Daniel Min"
+  },
+  "repository": "https://github.com/Bluewine/hean-sfdx-harness-system",
+  "license": "GPL-3.0",
+  "keywords": [
+    "salesforce",
+    "sfdx",
+    "apex",
+    "lwc",
+    "environment",
+    "bootstrap"
+  ],
+  "homepage": "https://github.com/Bluewine/hean-sfdx-harness-system"
+}

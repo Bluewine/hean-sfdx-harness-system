@@ -1,0 +1,10 @@
+.DS_Store
+node_modules/
+*.log
+
+# Local working notes, never published
+docs/specificity-audit.md
+docs/tasks.md
+
+# Sample output from the project this plugin came from, never published
+plugins/hean-harness/skills/create-pr/screenshots/

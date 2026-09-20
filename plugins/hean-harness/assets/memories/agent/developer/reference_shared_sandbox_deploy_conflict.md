@@ -1,0 +1,15 @@
+---
+name: shared-sandbox-deploy-conflict
+description: sf project deploy on a shared sandbox reports Conflict for a whole component even with no other local edits, because separate worktrees share the same sandbox and each other's deploys move the org ahead of this worktree's tracking
+type: reference
+---
+
+`sf project deploy start` against the connected and selected org can report every file in a component (e.g. every file inside a folder-type StaticResource bundle) as `Conflict`, even when this worktree only changed one or two of them. This is not necessarily unintended remote drift.
+
+**Why:** when several git worktrees target the same sandbox for direct deploys, each worktree keeps its own local source-tracking state. When one worktree deploys a component, every other worktree's tracking for that component is now stale relative to the org, so the next deploy from a different worktree reports a bundle-wide conflict — the CLI compares against its own last-known baseline, not against this worktree's git history.
+
+**The decisive check is content, not just the file list.** A matching file list only rules out a file being destroyed; it does not tell you whether someone else edited one. Unzip the retrieved payload and diff every file against `git show HEAD:<path>`. All identical means no one has touched that component since the last commit, so the conflict is definitionally stale tracking and forcing is safe. Any file differing from HEAD in a way your own edits do not explain is real drift — stop and ask.
+
+**How to apply:** before forcing past the conflict with `--ignore-conflicts`, do a read-only sanity check first: `sf project retrieve start --metadata "<Type>:<Name>" -o <your-org-alias> --target-metadata-dir <tmp-dir>` (this does not touch project source or tracking) and compare the org's current file list against what the deploy is about to push. If the org has no file that isn't accounted for in the local result (kept file, or a file being intentionally deleted), the conflict is safe to force. If the org has an extra file nobody's local checkout explains, stop and ask before forcing — a folder-type StaticResource deploy is a whole-zip replacement, so forcing past a real conflict destroys that file with no partial-state recovery.
+
+**Use `--target-metadata-dir`, never `--output-dir`, for this check.** `--output-dir` retrieves in source format and has been seen to write nothing at all: exit 0, a JSON `fileProperties` array saying the retrieve succeeded, and no files on disk, with a rerun printing `Warning: Nothing retrieved`. `--target-metadata-dir` retrieves a zip and reliably materializes it. If a full content diff isn't practical, the `fileProperties` array alone (from a `--json` run) still gives `lastModifiedByName`/`lastModifiedDate` for each component — an old date attributed to your own org user is evidence toward stale local tracking rather than a live conflict from someone else, though it does not fully substitute for the file-content check when the stakes are high (e.g. a folder-type StaticResource zip replacement).

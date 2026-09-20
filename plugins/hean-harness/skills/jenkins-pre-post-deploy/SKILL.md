@@ -1,0 +1,36 @@
+---
+name: jenkins-pre-post-deploy
+description: Jenkins pre and post deploy phase runner for the connected Salesforce org — resolves the target org, takes one confirmation, then runs the phases unattended via a single script invocation, skipping the force-app deployment so a metadata deprecation can be tested without pushing a commit
+---
+
+# Jenkins pre/post deploy runner
+
+> Applies to internal Salesforce projects, where this is the standard way of working.
+> The names below are examples of that shape, not of one project.
+
+Runs the `pre` and `post` phases of the Jenkins pipeline against the connected org. The main `deploy` phase is never run.
+
+These are real, irreversible deploys. Components deleted by the destructive step go to the Recycle Bin; Flow versions and other types that cannot be recycled are gone. There is no rollback.
+
+## Procedure
+
+1. Resolve the org. Run `sf config get target-org --json` and read `result[0].value`. If it is empty, stop and tell the user no default org is set.
+
+2. Run `sf org display --json -o <alias>`. Show the user the alias, username, instance URL, and org ID, verbatim.
+
+3. In one `AskUserQuestion` call, ask which phases to run — `pre`, `post`, or `both`. State the resolved alias in the question text. The user's answer is the confirmation of both the org and the phases. Do not ask a second time.
+
+4. Invoke the script exactly once, in the foreground:
+
+   `bash .claude/scripts/jenkins-pre-post-deploy.sh <answer> --org <alias>`
+
+5. Relay the script's summary table and exit code. Report the "Components the org could not find" block verbatim if it appears.
+
+## Constraints
+
+- **Invoke the script once.** Never run individual steps, never re-run a phase to inspect it, never wrap it in a loop.
+- **Do not intervene between steps.** The script owns every verdict. Do not evaluate whether a deletion is safe, do not consult an advisor, do not pause for input. The user approved the run at step 3; every gap after that is an opportunity to second-guess a decision they already made.
+- **Declined deletions are not failures.** A `destructiveChanges` manifest may name components deleted in an earlier release. The script reports them and continues, exactly as Jenkins does. Do not treat the report as an error.
+- **`both` runs `pre` immediately followed by `post`.** The real pipeline deploys `force-app` between them; this does not. `post` therefore runs against an org that has not received the release.
+- **A failed `pre` means `post` does not run.** The script enforces this. Do not override it.
+- **Never pass `--dry-run`.** If the user wants a rehearsal, say that this tool does not offer one.

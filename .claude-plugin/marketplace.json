@@ -1,0 +1,24 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "hean-sfdx-harness-system",
+  "description": "Claude Code environment toolkit for Salesforce SFDX project teams",
+  "owner": {
+    "name": "Daniel Min"
+  },
+  "plugins": [
+    {
+      "name": "hean-harness",
+      "description": "Bootstraps a proven Claude Code working environment into any Salesforce SFDX repository: enforced rules, agents, skills, memories, hooks, and status line.",
+      "source": "./plugins/hean-harness",
+      "category": "development",
+      "keywords": [
+        "salesforce",
+        "sfdx",
+        "apex",
+        "lwc",
+        "environment",
+        "bootstrap"
+      ]
+    }
+  ]
+}
