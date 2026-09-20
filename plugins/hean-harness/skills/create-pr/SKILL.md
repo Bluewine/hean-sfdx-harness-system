@@ -185,13 +185,13 @@ Screenshots stay local and uncommitted. In a private repository they have to: `r
 
 ```bash
 REPO_ROOT=$(git rev-parse --show-toplevel)
-mkdir -p "$REPO_ROOT/.claude/skills/create-pr/screenshots/{WORK-ID}"
+mkdir -p "$REPO_ROOT/.claude/skills/create-pr/output/screenshots/{WORK-ID}"
 # copy each captured/provided file into that directory as {WORK-ID}-{index}.{ext}
 ```
 
 For each screenshot, build one line:
 ```
-- **{CAPTION}** — `{REPO_ROOT}/.claude/skills/create-pr/screenshots/{WORK-ID}/{filename}`
+- **{CAPTION}** — `{REPO_ROOT}/.claude/skills/create-pr/output/screenshots/{WORK-ID}/{filename}`
 ```
 Concatenate these lines, then append one closing line: "Drag the file(s) above into this PR's description on GitHub to embed them — `gh` CLI can't embed local images directly." Together this is that group's `SCREENSHOTS`.
 
@@ -225,8 +225,8 @@ Derive the repo root and write the rendered body there (never a bare relative pa
 
 ```bash
 REPO_ROOT=$(git rev-parse --show-toplevel)
-mkdir -p "$REPO_ROOT/docs/pr-body"
-cat > "$REPO_ROOT/docs/pr-body/{ROOT_WORK_ID}.md" << 'EOF'
+mkdir -p "$REPO_ROOT/.claude/skills/create-pr/output"
+cat > "$REPO_ROOT/.claude/skills/create-pr/output/{ROOT_WORK_ID}.md" << 'EOF'
 ...
 EOF
 ```
@@ -246,7 +246,7 @@ Write the PR title as the first line as a comment so the user sees it:
 **Verify the rendered body before handing it over.** Read the file back and confirm no Claude attribution reached it:
 
 ```bash
-grep -nEi 'co-authored-by|generated with \[?claude|claude-session|claude\.(ai|com)/(code/session|claude-code)' "$REPO_ROOT/docs/pr-body/{ROOT_WORK_ID}.md"
+grep -nEi 'co-authored-by|generated with \[?claude|claude-session|claude\.(ai|com)/(code/session|claude-code)' "$REPO_ROOT/.claude/skills/create-pr/output/{ROOT_WORK_ID}.md"
 ```
 
 Expect no output. The templates carry none of these, so any hit was introduced while rendering — strip the offending lines, including the blank line and any `---` separator that preceded them, rewrite the file, and re-run the check. Never submit a body containing a `Co-Authored-By` trailer, a "Generated with Claude Code" line, or a session URL.
@@ -254,7 +254,7 @@ Expect no output. The templates carry none of these, so any hit was introduced w
 Tell the user:
 
 ```
-PR body written to docs/pr-body/{ROOT_WORK_ID}.md
+PR body written to .claude/skills/create-pr/output/{ROOT_WORK_ID}.md
 Review or edit the file, then type `yes` to submit.
 ```
 
@@ -305,7 +305,7 @@ No confirmation needed — this is a non-force push of the user's own feature br
 gh pr create \
   --base integration \
   --title "@{ROOT_WORK_ID}: {ROOT_TITLE}" \
-  --body-file "$REPO_ROOT/docs/pr-body/{ROOT_WORK_ID}.md" \
+  --body-file "$REPO_ROOT/.claude/skills/create-pr/output/{ROOT_WORK_ID}.md" \
   --assignee @me
 ```
 
@@ -317,14 +317,14 @@ Skip this phase entirely if no group collected any screenshots in Phase 6.
 
 For each group that has screenshots, after Phase 9 reports the PR URL, tell the user:
 ```
-Screenshots for Story {N} ({WORK-ID}) saved at: {REPO_ROOT}/.claude/skills/create-pr/screenshots/{WORK-ID}/
+Screenshots for Story {N} ({WORK-ID}) saved at: {REPO_ROOT}/.claude/skills/create-pr/output/screenshots/{WORK-ID}/
 Drag them into the PR description at {PR_URL} to embed them.
 Type `done` once added, or `skip` to leave the files in place.
 ```
 
 If the user replies `done` (or equivalent confirmation) for that group:
 ```bash
-rm -rf "$REPO_ROOT/.claude/skills/create-pr/screenshots/{WORK-ID}"
+rm -rf "$REPO_ROOT/.claude/skills/create-pr/output/screenshots/{WORK-ID}"
 ```
 
 If the user replies `skip` for that group, leave its directory in place and tell them where it is for later manual cleanup. Repeat for every group with screenshots, in story order.

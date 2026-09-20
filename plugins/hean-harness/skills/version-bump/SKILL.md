@@ -222,8 +222,8 @@ Write the file with a shell heredoc, never the Write tool, and quote the delimit
 
 ```bash
 REPO_ROOT=$(git rev-parse --show-toplevel)
-mkdir -p "$REPO_ROOT/docs/pr-body"
-cat > "$REPO_ROOT/docs/pr-body/version-{NEW_VERSION}.md" << 'BODY'
+mkdir -p "$REPO_ROOT/.claude/skills/version-bump/output"
+cat > "$REPO_ROOT/.claude/skills/version-bump/output/version-{NEW_VERSION}.md" << 'BODY'
 {RENDERED_TEMPLATE}
 BODY
 ```
@@ -237,7 +237,7 @@ gh pr create \
   --base {INTEGRATION} \
   --head work-updateVersion \
   --title "Update Release Version to v{NEW_VERSION}" \
-  --body-file "$REPO_ROOT/docs/pr-body/version-{NEW_VERSION}.md" \
+  --body-file "$REPO_ROOT/.claude/skills/version-bump/output/version-{NEW_VERSION}.md" \
   --draft
 ```
 

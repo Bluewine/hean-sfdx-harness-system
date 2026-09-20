@@ -239,8 +239,8 @@ Write the body with a shell heredoc, never the Write tool:
 
 ```bash
 REPO_ROOT=$(git rev-parse --show-toplevel)
-mkdir -p "$REPO_ROOT/docs/pr-body"
-cat > "$REPO_ROOT/docs/pr-body/release-{DEPLOY_DATE}.md" << 'BODY'
+mkdir -p "$REPO_ROOT/.claude/skills/release-pr/output"
+cat > "$REPO_ROOT/.claude/skills/release-pr/output/release-{DEPLOY_DATE}.md" << 'BODY'
 Work ID | Subject | Assignee | Sprint
 -- | -- | -- | -- |
 {ROWS}
@@ -256,7 +256,7 @@ Updating writes to the same `release-{DEPLOY_DATE}.md` path the previous run use
 Then tell the user:
 
 ```
-PR body written to docs/pr-body/release-{DEPLOY_DATE}.md
+PR body written to .claude/skills/release-pr/output/release-{DEPLOY_DATE}.md
 {N} stories, ordered by sprint descending then work ID ascending.
 Title: {PR_TITLE}
 Review or edit the file, then type `yes` to submit.
@@ -266,7 +266,7 @@ Wait for an explicit `yes` before Phase 8.
 
 Anything other than `yes` is a revision request, not an approval: apply the change, rewrite the file with the same heredoc, report it again, and wait again. Loop until the user approves. Never read approval into silence, a question, or a comment that merely sounds positive. Confirming an input — a branch, a title, a date, a runlist — is answering a question, not approving the publish.
 
-The user may also edit `docs/pr-body/release-{DEPLOY_DATE}.md` by hand during review. Phase 8 submits that file with `--body-file`, so hand edits are what get published — after a `yes`, re-read the file and submit it as it stands rather than re-rendering it from the Linear data.
+The user may also edit `.claude/skills/release-pr/output/release-{DEPLOY_DATE}.md` by hand during review. Phase 8 submits that file with `--body-file`, so hand edits are what get published — after a `yes`, re-read the file and submit it as it stands rather than re-rendering it from the Linear data.
 
 ## Phase 8 — Open or update the PR
 
@@ -287,7 +287,7 @@ gh pr create \
   --base {BASE} \
   --head {HEAD} \
   --title "{PR_TITLE}" \
-  --body-file "$REPO_ROOT/docs/pr-body/release-{DEPLOY_DATE}.md" \
+  --body-file "$REPO_ROOT/.claude/skills/release-pr/output/release-{DEPLOY_DATE}.md" \
   --assignee @me
 ```
 
@@ -295,7 +295,7 @@ gh pr create \
 
 ```bash
 gh pr edit {PR_NUMBER} \
-  --body-file "$REPO_ROOT/docs/pr-body/release-{DEPLOY_DATE}.md"
+  --body-file "$REPO_ROOT/.claude/skills/release-pr/output/release-{DEPLOY_DATE}.md"
 ```
 
 **Pass only `--body-file` on edit.** Never pass `--title`, even when it appears unchanged — the title is the deployment's scheduled identity and this skill has no reason to rewrite it. Never pass `--base` or `--head` on edit either; retargeting an open deployment PR is not this skill's job.

@@ -15,15 +15,15 @@ The row set is defined by git, not by Linear. A Linear cycle cannot tell you wha
 
 ## Phase 1 — Compute the row set
 
-Everything this skill produces lives in `docs/open-work-report/`, which is gitignored. Clear last run's files first, so a run that dies partway cannot leave a stale intermediate that a later run reads as current:
+Everything this skill produces lives in `.claude/skills/open-work-report/output/`, which is gitignored. Clear last run's files first, so a run that dies partway cannot leave a stale intermediate that a later run reads as current:
 
 ```bash
-mkdir -p docs/open-work-report
-rm -f docs/open-work-report/open-work.json docs/open-work-report/open-work.md
+mkdir -p .claude/skills/open-work-report/output
+rm -f .claude/skills/open-work-report/output/open-work.json .claude/skills/open-work-report/output/open-work.md
 git fetch origin
 .claude/scripts/verify-remote-refs.sh integration || exit 1
 node "${CLAUDE_PLUGIN_ROOT}/skills/open-work-report/scripts/open-work.mjs" \
-  > docs/open-work-report/open-work.json
+  > .claude/skills/open-work-report/output/open-work.json
 ```
 
 Never run the fetch under `--quiet` — it hides a failure, and a stale `origin/integration` silently inflates the report with work that is already merged.
@@ -68,7 +68,7 @@ Same order as `/release-pr`, so the two reports read alike:
 
 ## Phase 5 — Render
 
-The report goes to `docs/open-work-report/open-work.md`, beside the JSON from Phase 1. Phase 1 already created the directory and cleared the previous run.
+The report goes to `.claude/skills/open-work-report/output/open-work.md`, beside the JSON from Phase 1. Phase 1 already created the directory and cleared the previous run.
 
 The table is:
 
@@ -89,7 +89,7 @@ Write the file with a heredoc, then report the counts in chat.
 
 ## Phase 6 — Answer the question
 
-State how many rows, the breakdown by push state, and anything surfaced in Phases 1–3: mention-only exclusions, unresolved IDs, missing assignees or cycles. Point at `docs/open-work-report/open-work.md` for detail.
+State how many rows, the breakdown by push state, and anything surfaced in Phases 1–3: mention-only exclusions, unresolved IDs, missing assignees or cycles. Point at `.claude/skills/open-work-report/output/open-work.md` for detail.
 
 Regenerating is cheap and the output is gitignored — re-run rather than trusting an earlier file.
 

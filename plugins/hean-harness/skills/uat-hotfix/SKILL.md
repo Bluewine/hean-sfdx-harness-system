@@ -222,14 +222,14 @@ git push -u origin work-{ID}-BM
 
 ## Opening a PR
 
-All three PRs follow the same shape. Write the body to `docs/pr-body/{ID}.md` first so the user can review it before anything reaches GitHub, then submit with an explicit head and base:
+All three PRs follow the same shape. Write the body to `.claude/skills/uat-hotfix/output/{ID}.md` first so the user can review it before anything reaches GitHub, then submit with an explicit head and base:
 
 ```bash
 gh pr create \
   --base <base> \
   --head <head> \
   --title "@{ID}: <Summary>" \
-  --body-file docs/pr-body/{ID}.md \
+  --body-file .claude/skills/uat-hotfix/output/{ID}.md \
   --assignee @me
 ```
 

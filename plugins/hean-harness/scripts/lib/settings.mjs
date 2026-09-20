@@ -36,14 +36,13 @@ export const FILENAME = 'hean-harness.local.json';
  */
 export const INSTRUCTIONS_DIR = join('.claude', 'hean-harness');
 // What setup adds to the repository's .gitignore: this project's recorded answers,
-// and the three directories the skills write their output into. Each is a local
-// working file — a rendered PR body, a report, a screenshot — that belongs to one
-// run on one clone and would collide on any other.
+// and every skill's output directory. A skill that writes anything writes it to
+// .claude/skills/<skill-name>/output/, so one pattern covers all of them, including
+// skills added later. Each of those files — a rendered PR body, a report, a
+// screenshot — belongs to one run on one clone and would collide on any other.
 export const IGNORE_LINES = [
   '.claude/hean-harness.local.json',
-  'docs/pr-body/',
-  'docs/open-work-report/',
-  '.claude/skills/create-pr/screenshots/'
+  '.claude/skills/*/output/'
 ];
 
 /** Every setting this plugin understands, and what each one governs. */
