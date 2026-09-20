@@ -36,7 +36,7 @@ Every flow file must include the following fields. **Element order matters** —
 
 ## Fault path pattern
 
-Every element that can fault (`recordLookups`, `recordUpdates`, `recordCreates`, `recordDeletes`, `actionCalls`) **must** have a `faultConnector`. Never leave a fault path unconnected. Do **not** include `<isGoTo>` on fault connectors — Salesforce strips it on retrieve and its presence can cause deployment drift. **`subflows` do NOT accept a `faultConnector`** — the Flow metadata schema rejects it (deploy error: *Element faultConnector invalid at this location in type FlowSubflow*). A called subflow must handle its own faults internally (log to `Exception_Log__c` and end normally); the caller cannot catch a subflow fault.
+Every element that can fault (`recordLookups`, `recordUpdates`, `recordCreates`, `recordDeletes`, `actionCalls`) **must** have a `faultConnector`. Never leave a fault path unconnected. Do **not** include `<isGoTo>` on fault connectors — Salesforce strips it on retrieve and its presence can cause deployment drift. **`subflows` do NOT accept a `faultConnector`** — the Flow metadata schema rejects it (deploy error: *Element faultConnector invalid at this location in type FlowSubflow*). A called subflow must handle its own faults internally (write an error-log record and end normally); the caller cannot catch a subflow fault.
 
 ```xml
 <faultConnector>
@@ -50,10 +50,10 @@ The fault connector's **target depends on execution context**:
 |---|---|
 | Synchronous record-triggered (before/after-save) | `Check_Error_Type` → `Show_Error_to_User` (custom error) |
 | Standalone screen flow (`TriggerType: None`, has screens) | plain **error Screen** displaying `{!$Flow.FaultMessage}` |
-| Standalone autolaunched (`TriggerType: None`, no screens) | `Exception_Log__c` logging |
-| Async-path, platform-event-triggered, subflow | `Exception_Log__c` logging |
+| Standalone autolaunched (`TriggerType: None`, no screens) | error-log record |
+| Async-path, platform-event-triggered, subflow | error-log record |
 
-`TriggerType` is the discriminator, not "screen vs record". The custom-error pattern applies only to a synchronous record-triggered flow, where blocking the transaction is the intent. A standalone screen flow — any flow whose `TriggerType` is `None` — **cannot use `customErrors`**: the platform rejects them at deploy time (`A flow can't include Custom Error elements when TriggerType is set to None`), so surface the fault on a plain error Screen instead. Autolaunched, async-path, platform-event, and subflow contexts have no user to surface to, so persist the fault to `Exception_Log__c`.
+`TriggerType` is the discriminator, not "screen vs record". The custom-error pattern applies only to a synchronous record-triggered flow, where blocking the transaction is the intent. A standalone screen flow — any flow whose `TriggerType` is `None` — **cannot use `customErrors`**: the platform rejects them at deploy time (`A flow can't include Custom Error elements when TriggerType is set to None`), so surface the fault on a plain error Screen instead. Autolaunched, async-path, platform-event, and subflow contexts have no user to surface to, so persist the fault to an error-log record.
 
 ### Custom-error pattern (synchronous record-triggered flows)
 
@@ -197,9 +197,17 @@ A standalone screen flow cannot use `customErrors` (see the table). Route every 
 
 For a business error the flow detects itself (a validation, not a technical exception), route to a Screen whose DisplayText reads from the flow's own message variable instead of `{!$Flow.FaultMessage}`.
 
-### Exception_Log__c pattern (async-path, platform-event, and subflow flows)
+### Error-log pattern (async-path, platform-event, and subflow flows)
 
-Each faultable element's `faultConnector` targets an assignment that builds an `Exception_Log__c` from `$Flow.FaultMessage` and adds it to an `Errors` collection; a single `recordCreates` persists the collection near the flow's end (gate it with a `Has_Errors` decision so nothing runs when empty). In subflows there is no `$Record` — use the `recordId` input variable for `RecordId__c`. The flow never raises a custom error.
+**Find the org's error-log object before writing any of this.** This pattern persists a record, so it needs an object to persist into, and which one that is belongs to the org rather than to Salesforce. Ask the connected org rather than assuming:
+
+```bash
+sf sobject list --sobject CUSTOM -o <alias> | grep -iE 'exception|error|log'
+```
+
+`Exception_Log__c` is the usual name and the one used throughout the examples below. When the org has a differently named object, substitute it along with its own field names. When the org has none, stop and ask which object to use, or whether to add one — never invent a name, and never fall back to leaving the fault path unconnected, which is the one outcome this rule exists to prevent.
+
+Each faultable element's `faultConnector` targets an assignment that builds an error-log record from `$Flow.FaultMessage` and adds it to an `Errors` collection; a single `recordCreates` persists the collection near the flow's end (gate it with a `Has_Errors` decision so nothing runs when empty). In subflows there is no `$Record` — use the `recordId` input variable for the record-reference field. The flow never raises a custom error.
 
 ```xml
 <assignments>
@@ -315,9 +323,10 @@ Before deploying any record-triggered flow, confirm:
 - [ ] `AUTO_LAYOUT_CANVAS` is set in `processMetadataValues`
 - [ ] XML elements are in **alphabetical order** (labels/processMetadata/processType after flow nodes, not at top)
 - [ ] Every faultable element has `<faultConnector><targetReference>…</targetReference></faultConnector>` (no `<isGoTo>`) — but **not** on `subflows` (schema rejects it; subflows self-handle faults)
-- [ ] Fault routing matches `TriggerType` (see the Fault path pattern table) — synchronous record-triggered → custom-error (`Check_Error_Type` → `Show_Error_to_User`); async-path record-triggered → `Exception_Log__c`. Standalone screen/autolaunched flows use the error-Screen / `Exception_Log__c` patterns from that table (`customErrors` is invalid when `TriggerType` is `None`).
+- [ ] Fault routing matches `TriggerType` (see the Fault path pattern table) — synchronous record-triggered → custom-error (`Check_Error_Type` → `Show_Error_to_User`); async-path record-triggered → error-log record. Standalone screen/autolaunched flows use the error-Screen / error-log patterns from that table (`customErrors` is invalid when `TriggerType` is `None`).
 - [ ] Synchronous record-triggered (custom-error): fault paths converge on `Check_Error_Type`; `Loop_Errors` → `Flatten_Custom_Error`/`Show_Error_to_User`; `Error_Concat_Formula` present; `Error` (String) + `Errors` (String collection) declared
-- [ ] Autolaunched/async/platform-event/subflow: fault paths build `Exception_Log__c` into an `Errors` collection persisted by one `Log_Errors` create; `Error` + `Errors` are `Exception_Log__c` variables
+- [ ] Autolaunched/async/platform-event/subflow: fault paths build error-log records into an `Errors` collection persisted by one `Log_Errors` create; `Error` + `Errors` are variables of the org's error-log object
+- [ ] The error-log object was confirmed to exist in the connected org before the pattern was written
 - [ ] `triggerOrder` is set (default `1500` unless ordering is intentional)
 - [ ] Nested decisions alternate the continuation branch side per level (vertical decisions exempt)
 - [ ] `<status>Active</status>` is set
