@@ -12,12 +12,12 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync,
          rmSync, readdirSync, rmdirSync, renameSync, statSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { basename, join } from 'node:path';
+import { claudeDir } from './paths.mjs';
 
-export const STATE_DIR = join(homedir(), '.claude', 'hean-harness');
+export const STATE_DIR = join(claudeDir(), 'hean-harness');
 export const MANIFEST = join(STATE_DIR, 'install-manifest.json');
 const BACKUP_DIR = join(STATE_DIR, 'backups');
 

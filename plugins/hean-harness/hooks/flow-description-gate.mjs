@@ -15,14 +15,14 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { claudeDir } from '../scripts/lib/paths.mjs';
 
 const ok = () => { process.stdout.write('{}'); process.exit(0); };
 
 /** Where this repository's marker lives. One definition, used by both modes. */
 export const stateDirFor = repo =>
-  join(homedir(), '.claude', 'hean-harness', 'flow-gate',
+  join(claudeDir(), 'hean-harness', 'flow-gate',
        createHash('sha1').update(repo).digest('hex').slice(0, 12));
 
 const gitIn = (args) =>

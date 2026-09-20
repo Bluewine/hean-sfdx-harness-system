@@ -15,11 +15,11 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { homedir } from 'node:os';
 
 import { init } from './lib/manifest.mjs';
 import { installFile, installBlock, installDir } from './lib/install.mjs';
 import { MARKER } from './lib/shell.mjs';
+import { claudeDir } from './lib/paths.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN_ROOT = dirname(HERE);
@@ -27,7 +27,7 @@ const USER_SRC = join(PLUGIN_ROOT, 'assets', 'rules', 'user');
 const PROJ_SRC = join(PLUGIN_ROOT, 'assets', 'rules', 'project');
 const BLOCK_SRC = join(PLUGIN_ROOT, 'assets', 'claude-md', 'block.md');
 
-const CLAUDE_DIR = join(homedir(), '.claude');
+const CLAUDE_DIR = claudeDir();
 const USER_DEST = join(CLAUDE_DIR, 'rules');
 const CLAUDE_MD = join(CLAUDE_DIR, 'CLAUDE.md');
 

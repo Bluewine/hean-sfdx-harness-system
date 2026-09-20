@@ -15,17 +15,17 @@
 import { existsSync, chmodSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { homedir } from 'node:os';
 
 import { STATE_DIR, init } from './lib/manifest.mjs';
 import { installFile, installJsonKey } from './lib/install.mjs';
 import { shQuote } from './lib/shell.mjs';
+import { claudeDir } from './lib/paths.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN_ROOT = dirname(HERE);
 const SOURCE = join(PLUGIN_ROOT, 'assets', 'statusline', 'statusline-command.mjs');
 const DEST = join(STATE_DIR, 'statusline-command.mjs');
-const SETTINGS = join(homedir(), '.claude', 'settings.json');
+const SETTINGS = join(claudeDir(), 'settings.json');
 
 const dryRun = process.argv.includes('--dry-run');
 const log = (...a) => console.log(...a);

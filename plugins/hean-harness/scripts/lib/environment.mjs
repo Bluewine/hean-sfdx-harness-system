@@ -11,8 +11,9 @@
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
-import { homedir, platform } from 'node:os';
+import { platform } from 'node:os';
 import { join } from 'node:path';
+import { claudeDir } from './paths.mjs';
 
 export const SUPERPOWERS = 'superpowers@claude-plugins-official';
 
@@ -55,7 +56,7 @@ export function checkJava() {
 
 export function checkSuperpowers() {
   if (!present('claude')) {
-    const cached = join(homedir(), '.claude', 'plugins', 'cache', 'claude-plugins-official', 'superpowers');
+    const cached = join(claudeDir(), 'plugins', 'cache', 'claude-plugins-official', 'superpowers');
     return existsSync(cached)
       ? { ok: true, detail: 'found in the plugin cache' }
       : { ok: false, state: 'missing', detail: 'the claude command is not on PATH and nothing is cached' };

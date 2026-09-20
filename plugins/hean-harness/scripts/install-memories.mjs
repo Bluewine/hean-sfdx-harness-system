@@ -16,11 +16,11 @@ import { readFileSync, readdirSync, existsSync, mkdirSync, statSync } from 'node
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { homedir } from 'node:os';
 
 import { init } from './lib/manifest.mjs';
 import { installFile, installBlock, installDir } from './lib/install.mjs';
 import { MARKER } from './lib/shell.mjs';
+import { claudeDir } from './lib/paths.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN_ROOT = dirname(HERE);
@@ -52,7 +52,7 @@ function mdFiles(dir) {
 
 function main() {
   const repo = findRepo();
-  const projectMemDir = join(homedir(), '.claude', 'projects', encodeProjectPath(repo), 'memory');
+  const projectMemDir = join(claudeDir(), 'projects', encodeProjectPath(repo), 'memory');
   const agentMemDir = join(repo, '.claude', 'agent-memory');
 
   const projectFiles = mdFiles(PROJECT_SRC).filter(f => f !== 'MEMORY.md');
