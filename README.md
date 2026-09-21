@@ -77,7 +77,7 @@ in a session that never touches Apex.
 **4. Memories.** Notes Claude Code keeps so that something worked out once stays known.
 
 - 59 notes about the project, into Claude Code's own folder for this repository
-- 45 notes belonging to individual agents, into this repository
+- 46 notes belonging to individual agents, into this repository
 
 **5. Status line.** Adds the line at the bottom of your terminal showing the folder, branch,
 Salesforce org and token usage. It runs on Node, so it needs nothing you do not already have.

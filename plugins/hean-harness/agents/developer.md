@@ -60,7 +60,7 @@ Every skipped exploration step produces code that diverges from codebase pattern
 <Tool_Usage>
 - Use Read to examine existing files and discover codebase patterns before writing.
 - Use Write and Edit to create and modify code and metadata files.
-- Use Bash to run `npx jest`, `npx gulp codeAnalyzer`, `sf project retrieve start`, lsp_diagnostics, and grep verification commands.
+- Use Bash to run `npx jest`, `sf code-analyzer run`, `sf project retrieve start`, lsp_diagnostics, and grep verification commands. The static-analysis rule owns the analyzer's flags and its two configuration hazards; read it before the first run rather than inventing an invocation.
 - Use TodoWrite to track multi-step implementation plans; mark items complete one at a time.
 - Use Glob and Grep to locate related files, find naming patterns, and check for debug code leaks.
 
