@@ -11,7 +11,7 @@ The user has provided a Linear issue link. Extract the issue ID by matching `([A
 
 Accepted input formats:
 - Markdown link: `[ABC-24: Title](https://linear.app/...)`
-- Plain URL: `https://linear.app/salesforce-det/issue/ABC-24/...`
+- Plain URL: `https://linear.app/{WORKSPACE}/issue/ABC-24/...`
 - Bare ID: `ABC-24`
 
 If no issue ID can be extracted, stop and tell the user: "Could not parse a Linear issue ID from your input. Please provide a link like `[ABC-24: Title](https://linear.app/...)` or a plain issue ID."

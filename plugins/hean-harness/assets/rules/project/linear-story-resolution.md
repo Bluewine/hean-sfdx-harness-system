@@ -26,7 +26,11 @@ Call `get_issue` with the work ID. Take four fields:
 Map `cycleId` with `list_cycles`, called once per distinct `teamId`, matching on `id`.
 
 - `title` — the sprint text, e.g. `2026.07c - TEAM - Project Name`
-- `number` — the link target: `https://linear.app/salesforce-det/team/{TEAM_KEY}/cycle/{number}`
+- `number` — the link target: `https://linear.app/{WORKSPACE}/team/{TEAM_KEY}/cycle/{number}`.
+  Take `{WORKSPACE}` from the `url` the issue lookup returned, which has the form
+  `https://linear.app/{WORKSPACE}/issue/...`. Never hardcode a workspace slug and never carry one
+  over from another repository — a wrong slug yields a link that resolves to someone else's
+  workspace, or to nothing.
 - `startsAt` — the sort key
 
 **Cycle numbers and titles are per-team and not comparable across teams.** Each team numbers its cycles from 1 on its own scheme. `ABC` cycle 6 is `2026.07c` running Jul 27–Aug 10; `XYZ` cycle 6 is `2026.7b` running Jul 27–Aug 3. Always call `list_cycles` for the story's own `teamId`.

@@ -35,9 +35,9 @@ Install the environment. Show the user what will change before changing it.
    add to their shell startup file if they would rather type just `claude` in future. Show the
    command in full. Do not write their startup file yourself.
 
-6. The last step prepares this project's settings file and lists what is not recorded. When
-   anything is unset, offer to run the configure skill now. Say plainly that leaving a setting
-   unrecorded means nothing is enforced for it, which is a valid choice.
+6. The last step adds one line to the repository's `.gitignore` so that skill output —
+   `.claude/skills/<skill-name>/output/` — is never committed. Name the line in the report. When
+   the step says the line was already there, say so rather than implying it was written again.
 
 ## Rules
 

@@ -71,21 +71,26 @@ Work through the phases in order. Each rule states what to do and why it matters
 24. Remove every repository path used to scope advice. A rule is about a platform situation, not a
     folder.
 25. Keep a work-item prefix only as an illustration of a shape, never as the team's real prefix.
-26. Remove every date attached to a claim. A date signals that a specific file, class, org or test
+26. Remove every tenant identifier belonging to a third-party service — a Linear or Slack workspace
+    slug, a Jira site, an org's login domain, a company subdomain in any URL. These hide from a search
+    for the project's own names, because they live in a different namespace entirely: a repository
+    called one thing can carry a workspace called another. Replace each with a placeholder and say
+    where to read the real value at run time.
+27. Remove every date attached to a claim. A date signals that a specific file, class, org or test
     run is about to be named. Write the mechanism instead of the observation.
-27. This covers every wording: "confirmed live on", "measured on", "verified against", "observed
+28. This covers every wording: "confirmed live on", "measured on", "verified against", "observed
     in", "reproduced with", "captured", "this session", "an earlier version of this note".
-28. Remove every count taken from one run — "157 files", "22 consecutive runs". It cannot be
+29. Remove every count taken from one run — "157 files", "22 consecutive runs". It cannot be
     reproduced and it dates the entry.
-29. Remove the history of the note itself.
-30. Write the description in a git commit message or a PR title with a capital first letter, in the
+30. Remove the history of the note itself.
+31. Write the description in a git commit message or a PR title with a capital first letter, in the
     form `@{ID}: {Description}`. This holds for a literal phrase, a placeholder, and an exact string
     another step matches on.
-31. When one step writes a phrase and another step searches for it, write it once and search for
+32. When one step writes a phrase and another step searches for it, write it once and search for
     the same text. Add case-insensitive matching when a person may type it differently.
-32. Never put angle brackets in a placeholder that sits inside XML. `<members><SampleClass></members>`
+33. Never put angle brackets in a placeholder that sits inside XML. `<members><SampleClass></members>`
     is not valid XML and breaks any parser reading the file. Use a plain identifier.
-33. Check that every cross-reference between memories resolves. A `[[name]]` link matches either a
+34. Check that every cross-reference between memories resolves. A `[[name]]` link matches either a
     memory's filename or its `name:` field, so check both before calling one broken. When the
     target is a rule rather than a memory, replace the link with the rule's installed path.
 
@@ -93,81 +98,98 @@ Work through the phases in order. Each rule states what to do and why it matters
 
 ## Phase 5 — Fix every path, reference and trigger
 
-34. Read a file the plugin ships with `${CLAUDE_PLUGIN_ROOT}/...`. A repository-relative path to a
+35. Read a file the plugin ships with `${CLAUDE_PLUGIN_ROOT}/...`. A repository-relative path to a
     plugin file worked while the file lived in the repository and fails once it ships.
-35. Write a file the skill produces to `<repo>/.claude/skills/<skill-name>/output/`. Each skill owns
+36. Write a file the skill produces to `<repo>/.claude/skills/<skill-name>/output/`. Each skill owns
     the directory named after itself.
-36. Tell a skill's own output apart from a durable artifact the project keeps. Output belongs to one
+37. Tell a skill's own output apart from a durable artifact the project keeps. Output belongs to one
     run, is ignored by git, and is safe to delete. An artifact another skill or agent reads later,
     or that the team commits, is part of the project and keeps its own agreed path. Moving one into
     a skill's output directory breaks whatever reads it; leaving one in a skill's output directory
     gets it deleted. Write down which of the two each file is.
-37. Ship every helper a skill runs, and invoke it through the plugin-root variable. A skill that
+38. Ship every helper a skill runs, and invoke it through the plugin-root variable. A skill that
     calls a script the installer never places fails on its first use, in a repository where that
     script has never existed.
-38. Declare a runtime the plugin itself does not need. Everything that installs, uninstalls, hooks
+39. Declare a runtime the plugin itself does not need. Everything that installs, uninstalls, hooks
     or draws the status line runs on Node, because the Salesforce CLI guarantees Node is present.
     A skill that shells out to anything else — Python, jq, a PDF renderer — names that dependency,
     the environment check reports it as optional, and the skill stops with a clear message rather
     than failing part-way.
-39. Never have one skill write into another skill's directory, and never have one skill depend on
+40. Never have one skill write into another skill's directory, and never have one skill depend on
     a file another skill left behind. Each skill creates what it needs and removes it afterwards.
-40. Never copy shared content into two skills. Keep one file and have each skill read it, so a
+41. Never copy shared content into two skills. Keep one file and have each skill read it, so a
     later correction reaches every caller.
-41. Replace every command that only exists in the source repository with the plugin's own
+42. Replace every command that only exists in the source repository with the plugin's own
     equivalent.
-42. A glob in a rule's `paths` field is matched against files Claude reads. A glob pointing at a
+43. A glob in a rule's `paths` field is matched against files Claude reads. A glob pointing at a
     skill's own directory stops matching once the skill moves into the plugin, because the skill's
     file is no longer inside the repository.
-43. Make the skill read the rule file by path, and keep a `paths` glob as well. The explicit read is
+44. Make the skill read the rule file by path, and keep a `paths` glob as well. The explicit read is
     the mechanism to rely on: it works wherever the rule lives and costs nothing until the skill
     runs. Whether a glob can match a file outside the repository is not documented, so treat the
     glob as a bonus and never as the only trigger.
-44. Write the glob broadly enough to cover the skill's whole directory, not only its data files.
+45. Write the glob broadly enough to cover the skill's whole directory, not only its data files.
     The skill's own body is read at invocation, and the skill may also read templates beside it.
-45. Give a rule no `paths` field only when it must apply to every session of every installing team.
+46. Give a rule no `paths` field only when it must apply to every session of every installing team.
     Anything narrower costs every team context they will not use.
-46. Test every glob against a real repository before shipping it. A pattern that looks right can
+47. Test every glob against a real repository before shipping it. A pattern that looks right can
     match nothing — a directory named `test` is not matched by a glob written `tests`.
 
 **Check:** list each rule's globs and run each one against a real repository of the target kind.
 
-## Phase 6 — Turn project choices into settings
+## Phase 6 — Handle a convention the source project hardcoded
 
-47. Keep every project choice in one file inside the repository, and add that file to `.gitignore`.
-    The answers belong to the person, not the team.
-48. Enforce a setting only when the team recorded one. An unset setting blocks nothing and asks
-    nothing.
-49. Ask for the settings in an interactive step. A script cannot hold a conversation, so a
-    non-interactive setup step only reports which settings are missing.
+A rule written inside one repository names that repository's own prefix, pattern or limit. Three
+ways of carrying that across exist, and only two of them work.
+
+48. Do not build a settings file to hold the value. A setting has to be asked for, stored, read
+    back, kept in step with whatever prose quotes it, and deleted on uninstall. Every one of those
+    is a place for the stored value and the text a reader sees to drift apart, and the failure is
+    silent: the file says one thing, the rule beside it says another, and nothing compares them.
+49. When the convention can be read off the repository, ship the rule with a command that reads it.
+    A class prefix, a component prefix, a directory layout — the files already in the repository
+    hold the answer, so the rule tells the reader how to count what is there rather than carrying a
+    value of its own. That rule is correct in every repository on the day it is installed, and stays
+    correct when the project changes its mind.
+50. When the convention cannot be read off the repository and must never be opted out of, put it in
+    a hook with the pattern written into the hook. A commit subject is the example: nothing in the
+    tree implies it, and a team that can switch it off has no convention. Fix the pattern, ship the
+    hook, and say in the deny message what shape is required and how to build it.
+51. Scope a rule to the files it governs with a `paths:` list in its frontmatter, so it loads only
+    when a matching file is opened. A rule that governs no file type — a commit convention, a
+    research workflow — has no `paths:` and loads in every session, so keep it short.
+52. Ship one `.gitignore` line for everything the plugin's skills write, `.claude/skills/*/output/`,
+    and let every skill write under that path. One pattern then covers skills added later. Record
+    the line as an external change: uninstall reads it back for the user to remove, because they may
+    have written their own lines around it.
 
 ## Phase 7 — Make install reversible and honest
 
-50. Record every change setup makes in a manifest file, and have uninstall reverse exactly those
+53. Record every change setup makes in a manifest file, and have uninstall reverse exactly those
     changes. Store the manifest outside the plugin directory, for the reason in rule 13, and so
     uninstall still works after the plugin is removed.
-51. Record one entry type per file. Recording a file as both a copy and a block edit makes uninstall
+54. Record one entry type per file. Recording a file as both a copy and a block edit makes uninstall
     delete a file it should only have edited.
-52. Reverse an edit to a file that already existed by removing the block setup added, never by
+55. Reverse an edit to a file that already existed by removing the block setup added, never by
     restoring the backup. Restoring the backup throws away everything the user wrote afterwards.
-53. Refuse to edit a file whose opening marker has no closing marker, and say why. Editing it
+56. Refuse to edit a file whose opening marker has no closing marker, and say why. Editing it
     blindly deletes everything below the opening marker.
-54. Keep a copy of every file setup replaced, and never delete those copies on uninstall.
-55. Pass the target repository to every install script explicitly. A script that resolves the
+57. Keep a copy of every file setup replaced, and never delete those copies on uninstall.
+58. Pass the target repository to every install script explicitly. A script that resolves the
     repository from the working directory will write into whatever directory it happens to run in.
-56. Print which repository the script resolved, and say whether it had to guess.
-57. Report a missing prerequisite and carry on, when only some features need it. Print the exact
+59. Print which repository the script resolved, and say whether it had to guess.
+60. Report a missing prerequisite and carry on, when only some features need it. Print the exact
     command that fixes it for this platform. Stop the run only for a prerequisite that every
     feature needs.
-58. Make the features that need that prerequisite name what they could not run. A report that looks
+61. Make the features that need that prerequisite name what they could not run. A report that looks
     complete while part of it never executed is worse than no report.
-59. Add every directory the skills write into to the repository's `.gitignore`. A skill that calls
+62. Add every directory the skills write into to the repository's `.gitignore`. A skill that calls
     its output directory ignored while nothing ignores it leaves untracked files after every run.
-60. Prefer one wildcard pattern over a list, so a skill added later is covered without another
+63. Prefer one wildcard pattern over a list, so a skill added later is covered without another
     change.
-61. Have uninstall report the `.gitignore` lines setup added. Uninstall does not remove them,
+64. Have uninstall report the `.gitignore` lines setup added. Uninstall does not remove them,
     because the user may have written their own lines around them.
-62. Ask the user whether to keep or delete the answers they recorded. Present both choices without
+65. Ask the user whether to keep or delete the answers they recorded. Present both choices without
     recommending one.
 
 **Check:** install into an empty home directory, then uninstall, and confirm every manifest entry
@@ -175,38 +197,38 @@ reports success and every edited file returns to its earlier content.
 
 ## Phase 8 — Verify before publishing
 
-63. Run the plugin validator in strict mode after every change.
-64. Name every skill file `SKILL.md` with that exact capitalisation. A file named `skill.md` works
+66. Run the plugin validator in strict mode after every change.
+67. Name every skill file `SKILL.md` with that exact capitalisation. A file named `skill.md` works
     on a case-insensitive filesystem and fails on Linux.
-65. Re-measure every count and re-check every factual claim in user-facing text after every change.
+68. Re-measure every count and re-check every factual claim in user-facing text after every change.
     A count of rules, skills, agents or memories goes stale the moment a file is added or removed,
     and one fix commonly invalidates a sentence written for an earlier one.
-66. Implement every promise the user-facing text makes. A README that says a command reports
+69. Implement every promise the user-facing text makes. A README that says a command reports
     something must not describe behaviour the command does not have.
-67. Compare each ported skill against the document it came from, when one exists. A skill rewritten
+70. Compare each ported skill against the document it came from, when one exists. A skill rewritten
     from memory drifts from the process it is supposed to follow, and the drift is invisible until
     someone runs it.
-68. Match the exact wording a process document specifies, even when the wording breaks a convention
+71. Match the exact wording a process document specifies, even when the wording breaks a convention
     the rest of the plugin follows. State the reason next to it so nobody corrects it back.
-69. Never infer, from what is in the repository, a decision that is made outside it at run time.
+72. Never infer, from what is in the repository, a decision that is made outside it at run time.
     When two situations leave identical branches, commits and pull requests, the difference is not
     in the repository. Ask, and record in the skill why inference is not possible, so nobody adds
     it later.
 
 ## Phase 9 — Publish without leaking
 
-70. Search file contents, file names, and binary files separately. A content search that skips
+73. Search file contents, file names, and binary files separately. A content search that skips
     binary files will not see a work item ID in an image's filename.
-71. Delete sample output from the source project before publishing — screenshots, rendered reports,
+74. Delete sample output from the source project before publishing — screenshots, rendered reports,
     captured data.
-72. Check the whole history, not only the current files. A repository built by generalising files
+75. Check the whole history, not only the current files. A repository built by generalising files
     commit by commit holds the un-generalised versions in its early commits, and a public repository
     serves the whole history.
-73. When the history cannot be published, publish the finished tree as a fresh commit and keep the
+76. When the history cannot be published, publish the finished tree as a fresh commit and keep the
     full history in a bundle file outside the repository.
-74. Keep maintainer notes out of the published tree when they name the source project. Add them to
+77. Keep maintainer notes out of the published tree when they name the source project. Add them to
     `.gitignore` rather than deleting them.
-75. Give the full HTTPS clone URL in the README, not the shorthand form. The shorthand can resolve
+78. Give the full HTTPS clone URL in the README, not the shorthand form. The shorthand can resolve
     to SSH, which fails for anyone without an SSH key on their account.
 
 **Check:** list every published file name and search for project names, team prefixes and binary
@@ -214,15 +236,15 @@ file extensions.
 
 ## Phase 10 — Test as a new user
 
-76. Start Claude Code with `CLAUDE_CONFIG_DIR` set to an empty directory. That session has no
+79. Start Claude Code with `CLAUDE_CONFIG_DIR` set to an empty directory. That session has no
     skills, no agents, no rules and no plugins, and asks the user to sign in, which is the state a
     new colleague is in.
-77. Do not override `HOME` to get the same effect. It hides the Salesforce CLI's authenticated orgs,
+80. Do not override `HOME` to get the same effect. It hides the Salesforce CLI's authenticated orgs,
     the git commit identity and the SSH keys, so the parts of the plugin that deploy, test and
     commit cannot run.
-78. Neither variable removes installed software. Every tool stays on `PATH`, so a check for a
+81. Neither variable removes installed software. Every tool stays on `PATH`, so a check for a
     missing prerequisite never fires. Reproduce that with a second account on the machine, or by
     starting the session with a restricted `PATH`.
-79. Install through the marketplace rather than pointing at a local directory. Only a real install
+82. Install through the marketplace rather than pointing at a local directory. Only a real install
     proves that `${CLAUDE_PLUGIN_ROOT}` resolves and that setup works with no existing configuration
     to lean on.

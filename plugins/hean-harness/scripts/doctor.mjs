@@ -20,7 +20,7 @@ import { homedir } from 'node:os';
 import { load, MANIFEST, markers } from './lib/manifest.mjs';
 import { allChecks, reportChecks, currentRepo } from './lib/environment.mjs';
 import { claudeCommand } from './lib/shell.mjs';
-import { repoRoot, settingsPath, load as loadSettings, KEYS } from './lib/settings.mjs';
+import { repoRoot, missingLines, IGNORE_LINES } from './lib/gitignore.mjs';
 import { STATE_DIR } from './lib/manifest.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -52,7 +52,7 @@ function checkChange(c) {
         : { state: 'absent', note: 'the block was removed from this file' };
     }
     case 'json-key': {
-      if (!existsSync(c.target)) return { state: 'missing', note: 'the settings file is gone' };
+      if (!existsSync(c.target)) return { state: 'missing', note: 'the JSON file it was written to is gone' };
       return { state: 'ok' };
     }
     case 'dir-create':
@@ -109,16 +109,17 @@ function main() {
     log('');
   }
 
-  // this project's own choices
+  // skill output must stay out of git
   const repo = currentRepo() ?? repoRoot();
-  const s = loadSettings(repo);
-  const unset = Object.keys(KEYS).filter(k => s[k] === undefined || s[k] === null);
-  log('Project settings');
-  for (const [k, why] of Object.entries(KEYS)) {
-    log(`  ${unset.includes(k) ? 'not set' : 'set    '}  ${k.padEnd(16)} ${why}`);
+  const gi = missingLines(repo);
+  log('Ignored paths');
+  for (const l of IGNORE_LINES) {
+    log(`  ${gi.missing.includes(l) ? 'not there' : 'present  '}  ${l}`);
   }
-  log(`  ${short(settingsPath(repo))}`);
-  if (unset.length) log(`  ${unset.length} not recorded, so nothing is enforced for those. That is a valid choice.`);
+  log(`  ${short(gi.file)}`);
+  if (gi.missing.length) {
+    log('  Skill output would be committed. Run the setup skill again to add the missing lines.');
+  }
   log('');
 
   log('Environment');

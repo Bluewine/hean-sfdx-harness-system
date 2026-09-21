@@ -85,9 +85,8 @@ grep -n "CODE_UNIT_STARTED\|EXECUTION_STARTED" "<path>/file.log" | head -10
 ```
 
 Then find the enclosing project class. Substitute `<ClassPrefix>` with the prefix this project's
-Apex classes carry — read it from the class names already in the log, or from the project's
-settings if one is recorded. When classes carry no common prefix, drop that alternative and match
-on the controller name alone:
+Apex classes carry — read it from the class names already in the log. When classes carry no common
+prefix, drop that alternative and match on the controller name alone:
 
 ```bash
 grep -n "METHOD_ENTRY\|METHOD_EXIT" "<path>/file.log" \

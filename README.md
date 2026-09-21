@@ -68,11 +68,12 @@ else still installs.
 
 | Set | Goes to | What it covers |
 |---|---|---|
-| 7 writing rules | Your home folder | How to write clearly, how to word a commit, how to lay out a rule file. Applies in every repository. |
-| 16 Salesforce rules | This repository | Apex, Lightning Web Components, Flows, tests, static analysis, deployment steps. |
+| 7 writing rules | Your home folder | How to write clearly, how to lay out a rule file, how to brief an agent. Applies in every repository. |
+| 19 Salesforce rules | This repository | Apex, Lightning Web Components, Flows, tests, static analysis, naming, commit messages, deployment steps. |
 
-15 of the 16 Salesforce rules only load when you open a file they apply to, so they cost nothing
-in a session that never touches Apex.
+17 of the 19 Salesforce rules only load when you open a file they apply to, so they cost nothing
+in a session that never touches Apex. The two that load every time are the commit message format
+and the research workflow used in plan mode, neither of which is tied to a file type.
 
 **4. Memories.** Notes Claude Code keeps so that something worked out once stays known.
 
@@ -82,9 +83,10 @@ in a session that never touches Apex.
 **5. Status line.** Adds the line at the bottom of your terminal showing the folder, branch,
 Salesforce org and token usage. It runs on Node, so it needs nothing you do not already have.
 
-**6. Your project's own conventions.** Lists four things the plugin can follow if your team has
-them, and tells you which are not yet recorded. It asks nothing here — a script cannot hold a
-conversation. Run `/hean-harness:configure` when you want to answer them.
+**6. Ignored paths.** Adds one line to your repository's `.gitignore`, `.claude/skills/*/output/`,
+so that what a skill writes — a rendered pull request body, a report, a screenshot — is never
+committed. Those files belong to one run on one clone and would collide on any other. If the line
+is already there, nothing is written.
 
 At the end it prints one command for you to run, which reloads your terminal so the alias takes
 effect.
@@ -94,30 +96,27 @@ effect.
 **4 agents** Claude Code hands work to: one writes code, one writes and runs Apex tests, one
 writes and runs Jest tests, one deploys metadata.
 
-**21 commands** for the tasks you repeat: listing what your branch changed, opening a pull
+**20 commands** for the tasks you repeat: listing what your branch changed, opening a pull
 request, running only the tests your changes affect, preparing a release, and more.
 
-**4 automatic checks** that run on their own: one tells you at the start of a session if the
-setup is missing, one blocks a `git add` that forces past `.gitignore`, one holds a commit of
-Salesforce Flow files until they carry a dated change note, and one checks a new branch's name —
-but only if your team recorded a naming convention.
+**4 automatic checks** that run on their own: one tells you at the start of a session if the setup
+is missing, one blocks a `git add` that forces past `.gitignore`, one holds a commit of Salesforce
+Flow files until they carry a dated change note, and one refuses a commit whose subject names no
+work item.
 
-## Your project's conventions
+## The conventions it enforces
 
-Four things the plugin will follow if you tell it, and ignore entirely if you do not:
+Two are checked before the command runs, and cannot be switched off:
 
-| Convention | If you set it | If you leave it |
-|---|---|---|
-| Branch names | A new branch whose name does not match is refused, with the pattern shown | No branch name is ever checked |
-| Apex class names | The prefix and suffix are used where a class name is generated | No name pattern is enforced |
-| Component names | Same, for Lightning Web Components | No name pattern is enforced |
-| Commit subject | The shape is followed when a commit message is written | No shape is required |
+| Check | What it refuses |
+|---|---|
+| Commit subject | A `git commit -m` whose subject does not read `@WORK-ID: Capitalised summary` |
+| Forced staging | A `git add -f` or `git add --force`, which would commit a file `.gitignore` excludes |
 
-Leaving all four unset is a normal choice. The plugin then asks for none of them and blocks
-nothing.
-
-Your answers are kept in one file inside your repository, `.claude/hean-harness.local.json`, and
-added to `.gitignore` so they are never committed. They are yours, not the team's.
+The rest are rules Claude Code reads and follows rather than checks that block. Apex class names
+and Lightning Web Component names each get one, and both work out your project's own prefix from
+the files already in the repository rather than assuming one. Branch names are handled by the
+Linear skill, which creates the branch from the issue it is starting.
 
 ## Undoing it
 
@@ -125,18 +124,16 @@ added to `.gitignore` so they are never committed. They are yours, not the team'
 /hean-harness:uninstall
 ```
 
-It shows you everything it is about to reverse, then asks you one question.
+It shows you everything it is about to reverse before reversing any of it.
 
 **Everything setup installed is removed.** Files it copied are deleted. Files it changed — your
-shell startup file, your `CLAUDE.md`, your settings — get only the plugin's own lines taken out,
-so anything you wrote yourself stays exactly as it is.
+shell startup file, your `CLAUDE.md`, your Claude Code settings — get only the plugin's own lines
+taken out, so anything you wrote yourself stays exactly as it is.
 
-**You choose what happens to your own answers** — the four conventions above, if you recorded any:
-
-| You choose | What happens |
-|---|---|
-| **Keep** | The answers stay in your repository. Installing again later picks them straight back up. One small file remains. |
-| **Delete** | The answers go. Installing again later asks the questions from scratch, and nothing is enforced until someone answers. |
+**Two things are left alone, on purpose.** The `.gitignore` line setup added is read back to you
+to remove yourself, because you may have written your own lines around it. Anything already in
+`.claude/skills/<skill-name>/output/` stays where it is — those are your own reports and rendered
+files, not the plugin's.
 
 Neither is safer. It is only a question of whether you expect to install again.
 

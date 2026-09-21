@@ -33,7 +33,7 @@ const STEPS = [
   { name: 'Rule files',    script: 'install-rules.mjs',        wantsRepo: true },
   { name: 'Memories',      script: 'install-memories.mjs',       wantsRepo: true },
   { name: 'Status line',   script: 'install-statusline.mjs' },
-  { name: 'Settings',      script: 'init-settings.mjs',       wantsRepo: true }
+  { name: 'Ignored paths', script: 'init-gitignore.mjs',       wantsRepo: true }
 ];
 
 const line = '─'.repeat(64);

@@ -27,7 +27,7 @@
           },
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/branch-name-gate.mjs\"",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/commit-message-gate.mjs\"",
             "timeout": 10
           }
         ]

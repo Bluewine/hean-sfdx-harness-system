@@ -103,13 +103,13 @@ git add package.json
 git commit -m "@{WORK_ID}: Update Release Version to v{NEW_VERSION}"
 ```
 
-**On the commit message prefix.** Historic commits read `Update Release Version` with no prefix. That form is rejected wherever `core.hooksPath` points at `.githooks`, because `commit-msg` requires `^@[A-Z]+-[0-9]+\s*:\s*.+$`. Check whether the hook is active before choosing a message:
+**On the commit message prefix.** Historic commits read `Update Release Version` with no prefix. That form no longer passes: a work item reference is required, as `.claude/rules/commit-message-format.md` sets out and a hook enforces before every commit. A repository may also run its own `commit-msg` hook with a stricter pattern of its own:
 
 ```bash
 git config core.hooksPath
 ```
 
-Empty output means the historic unprefixed form still works. A path means a work ID is required — ask which one to use rather than inventing an ID, and never reach for `--no-verify` to get around it.
+A path means there is a second check to satisfy — read that hook before choosing a message. Either way, ask which work item to use rather than inventing an ID, and never reach for `--no-verify` to get around either check.
 
 ## Phase 4 — Build the delete-list and confirm it
 
@@ -282,7 +282,7 @@ Confirm each against real output, not intent:
 | Whole `<types>` block dropped when members survive | Remove the single `<members>` line instead |
 | Version taken from a tag or branch name | It lives in `package.json` |
 | Deploy date read from today's clock | Take it from the deployment PR title |
-| Historic unprefixed commit message copied blindly | Check `core.hooksPath`; a work ID may be required |
+| Historic unprefixed commit message copied blindly | A work ID is required; check `core.hooksPath` for a second, stricter hook too |
 | `--no-verify` used to bypass the hook | Ask which work ID to use instead |
 | Both jobs squashed into one commit | Version bump first, cleanup second |
 | PR opened without showing the body | Render, wait for `yes`, then submit |
