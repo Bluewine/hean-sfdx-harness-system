@@ -35,6 +35,10 @@ left in place because it is theirs rather than ours.
 5. Report:
    - each entry and whether it succeeded; an entry marked `"ok": false` needs the user to act, so
      say what it was and why it failed
+   - every entry of type `external`, which is something setup ran rather than a file it wrote —
+     the superpowers plugin and the marketplace it came from, when setup added them. Uninstall
+     does not undo these, because the user may now rely on them elsewhere. Give each entry's
+     `note`, which is the exact command that undoes it, and leave the choice to them.
    - the `.gitignore` lines from step 4, naming each one, and that removing them is theirs to do
    - anything already written to `.claude/skills/<skill-name>/output/` stays where it is; those are
      the user's own reports and rendered files, not ours

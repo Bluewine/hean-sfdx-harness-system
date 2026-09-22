@@ -18,6 +18,29 @@ import { claudeDir } from './paths.mjs';
 export const SUPERPOWERS = 'superpowers@claude-plugins-official';
 
 /**
+ * Where superpowers comes from.
+ *
+ * A plugin cannot be installed until the marketplace that carries it has been
+ * added, and a fresh Claude Code configuration has no marketplaces at all — not
+ * even Anthropic's own. Installing without adding it first fails with "not found
+ * in marketplace", which reads like the plugin is gone rather than like a step
+ * is missing. So setup adds the marketplace and then installs; both commands are
+ * safe to repeat and say so when there is nothing to do.
+ */
+export const SUPERPOWERS_MARKETPLACE = 'claude-plugins-official';
+// The full HTTPS URL, not the owner/repo shorthand. The shorthand is resolved
+// over SSH, which fails on a machine whose GitHub account has no SSH key on it —
+// and the error names the clone rather than the missing key, so it reads as the
+// marketplace being unreachable.
+export const SUPERPOWERS_SOURCE = 'https://github.com/anthropics/claude-plugins-official.git';
+
+/** Is the marketplace that carries superpowers configured on this machine? */
+export function marketplacePresent(name = SUPERPOWERS_MARKETPLACE) {
+  if (!present('claude')) return false;
+  return new RegExp(`\\b${name}\\b`).test(runOut('claude', ['plugin', 'marketplace', 'list']));
+}
+
+/**
  * Run a command and return everything it printed, from both streams.
  * `java -version` writes its version to standard error, so reading only
  * standard output finds nothing and a working JDK looks like a stub.
@@ -150,6 +173,18 @@ export const sfCliFix = 'install it from https://developer.salesforce.com/tools/
 export const analyzerFix = 'sf plugins install @salesforce/plugin-code-analyzer';
 export const nodeModulesFix = 'npm install';
 
+/**
+ * The command that fixes superpowers, which is two commands when the marketplace
+ * it comes from has not been added yet.
+ */
+export function superpowersFix(sp = checkSuperpowers()) {
+  if (sp.state === 'disabled') return `claude plugin enable ${SUPERPOWERS}`;
+  const install = `claude plugin install ${SUPERPOWERS}`;
+  return marketplacePresent()
+    ? install
+    : `claude plugin marketplace add ${SUPERPOWERS_SOURCE} && ${install}`;
+}
+
 /** Every check, in report order, with the command that fixes each one. */
 export function allChecks(repo) {
   const sp = checkSuperpowers();
@@ -158,9 +193,7 @@ export function allChecks(repo) {
     { name: 'sf CLI',        result: checkSfCli(),            fix: sfCliFix },
     { name: 'code analyzer', result: checkCodeAnalyzer(),     fix: analyzerFix },
     { name: 'node modules',  result: checkNodeModules(repo),  fix: nodeModulesFix },
-    { name: 'superpowers',   result: sp,
-      fix: sp.state === 'disabled' ? `claude plugin enable ${SUPERPOWERS}`
-                                   : `claude plugin install ${SUPERPOWERS}` },
+    { name: 'superpowers',   result: sp,       fix: superpowersFix(sp) },
     { name: 'python3',       result: checkPython(),           fix: pythonFix() }
   ];
 }

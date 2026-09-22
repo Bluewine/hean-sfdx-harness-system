@@ -26,9 +26,14 @@ const repo = repoArg >= 0 ? argv[repoArg + 1] : null;
  * `keepGoing` marks a step whose failure must not stop the rest. The system
  * prompt step exits 2 when the shell is one it will not write to, and the
  * rules and memories still belong on the machine in that case.
+ *
+ * `installsOnRealRun` marks a step that takes `--install` rather than
+ * `--dry-run`. The environment step reports either way; only that flag makes it
+ * put superpowers in place, and leaving it off is why superpowers was reported
+ * as missing on every run and never installed.
  */
 const STEPS = [
-  { name: 'Environment',   script: 'check-environment.mjs',     skipOnDryRun: false, noDryFlag: true },
+  { name: 'Environment',   script: 'check-environment.mjs',     noDryFlag: true, installsOnRealRun: true },
   { name: 'Rules and alias', script: 'install-system-prompt.mjs', keepGoing: true },
   { name: 'Rule files',    script: 'install-rules.mjs',        wantsRepo: true },
   { name: 'Memories',      script: 'install-memories.mjs',       wantsRepo: true },
@@ -42,6 +47,7 @@ const results = [];
 for (const step of STEPS) {
   const args = [join(HERE, step.script)];
   if (dryRun && !step.noDryFlag) args.push('--dry-run');
+  if (!dryRun && step.installsOnRealRun) args.push('--install');
   if (step.wantsRepo && repo) args.push('--repo', repo);
 
   console.log(`\n${line}\n  ${step.name}\n${line}`);

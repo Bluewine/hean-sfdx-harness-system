@@ -55,9 +55,17 @@ It then runs six steps in order.
 
 **1. Environment.** Reports on six things it needs: a real Java installation, the `sf` command,
 the Salesforce code analyzer, your project's installed packages, the superpowers plugin, and
-Python. It installs nothing here. Java needs administrator rights on most machines, so it prints
-the exact command for your system and leaves it to you. Python is optional: only two commands use
-it, and everything else works without it.
+Python.
+
+It installs one of them, superpowers, because that is the only one that needs no administrator
+rights. A plugin cannot be installed until the marketplace carrying it has been added, and a fresh
+Claude Code configuration has no marketplaces at all, so this step adds Anthropic's marketplace
+first and then installs the plugin. Both are recorded, so uninstall gives you the commands to undo
+them. Superpowers is read when a session starts, so restart Claude Code before using it.
+
+The rest are reported with the exact command that fixes each. Java needs administrator rights on
+most machines, so it prints the command for your system and leaves it to you. Python is optional:
+only two commands use it, and everything else works without it.
 
 **2. Rules and the `claude` alias.** Copies the rules file into your home folder, then adds a line
 to your shell startup file so that typing `claude` loads those rules every time. If your shell is

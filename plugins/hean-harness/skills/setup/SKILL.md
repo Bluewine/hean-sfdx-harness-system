@@ -28,6 +28,9 @@ Install the environment. Show the user what will change before changing it.
    - what each step did
    - the exact command the user has to run to reload their shell
    - anything the summary says needs doing by hand
+   - whether the superpowers plugin was installed. When it was, say that a restart of Claude Code
+     is needed before it can be used, because a plugin's skills and hooks are read when a session
+     starts. Nothing in the running session picks it up.
 
 5. When the summary says the alias was not written, the user's shell is one the installer does not
    write to. Everything else still installed. Give them both options the script printed, in this
