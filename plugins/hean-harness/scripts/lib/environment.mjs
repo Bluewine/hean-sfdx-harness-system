@@ -14,6 +14,7 @@ import { existsSync, statSync } from 'node:fs';
 import { platform } from 'node:os';
 import { join } from 'node:path';
 import { claudeDir } from './paths.mjs';
+import { findLinear, LINEAR_HOST } from './mcp.mjs';
 
 export const SUPERPOWERS = 'superpowers@claude-plugins-official';
 
@@ -174,6 +175,27 @@ export const analyzerFix = 'sf plugins install @salesforce/plugin-code-analyzer'
 export const nodeModulesFix = 'npm install';
 
 /**
+ * Can the Linear skills reach Linear?
+ *
+ * Several skills resolve a work ID to an issue and a sprint cycle through an MCP
+ * server. Being declared is not the same as being usable — the server still has
+ * to be authenticated, which happens in a browser and cannot be scripted — so
+ * this reports what is declared and says so in those words.
+ */
+export function checkLinearMcp(repo) {
+  const hits = findLinear(repo);
+  if (!hits.length) {
+    return { ok: false, state: 'missing',
+             detail: 'no server points at Linear, so the story lookups cannot run' };
+  }
+  const names = [...new Set(hits.map(h => h.name))].join(', ');
+  return { ok: true, detail: `${names}, declared in ${hits[0].where} — authenticate it in a session with /mcp` };
+}
+
+export const linearFix =
+  `claude mcp add --transport http --scope project linear-server https://${LINEAR_HOST}/mcp`;
+
+/**
  * The command that fixes superpowers, which is two commands when the marketplace
  * it comes from has not been added yet.
  */
@@ -194,6 +216,7 @@ export function allChecks(repo) {
     { name: 'code analyzer', result: checkCodeAnalyzer(),     fix: analyzerFix },
     { name: 'node modules',  result: checkNodeModules(repo),  fix: nodeModulesFix },
     { name: 'superpowers',   result: sp,       fix: superpowersFix(sp) },
+    { name: 'Linear',        result: checkLinearMcp(repo),    fix: linearFix },
     { name: 'python3',       result: checkPython(),           fix: pythonFix() }
   ];
 }

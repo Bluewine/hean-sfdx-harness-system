@@ -31,6 +31,9 @@ Install the environment. Show the user what will change before changing it.
    - whether the superpowers plugin was installed. When it was, say that a restart of Claude Code
      is needed before it can be used, because a plugin's skills and hooks are read when a session
      starts. Nothing in the running session picks it up.
+   - whether a Linear MCP server was added, or one was already there. When one was added, say that
+     it still has to be signed in to, with `/mcp` in a session, and that no script can do that part.
+     When one was already there, name it and say nothing was changed.
 
 5. When the summary says the alias was not written, the user's shell is one the installer does not
    write to. Everything else still installed. Give them both options the script printed, in this

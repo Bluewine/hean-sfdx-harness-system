@@ -53,15 +53,26 @@ Check that it worked:
 Setup shows you everything it is going to do first, and changes nothing until you say go ahead.
 It then runs six steps in order.
 
-**1. Environment.** Reports on six things it needs: a real Java installation, the `sf` command,
-the Salesforce code analyzer, your project's installed packages, the superpowers plugin, and
-Python.
+**1. Environment.** Reports on seven things it needs: a real Java installation, the `sf` command,
+the Salesforce code analyzer, your project's installed packages, the superpowers plugin, a Linear
+connection, and Python.
 
-It installs one of them, superpowers, because that is the only one that needs no administrator
-rights. A plugin cannot be installed until the marketplace carrying it has been added, and a fresh
-Claude Code configuration has no marketplaces at all, so this step adds Anthropic's marketplace
-first and then installs the plugin. Both are recorded, so uninstall gives you the commands to undo
-them. Superpowers is read when a session starts, so restart Claude Code before using it.
+It puts two of them in place, because those are the two that need no administrator rights.
+
+*Superpowers.* A plugin cannot be installed until the marketplace carrying it has been added, and a
+fresh Claude Code configuration has no marketplaces at all, so this step adds Anthropic's
+marketplace first and then installs the plugin. Superpowers is read when a session starts, so
+restart Claude Code before using it.
+
+*Linear.* Several commands look a work ID up as a Linear issue, which needs an MCP server pointed at
+Linear. This step first checks whether one is already there — in your repository's `.mcp.json`, in
+your global configuration, or in your own configuration for this repository — and adds one only when
+none is. It matches on the address rather than the name, so a server you called something else still
+counts. When it does add one, it writes it into your repository's `.mcp.json`, alongside anything
+already declared there, so everyone who clones gets it. Signing in is yours to do: run `/mcp` in a
+session. No script can complete a browser sign-in.
+
+Both are recorded, so uninstall gives you the commands to undo them.
 
 The rest are reported with the exact command that fixes each. Java needs administrator rights on
 most machines, so it prints the command for your system and leaves it to you. Python is optional:

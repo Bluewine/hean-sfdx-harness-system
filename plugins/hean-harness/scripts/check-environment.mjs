@@ -13,8 +13,11 @@ import { recordExternal } from './lib/install.mjs';
 import { allChecks, reportChecks, checkSuperpowers, currentRepo,
          present, run, marketplacePresent,
          SUPERPOWERS, SUPERPOWERS_MARKETPLACE, SUPERPOWERS_SOURCE } from './lib/environment.mjs';
+import { findLinear, addLinear, removeCommand, LINEAR_NAME } from './lib/mcp.mjs';
 
-const doInstall = process.argv.includes('--install');
+const argv = process.argv.slice(2);
+const doInstall = argv.includes('--install');
+const repoArg = argv.indexOf('--repo');
 const log = (...a) => console.log(...a);
 
 /**
@@ -54,8 +57,45 @@ function installSuperpowers(sp) {
   return true;
 }
 
+/**
+ * Point this repository at Linear, but only when nothing already does.
+ *
+ * The check is what makes this safe to run again: `claude mcp add` fails
+ * outright on a name that is already there, and a second server at the same URL
+ * would have to be authenticated separately from the first.
+ */
+function installLinear(repo) {
+  if (!repo) {
+    log('Not in a repository, so there is nowhere to add a Linear server.');
+    return false;
+  }
+  if (!present('claude')) {
+    log('The claude command is not on PATH, so the Linear server cannot be added from here.');
+    return false;
+  }
+
+  const existing = findLinear(repo);
+  if (existing.length) {
+    log(`Linear is already reachable through ${existing[0].name}, in ${existing[0].where}.`);
+    log('Left as it is — a second server at the same address would need authenticating on its own.');
+    return false;
+  }
+
+  init('0.1.0');
+  log(`Running: claude mcp add --transport http --scope project ${LINEAR_NAME} ...`);
+  const r = addLinear(repo);
+  log(r.output);
+  if (!r.ok) return false;
+
+  // written into the repository's own .mcp.json, which may already declare other
+  // servers, so uninstall names the one key rather than the file
+  recordExternal(`mcp:${LINEAR_NAME}`, removeCommand);
+  return true;
+}
+
 function main() {
-  const checks = allChecks(currentRepo());
+  const repo = repoArg >= 0 ? argv[repoArg + 1] : currentRepo();
+  const checks = allChecks(repo);
   log('Environment');
   const missing = reportChecks(checks, log);
   log('');
@@ -63,8 +103,11 @@ function main() {
   const sp = checkSuperpowers();
 
   if (!doInstall) {
-    if (!sp.ok) {
-      log('Superpowers is installed automatically when setup runs for real.');
+    const pending = [];
+    if (!sp.ok) pending.push('the superpowers plugin');
+    if (!checks.find(c => c.name === 'Linear').result.ok) pending.push('a Linear MCP server');
+    if (pending.length) {
+      log(`Setup installs ${pending.join(' and ')} when it runs for real.`);
       log('');
     }
     log(missing === 0
@@ -73,10 +116,8 @@ function main() {
     return;
   }
 
-  let installed = false;
   if (!sp.ok) {
-    installed = installSuperpowers(sp);
-    if (installed) {
+    if (installSuperpowers(sp)) {
       log('Recorded, so uninstall will tell you how to undo it.');
       // the plugin's own skills and hooks are read when a session starts, so
       // this session does not have them however well the install went
@@ -85,7 +126,14 @@ function main() {
     log('');
   }
 
-  const manual = checks.filter(c => !c.result.ok && !c.result.skipped && c.name !== 'superpowers');
+  if (installLinear(repo)) {
+    log('Recorded, so uninstall will tell you how to undo it.');
+    log('It is declared but not yet authenticated. Run /mcp in a session and sign in to Linear.');
+    log('');
+  }
+
+  const manual = checks.filter(c => !c.result.ok && !c.result.skipped
+                                    && c.name !== 'superpowers' && c.name !== 'Linear');
   if (manual.length) {
     log('These are not installed automatically, because they need administrator rights or');
     log('depend on your setup. Run them yourself:');

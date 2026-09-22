@@ -33,7 +33,7 @@ const repo = repoArg >= 0 ? argv[repoArg + 1] : null;
  * as missing on every run and never installed.
  */
 const STEPS = [
-  { name: 'Environment',   script: 'check-environment.mjs',     noDryFlag: true, installsOnRealRun: true },
+  { name: 'Environment',   script: 'check-environment.mjs',     noDryFlag: true, installsOnRealRun: true, wantsRepo: true },
   { name: 'Rules and alias', script: 'install-system-prompt.mjs', keepGoing: true },
   { name: 'Rule files',    script: 'install-rules.mjs',        wantsRepo: true },
   { name: 'Memories',      script: 'install-memories.mjs',       wantsRepo: true },

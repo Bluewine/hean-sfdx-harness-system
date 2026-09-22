@@ -10,6 +10,11 @@ paths:
 
 Apply whenever resolving a work ID to a Linear issue, or an issue to its sprint cycle.
 
+`get_issue` and `list_cycles` come from an MCP server pointed at `https://mcp.linear.app/mcp`. When
+neither tool is available, the server is either not declared for this repository or not signed in to.
+Say which, rather than guessing at an issue title — `/hean-harness:doctor` reports the first, and
+`/mcp` in a session handles the second. Never invent a title, a URL or a cycle.
+
 ## Issue resolution
 
 Call `get_issue` with the work ID. Take four fields:
