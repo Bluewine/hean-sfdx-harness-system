@@ -10,7 +10,7 @@
 - [Never run agents in the background](feedback_no_background_agents.md) — Always run agents in the foreground; never use run_in_background
 - [Manifest output location](feedback_manifest_location.md) — Per-story manifests go to .claude/manifest/{WORK-ID}.xml; audit manifest is manifest/last-deployed.xml; never inside force-app/
 - [Agent routing — structural test fixes](feedback_agent_routing_test_fixes.md) — use developer not lwc-tester when fixing structurally broken tests
-- [No Co-Authored-By in commits](feedback_no_coauthored_by.md) — Never add Co-Authored-By trailer to commit messages; keep them clean
+- [No attribution trailers in commits](feedback_no_coauthored_by.md) — Never add Co-Authored-By, Claude-Session or any generated trailer naming the assistant, model, session or tool
 - [SFCORE_Query collection operators](reference_sfcore_query_collection_operators.md) — equals/notEquals with Set/List → IN/NOT IN via queryWithBinds; confirmed from SFCORE_QueryTest
 - [SFCORE classes must never be edited](feedback_sfcore_never_edit.md) — SFCORE_* are a third-party framework; treat as read-only like a managed package, always
 - [Always use SFCORE_TestUtilities.generateId() for test IDs](feedback_real_ids_in_tests.md) — Never hardcode IDs or use custom fakeId helpers — real prefixed IDs validate SObjectType traceability
