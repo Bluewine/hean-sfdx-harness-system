@@ -150,7 +150,9 @@ The discriminator is provenance, so inspect the `BASE`-side commits: arriving un
 
 Read `.claude/rules/linear-story-resolution.md` first.
 
-For each surviving candidate, call the Linear MCP `get_issue` tool with the ID. Take these fields:
+**Check Linear MCP availability:** attempt a Linear MCP tool call (search or fetch issue by ID). If it responds successfully, resolve every candidate through it. If unavailable or an auth error, use the manual fallback at the end of this phase, and Phase 4's fallback with it.
+
+**Linear MCP available.** For each surviving candidate, call the Linear MCP `get_issue` tool with the ID. Take these fields:
 
 - `title` → the **Subject** column, used verbatim. Keep the exact punctuation and any bracketed prefix (`[Bug] `, `[Spike + Build] `) exactly as Linear returns it.
 - `url` → the **Work ID** link target, used verbatim. It also supplies the workspace slug that Phase 4 needs.
@@ -163,7 +165,29 @@ A surviving candidate from another team is a legitimate row — Phase 4 resolves
 
 **When an ID does not resolve**, never silently drop it and never guess a substitute. Common causes are a typo'd prefix in a commit subject, or an ID belonging to a non-Linear tracker. Collect every unresolved ID with the subject it came from and carry it to the Phase 6 checkpoint. If the user maps one to a corrected ID that is already a row, the two are one story and stay one row.
 
+**Linear MCP unavailable** (per work ID, asking one message per work ID):
+
+```
+Linear MCP is not connected. For {WORK-ID}, please provide:
+1. Issue title (copy from Linear, including any bracketed prefix):
+2. Linear issue URL (copy from browser):
+3. Assignee as Linear shows it, or "unassigned":
+4. Sprint name, or "none":
+5. Sprint URL (copy from browser), or "none":
+6. Sprint start date as YYYY-MM-DD, or "none":
+```
+
+Wait for the response; use the values verbatim. If any value is empty, re-ask for that value until provided. `"unassigned"` renders `—`; `"none"` for items 4 to 6 leaves that story's sprint unresolved.
+
+The six values replace what `get_issue` and `list_cycles` would have returned, so items 4 to 6 also discharge Phase 4 for that story: the sprint name is its **Sprint** cell, the sprint URL is that cell's link target verbatim, and the start date is its Phase 5 sort key. Do not construct the sprint link from parts in this path — take the URL as pasted, for the same reason the issue URL is never slugified.
+
+**Say what this costs before starting.** Six values per story, one story at a time, and a release range routinely carries ten. Tell the user the count up front and that connecting Linear removes the questions entirely — `/hean-harness:doctor` reports whether a server is declared, and `/mcp` in a session signs in to one. A user who knows both facts can choose; one who is asked sixty questions without being told cannot.
+
+**Every unresolved or "none" answer goes to the Phase 6 checkpoint**, exactly as an unresolved field from Linear does. The fallback changes where a value comes from. It does not lower the bar for a blank or an invented cell.
+
 ## Phase 4 — Resolve the sprint for each story
+
+**Skip this phase for any story resolved through the Phase 3 fallback** — items 4 to 6 of that prompt already carry its sprint name, link and start date. Run it for the stories that came from `get_issue`, which is all of them whenever Linear is connected.
 
 `get_issue` returns `cycleId` as a UUID, which is not directly renderable. Map it with the Linear MCP `list_cycles` tool, called once per distinct `teamId` in the row set, and match on `id`:
 
@@ -184,6 +208,8 @@ Cycle assignment is read live and issues do get re-assigned between cycles, so a
 The sort is total and deterministic — the same range and the same Linear state always produce the same row order.
 
 1. **Sprint block, descending by cycle `startsAt`.** Sort on `startsAt`, never on `number` — numbers restart per team, so ordering by number interleaves two teams' sprints into the wrong blocks. Cycles from different teams sharing a `startsAt` form separate blocks, ordered by team key ascending.
+
+   A story with no start date — no cycle, or `"none"` given at the Phase 3 fallback — cannot join a block, because there is nothing to compare. Those stories form one block of their own, placed last, ordered by work ID under rule 2. Never guess a date to slot one into a real block: the row then sits under a sprint heading that Linear does not agree with, and nothing in the finished table shows it was placed rather than read.
 2. **Within a block, work ID ascending** — team key ascending first, then the numeric part compared **as a number, not as text**. `ABC-96` sorts before `ABC-146`; a string sort would wrongly place `ABC-101` first.
 
 Nothing here depends on commit order, so the ordering is reproducible from the finished table alone.
@@ -307,8 +333,8 @@ Report the PR URL. Do not merge the PR — this skill prepares the deployment PR
 Confirm each against real output, not intent:
 
 - The row count derives as `candidates − mention-only − shipped-tails − unresolved-or-folded − user-skipped`, and every subtraction was reported at the checkpoint. Check the derivation, not a fixed equality — a new exclusion class must show up as a reported subtraction rather than silently breaking the count.
-- Every `Work ID` href is a string Linear returned, not one you assembled.
-- Every sprint link uses that row's own team key and the workspace slug taken from Linear's `url`.
+- Every `Work ID` href is a string that came out of Linear — returned by `get_issue`, or pasted by the user from the browser — and never one you assembled from the title.
+- Every sprint link either uses that row's own team key with the workspace slug taken from Linear's `url`, or is a URL the user pasted whole. A link built from parts in the fallback path is a defect: nothing there supplies a verified slug.
 - The separator line is exactly `-- | -- | -- | -- |`, and every row has exactly four cells.
 - Every Work ID cell and every Sprint cell is a markdown link; no Assignee cell is.
 - Rows are sorted on all three keys in order: cycle `startsAt` descending, then team key ascending, then work ID numerically ascending.
@@ -336,6 +362,9 @@ Confirm each against real output, not intent:
 | Work IDs sorted as text within a sprint | Compare the numeric part as a number — `-96` precedes `-146` |
 | Assignee inferred from commit author | Use Linear's `assignee`; commit author is who pushed, not who owned |
 | Unresolvable work ID quietly dropped | Surface it at the checkpoint; never guess a substitute |
+| Run abandoned because Linear is not connected | Fall back to asking per work ID; say how many questions that is first |
+| Sprint link built from parts in the fallback path | Take the URL the user pasted verbatim, as with the issue URL |
+| Story with no start date slotted into a sprint block | It forms its own block, placed last; never invent a date to place it |
 | Decisions asked in three separate messages | One consolidated checkpoint carries every open item |
 | Deployment/environment wording ("prod", "master", "production") read as an instruction to change `BASE` | `BASE`/`HEAD` are fixed to `release`/`integration`; that wording names the separate Production Release PR (`release` → `master`), not this one — confirm scope, don't substitute a branch |
 | Runlist URL reused from a prior PR | It is per-deployment; ask for it. The same PR's own runlist is not a prior PR's |
