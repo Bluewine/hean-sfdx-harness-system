@@ -8,3 +8,9 @@ docs/tasks.md
 
 # Sample output from the project this plugin came from, never published
 plugins/hean-harness/skills/create-pr/screenshots/
+
+# hean-harness: installed or written on each clone, not shared
+.claude/*
+!.claude/manifest/
+.githooks/
+.mcp.json
