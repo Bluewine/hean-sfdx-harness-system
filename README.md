@@ -69,6 +69,15 @@ or main session) and whether to commit per task.
   `/hean-harness:finish-implementation` then undoes them back to where the run started and leaves
   every change unstaged. Push and `git reset --hard` are refused until that happens.
 
+The check applies in every repository, to every agent and subagent in Claude Code. Commits you type
+in a terminal are not checked. The agents' instructions for the two questions are in
+`~/.claude/rules/implementation-commits.md`, which setup copies into place.
+
+## Disabled skills
+
+`sync-to-branch` and `commit-walk-sync` ship as `SKILL.mdx`, which Claude Code does not load. To use
+one again, rename its file back to `SKILL.md`.
+
 ## What setup leaves to you
 
 - **A JDK 11 or newer.** Installing one needs administrator rights. Setup reports whether a real one
@@ -131,6 +140,7 @@ Run `/hean-harness:setup` again.
   file git tracks are kept.
 - It uninstalls superpowers and its marketplace when setup added them, then hean-harness itself.
 - Copies of anything it replaced or edited stay in `~/.claude/hean-harness/backups/`.
+- The commit approval state of past sessions stays in `~/.claude/hean-harness/sessions/`.
 - Open a new terminal afterwards. The alias is still loaded in the current one.
 
 It leaves the `.gitignore` lines it added to you, and prints them.
