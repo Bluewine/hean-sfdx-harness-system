@@ -1,6 +1,6 @@
 ---
 name: release-pr
-description: Release-train PR merging the integration branch into a release branch for a UAT deployment — dedupes the commit range into one row per Linear story carrying title, assignee, and sprint, excludes hotfix back-merge tails whose work already shipped, then opens or updates the deployment PR
+description: Release-train PR merging the integration branch into a release branch for a UAT deployment — dedupes the commit range into one row per Linear story carrying title, assignee, and sprint, classes each story as new, straddling or already-deployed-by-hotfix and names the last kind out loud, opens or updates the deployment PR, then offers to wind up the worktree it ran in
 ---
 
 > Applies to internal Salesforce projects, where this is the standard way of working.
@@ -10,10 +10,12 @@ You are executing the `/release-pr` skill. Work through the phases below in orde
 
 This skill has one fixed branch pair: head `integration`, base `release` — the periodic UAT deployment PR. A hotfix re-deploy substitutes that hotfix's `hotfix-{WORK-ID}` branch for `HEAD`; `BASE` never changes. No request wording redirects this pair, including words that name a deployment target or environment:
 
-- A PR from a `work-{WORK-ID}_...` branch into `integration` is a story PR, not a deployment PR. Do not use this skill for it.
+- A PR from a `work-{WORK-ID}` or `hotfix-{WORK-ID}` branch into `integration` is a story PR, not a deployment PR. Do not use this skill for it.
 - A PR from `release` into `master` is the Production Release PR — this repository's separate prod-track deployment, titled `Production Release {PROJECT}.{date}`. A request naming a date alongside "prod", "master", or "production" is describing that PR, not this one. Do not use this skill for it.
 
 The same phases cover opening a new deployment PR and updating an existing one. Phase 1 decides which mode applies from the request's intent; Phases 6, 7, and 8 each behave differently under it. Every other phase is identical, and the row set is derived the same way in both modes.
+
+Phase 9 is separate from all of that. It offers to remove the worktree the run happened in, and it is reached only when the user has nothing further to raise.
 
 ## The output contract
 
@@ -26,6 +28,11 @@ The PR body IS exactly these parts, in this order, and nothing else:
 5. The runlist line `[Runlist]({RUNLIST_URL})`
 
 No title heading, no summary paragraph, no "What was done" section, no commit list, no trailing notes. The separator has no leading pipe and does have a trailing pipe — reproduce it byte for byte, with one `--` cell per column.
+
+**The table has no column for how a story reached `BASE`.** Every row looks alike, by design — four
+columns and nothing else. The hotfix class is stated in the closing report instead, never as a marker
+in a cell, a footnote under the table, or a fifth column. Changing the table's shape breaks the
+contract this section defines.
 
 **Work ID and Sprint are always links, Assignee and Subject never are.** The Work ID cell links to the Linear issue, the Sprint cell to the Linear cycle. A bare work ID or a bare sprint name is a defect, not a style choice.
 
@@ -83,7 +90,7 @@ Assign `CANDIDATES` here so the classification snippets below are self-contained
 
 Scanning the whole subject (not just an anchored `@WORK-ID:` prefix) is deliberate — some stories reach the range only through a merge subject that carries the ID in the branch name, e.g. `Merge pull request #NNN from <org>/work-ABC-120_Fix_...`. Anchoring to the prefix drops those rows.
 
-**The regex has no trailing `\b`, and must not gain one.** Branches follow `work-{WORK-ID}_{description}`, and `_` is a word constituent, so there is no word boundary between `120` and `_Fix` — a trailing `\b` makes the pattern fail on exactly the merge subjects it exists to catch. The symptom is a story silently missing from the release PR, and it hides whenever that story also has `@WORK-ID:` commits in range. Leaving the pattern open-ended is safe: `[0-9]+` is greedy, so `ABC-1206` matches in full rather than truncating to `ABC-120`.
+**The regex has no trailing `\b`, and must not gain one.** A repository's history can carry branch names with a description after the work ID — `work-ABC-120_Fix_the_thing` — and `_` is a word constituent, so there is no word boundary between `120` and `_Fix`. A trailing `\b` then fails on exactly the merge subjects the pattern exists to catch. Branches cut today carry no description, so the boundary would happen to hold for them, which is why this is worth stating rather than testing on a recent range and concluding it is safe. The symptom is a story silently missing from the release PR, and it hides whenever that story also has `@WORK-ID:` commits in range. Leaving the pattern open-ended is safe: `[0-9]+` is greedy, so `ABC-1206` matches in full rather than truncating to `ABC-120`.
 
 This list is `CANDIDATES`, not yet the row set. Its order carries no meaning — Phase 5 sorts rows deterministically from sprint and work ID, so nothing downstream depends on `git log` order.
 
@@ -106,11 +113,19 @@ Iterate with `while read`, not `for id in $CANDIDATES`. Under zsh an unquoted pa
 
 Commits carrying no work ID produce no row. Release plumbing such as `Update Release Version`, `Deprecate Runbook from UAT Deployment ...`, and bare `Merge pull request #N from <org>/work-updateVersion` lines is expected here and correctly excluded.
 
-### Test 2 — shipped vs pending
+### Test 2 — how each story reached `BASE`
 
-**Test 1 looks at one side only.** The range can prove a story has commits *pending*; it structurally cannot prove a story already *shipped*. A hotfix reaches `BASE` first, on its own branch, and is back-merged into `HEAD` afterwards — so its functional commits are already in `BASE`, and what survives into the range is bookkeeping: a version bump, a swimlane reset, the back-merge commit itself. Those still score `owning ≥ 1`. A row built on them claims a deployment that already happened.
+**Every candidate Test 1 kept earns a row. Test 2 never removes one.** It works out *how* a story got
+into `BASE`, because one of the answers has to be said out loud in the closing report. Nothing here
+filters.
 
-The hotfix path uses branch names the `work-{WORK-ID}_{description}` convention does not cover:
+**A rule that dropped hotfix stories would lose them silently.** A hotfix deployed straight to `BASE`
+reaches `HEAD` only as a back-merge, so an exclusion built on that shape removes the story from the
+deployment PR and leaves nothing in the output to show a judgement was made. The reader cannot audit a
+row that is not there. The hotfix path is also mechanical — a hotfix always has a back-merge branch — so
+a story that took it is a known shape to label, not an anomaly to assess.
+
+The hotfix path uses branch names the `work-{WORK-ID}` convention does not cover:
 
 | Branch | Merges into | Meaning |
 |---|---|---|
@@ -118,7 +133,7 @@ The hotfix path uses branch names the `work-{WORK-ID}_{description}` convention 
 | `work-{WORK-ID}-HF` | `hotfix-{WORK-ID}` | work on the fix |
 | `work-{WORK-ID}-BM` | `HEAD` | the back-merge |
 
-Run the mirror of Test 1 against `BASE` history. Apply it only to the candidates Test 1 kept — an ID already dropped as mention-only must not also be reported here, because the same ID appearing under two exclusion classes at the checkpoint reads as two separate problems:
+Run the mirror of Test 1 against `BASE` history, over the candidates Test 1 kept:
 
 ```bash
 printf '%s\n' "$CANDIDATES" | while IFS= read -r id; do
@@ -131,20 +146,31 @@ printf '%s\n' "$CANDIDATES" | while IFS= read -r id; do
 done
 ```
 
-`shipped = 0` → nothing to consider; the story is entirely new to `BASE`.
+Each candidate lands in exactly one of three classes. All three are rows.
 
-`shipped ≥ 1` → **default-drop, never auto-drop.** Report it at the Phase 6 checkpoint as its own exclusion class, quoting the `BASE`-side merge subject as evidence, and take the user's override. `backmerge ≥ 1` corroborates but is not required — a back-merge can arrive through a differently-named branch.
+| `shipped` | Provenance on the `BASE` side | Class | Reported at the end |
+|---|---|---|---|
+| `0` | — | **new** — entirely new to `BASE` | no |
+| `≥ 1` | a `HEAD` → `BASE` merge | **straddle** — earlier work already went, more is going now | no |
+| `≥ 1` | a `hotfix-*` merge | **hotfix** — the fix is already live on `BASE`; the range carries its back-merge | **yes, by name** |
 
-**`shipped ≥ 1` has two causes and they need opposite handling.** Do not collapse them:
+**The discriminator is provenance, not payload.** Inspect the `BASE`-side commits: arriving under a
+`hotfix-*` merge subject means hotfix, arriving under a `HEAD` → `BASE` merge means straddle.
+`backmerge ≥ 1` corroborates the hotfix class but is not required, because a back-merge can arrive
+through a differently-named branch.
 
-- **Straddle** — the story's earlier commits reached `BASE` through a previous `HEAD` → `BASE` merge, and more of its work landed on `HEAD` afterwards. The remaining range commits are real work. **Keep the row.** A story legitimately appears in two consecutive release PRs this way; that is not a dedupe failure.
-- **Back-merge tail** — the story's commits reached `BASE` through a `hotfix-*` branch that `HEAD` never saw first. The remaining range commits are bookkeeping. **Drop the row.**
+**Do not substitute a diff test for the provenance test.** The tempting shortcut is to classify by
+whether the range commits touch deployable metadata. A story whose entire content is a version-file
+correction has no metadata diff and is still `new`. Payload size answers nothing here.
 
-The discriminator is provenance, so inspect the `BASE`-side commits: arriving under a `hotfix-*` merge subject means a tail; arriving under a `HEAD` → `BASE` merge means a straddle.
+**What a hotfix row means, so the report can say it.** The fix reached `BASE` on its own branch and is
+already deployed there; this PR is not what delivers it. What the range carries is the back-merge that
+returns it to `HEAD`. The row exists because the story is part of this deployment's contents, and the
+closing report names it so nobody reads the table as a claim that the fix ships today.
 
-**Do not substitute a diff test for the provenance test.** The tempting shortcut is to drop any story whose range commits touch no deployable metadata. It is wrong, and the counterexample is common: a story whose entire content is a version-file correction has no metadata diff and still belongs in the table, because that correction has never been in `BASE`. Payload size is not the question. Whether the work already reached `BASE` is.
-
-**A prior release PR's body is not evidence.** If a story was wrongly included last time, citing that body as precedent reproduces the error on every subsequent run, and the error compounds because each run finds one more prior body agreeing with it. Re-derive the row set from the range and both tests every time.
+**A prior release PR's body is not evidence.** Citing one as precedent reproduces whatever it got
+wrong, and compounds it, because each run then finds one more prior body agreeing. Re-derive the row
+set and the classes from the range every time.
 
 ## Phase 3 — Resolve each story in Linear
 
@@ -241,7 +267,7 @@ The checkpoint message carries, in this order:
 
 1. The range and its candidate count.
 2. Every mention-only exclusion (`owning=0`), each with the subject(s) it appeared in.
-3. Every shipped exclusion (`shipped ≥ 1` judged a back-merge tail), each with the `BASE`-side merge subject that proves it already deployed.
+3. Every story classed **hotfix** by Test 2, each with the `hotfix-*` merge subject on the `BASE` side that puts it in that class. These are rows, not exclusions — they are listed so the user sees the classification before the body is written, and can correct one that is really a straddle.
 4. Every unresolved ID, each with the subject it came from, plus every story with an unresolved field — no sprint title, or no assignee.
 5. The proposed row set in final order, showing Work ID, Subject, Assignee, and Sprint. When updating, present this as a diff against the existing PR body — rows added, rows removed, rows whose position changed — not as a fresh table. The user has already approved the rows that are staying.
 6. The `PR_TITLE`, and whether it was preserved from the existing PR or computed.
@@ -265,34 +291,52 @@ Write the body with a shell heredoc, never the Write tool:
 
 ```bash
 REPO_ROOT=$(git rev-parse --show-toplevel)
-mkdir -p "$REPO_ROOT/.claude/skills/release-pr/output"
-cat > "$REPO_ROOT/.claude/skills/release-pr/output/release-{DEPLOY_DATE}.md" << 'BODY'
+BODY_FILE="$REPO_ROOT/.claude/skills/release-pr/output/release-{DEPLOY_DATE}.md"
+mkdir -p "$(dirname "$BODY_FILE")"
+cat > "$BODY_FILE" << 'BODY'
 Work ID | Subject | Assignee | Sprint
 -- | -- | -- | -- |
 {ROWS}
 
 [Runlist]({RUNLIST_URL})
 BODY
+echo "$BODY_FILE:1"
 ```
 
 Quote the heredoc delimiter. Linear titles routinely contain backticks and `$`; an unquoted delimiter runs them as command substitution and silently empties the cell.
 
 Updating writes to the same `release-{DEPLOY_DATE}.md` path the previous run used, overwriting it. That is intended — the file is the review artifact for one deployment, and `DEPLOY_DATE` came from the existing PR title precisely so the path stays stable.
 
-Then tell the user:
+Then tell the user, giving the path as an **absolute path followed by `:1`**:
 
 ```
-PR body written to .claude/skills/release-pr/output/release-{DEPLOY_DATE}.md
+PR body written to {ABSOLUTE_PATH}:1
 {N} stories, ordered by sprint descending then work ID ascending.
+{H} of them already deployed to {BASE} by hotfix: {HOTFIX_IDS}
 Title: {PR_TITLE}
 Review or edit the file, then type `yes` to submit.
 ```
+
+Leave the hotfix line out entirely when Test 2 classed none. A line reading `0 of them` is noise.
+When there is one, name every ID — a count alone tells the reader something is there and not what.
+
+`{ABSOLUTE_PATH}` is what the write command's closing `echo` printed. That `echo` sits inside the
+same command deliberately: a shell variable does not survive into the next one, so a separate command
+would print `:1` and nothing else.
+
+**The `:1` and the absolute path are both load-bearing.** Claude Code turns a `path:line` reference
+into something the reader can click straight from the terminal; a bare path is plain text they have
+to copy out and open by hand. A relative path resolves against the session's working directory,
+which is not always the repository root, so give the path in full.
+
+Print exactly one form. A path repeated as plain text, a `file://` URL and a clickable reference
+makes the reader work out which one to use.
 
 Wait for an explicit `yes` before Phase 8.
 
 Anything other than `yes` is a revision request, not an approval: apply the change, rewrite the file with the same heredoc, report it again, and wait again. Loop until the user approves. Never read approval into silence, a question, or a comment that merely sounds positive. Confirming an input — a branch, a title, a date, a runlist — is answering a question, not approving the publish.
 
-The user may also edit `.claude/skills/release-pr/output/release-{DEPLOY_DATE}.md` by hand during review. Phase 8 submits that file with `--body-file`, so hand edits are what get published — after a `yes`, re-read the file and submit it as it stands rather than re-rendering it from the Linear data.
+The user may also edit that file by hand during review. Phase 8 submits that file with `--body-file`, so hand edits are what get published — after a `yes`, re-read the file and submit it as it stands rather than re-rendering it from the Linear data.
 
 ## Phase 8 — Open or update the PR
 
@@ -306,39 +350,188 @@ If it is not, stop and tell the user to run `gh auth login`.
 
 Use the `PR_TITLE` the user approved. Do not recompute it here.
 
+**Set `BODY_FILE` again in this phase's own command.** A shell variable does not survive from one
+command to the next, so the one Phase 7 set is gone by now. An unset variable expands to nothing and
+`--body-file ""` publishes a PR with an empty body, which looks like the render failed rather than
+like a variable was lost.
+
 **Opening a new PR** — `PR_NUMBER` unset:
 
 ```bash
+REPO_ROOT=$(git rev-parse --show-toplevel)
+BODY_FILE="$REPO_ROOT/.claude/skills/release-pr/output/release-{DEPLOY_DATE}.md"
 gh pr create \
   --base {BASE} \
   --head {HEAD} \
   --title "{PR_TITLE}" \
-  --body-file "$REPO_ROOT/.claude/skills/release-pr/output/release-{DEPLOY_DATE}.md" \
+  --body-file "$BODY_FILE" \
   --assignee @me
 ```
 
 **Updating an existing PR** — `PR_NUMBER` set:
 
 ```bash
+REPO_ROOT=$(git rev-parse --show-toplevel)
+BODY_FILE="$REPO_ROOT/.claude/skills/release-pr/output/release-{DEPLOY_DATE}.md"
 gh pr edit {PR_NUMBER} \
-  --body-file "$REPO_ROOT/.claude/skills/release-pr/output/release-{DEPLOY_DATE}.md"
+  --body-file "$BODY_FILE"
 ```
 
 **Pass only `--body-file` on edit.** Never pass `--title`, even when it appears unchanged — the title is the deployment's scheduled identity and this skill has no reason to rewrite it. Never pass `--base` or `--head` on edit either; retargeting an open deployment PR is not this skill's job.
 
-Report the PR URL. Do not merge the PR — this skill prepares the deployment PR and stops there.
+Close with the links and, when there are any, the hotfix stories:
+
+```
+PR: {PR_URL}
+Body: {ABSOLUTE_PATH}:1
+
+Already deployed to {BASE} by hotfix, listed in this PR for completeness:
+  {WORK-ID}  {TITLE}
+  {WORK-ID}  {TITLE}
+These reached {BASE} on their own branches. This PR carries their back-merges, not their fixes.
+```
+
+The PR URL is what was published. The body file is what was published *from*, and it stays on disk
+after the run as the review artifact for that deployment — so the closing report names it in the same
+clickable form Phase 7 used, rather than leaving the reader to scroll back for it.
+
+**Say the hotfix block out loud, every time there is one.** The table cannot carry the distinction: it
+has four fixed columns and a hotfix row looks exactly like any other. Somebody reading it will take
+every row as work this deployment delivers. That is right for a `new` or `straddle` row and wrong for a
+hotfix row, and the only place the difference can be stated is here. Omit the block when Test 2 classed
+no story as hotfix; never omit it to keep the report short.
+
+**Name the stories, do not summarise them.** `2 hotfix stories included` tells the reader a category
+exists. `ABC-285 Fix work type sync` tells them which story to go and check.
+
+Do not merge the PR — this skill prepares the deployment PR and never merges it.
+
+Phase 9 follows, but only once the user has nothing further to raise.
+
+## Phase 9 — Wind up the worktree
+
+**This phase runs last, and only when the user has nothing further to raise.** Do not enter it while
+any question is open — a revision to the body, a row the user is still checking, a `gh` command that
+failed. Removing the working copy underneath an unfinished conversation destroys the artifact the
+conversation is about.
+
+**Ask, and default to keeping.** Never remove anything on your own judgement, and never treat the
+user's `yes` to publishing as consent to clean up. They are separate decisions.
+
+### Step 1 — Is there a worktree at all?
+
+```bash
+git rev-parse --git-dir
+git rev-parse --git-common-dir
+git worktree list --porcelain | awk '/^worktree /{print $2; exit}'
+git rev-parse --show-toplevel
+git branch --show-current
+```
+
+The two `rev-parse` answers differ only inside a linked worktree. When they match, this session is in
+the main working copy: say so in one line and stop. There is nothing to wind up, and offering to
+anyway invites a yes to a question that has no safe answer.
+
+The third command prints the main working copy's path — where Step 4 must be run from.
+
+### Step 2 — Say what would be lost
+
+```bash
+git status --porcelain
+git log --oneline @{upstream}..HEAD 2>/dev/null || git log --oneline main..HEAD
+```
+
+Two things live in a worktree and die with it:
+
+- **Uncommitted and untracked files.** The review artifact is one of them. `.claude/skills/*/output/`
+  is ignored by git, so the body file this run wrote is untracked, and removing the worktree deletes
+  it. `git worktree remove` refuses while any such file is present, which is the safety net — do not
+  reach for `--force` to get past it, read what it is protecting.
+- **Commits not on any other branch.** They are reachable only from this branch, and Step 4 deletes
+  the branch.
+
+### Step 3 — Ask
+
+Show the path, the branch, and everything from Step 2, then ask:
+
+```
+Finished with this worktree?
+
+  worktree  {WORKTREE_PATH}
+  branch    {BRANCH}
+  would go  {N} untracked file(s), {M} commit(s) not on another branch
+
+Removing it deletes the directory and the branch. The body file goes with it unless it is
+copied out first — say `keep` to leave everything as it is, or `remove` to clean up.
+```
+
+Wait for the answer. Anything other than an explicit `remove` means keep. Silence means keep. A
+comment that merely sounds agreeable means keep.
+
+### Step 4 — Carry the artifact out, then remove
+
+On `remove`, copy the body file into the main working copy first, so the deployment's review artifact
+survives the directory it was written in:
+
+```bash
+MAIN=$(git worktree list --porcelain | awk '/^worktree /{print $2; exit}')
+WT=$(git rev-parse --show-toplevel)
+BRANCH=$(git branch --show-current)
+REL=".claude/skills/release-pr/output/release-{DEPLOY_DATE}.md"
+mkdir -p "$MAIN/$(dirname "$REL")"
+cp "$WT/$REL" "$MAIN/$REL"
+echo "$MAIN/$REL:1"
+```
+
+Then leave and remove. Which command does it depends on how the worktree came to exist, and getting
+this wrong is the one failure in this phase that cannot be undone:
+
+- **The worktree was created by `EnterWorktree` in this session** — call `ExitWorktree` with
+  `action: "remove"`. It restores the session's directory as well as deleting the worktree and its
+  branch. It refuses while uncommitted or unmerged work is present and lists what it found; pass
+  `discard_changes: true` only after showing that list to the user and getting a second explicit
+  answer.
+- **The worktree came from anywhere else** — a `git worktree add` run by hand, or a previous
+  session. `ExitWorktree` does nothing at all in that case, by design. Give the user these commands
+  to run themselves, from the main working copy:
+
+  ```bash
+  cd "{MAIN}"
+  git worktree remove --force "{WORKTREE_PATH}"
+  git branch -D "{BRANCH}"
+  ```
+
+**Never run the removal from inside the worktree.** `git worktree remove --force .` succeeds from
+there and leaves the shell in a directory that no longer exists, so every command after it fails for
+a reason that has nothing to do with what it was trying to do. Change to the main working copy first.
+
+**Removing a worktree does not delete its branch.** That is a separate command, which is why it is
+listed separately above. A cleanup that stops after the directory leaves the branch behind, and the
+next run of this skill finds a branch nobody expected.
+
+### Step 5 — Report
+
+Name the main working copy the session is now in, the body file's new clickable path, and the PR URL
+again — the PR is the durable result and the reader is one message away from having lost sight of it.
+
+When the user chose `keep`, say what was left and where, and that the worktree is theirs to remove
+whenever they want.
 
 ## Verification
 
 Confirm each against real output, not intent:
 
-- The row count derives as `candidates − mention-only − shipped-tails − unresolved-or-folded − user-skipped`, and every subtraction was reported at the checkpoint. Check the derivation, not a fixed equality — a new exclusion class must show up as a reported subtraction rather than silently breaking the count.
+- The row count derives as `candidates − mention-only − unresolved-or-folded − user-skipped`, and every subtraction was reported at the checkpoint. Check the derivation, not a fixed equality — a new exclusion class must show up as a reported subtraction rather than silently breaking the count. Test 2 is not a subtraction: every candidate it classes is a row.
+- Every story Test 2 classed **hotfix** has a row, and every one of them is named in the closing report.
 - Every `Work ID` href is a string that came out of Linear — returned by `get_issue`, or pasted by the user from the browser — and never one you assembled from the title.
 - Every sprint link either uses that row's own team key with the workspace slug taken from Linear's `url`, or is a URL the user pasted whole. A link built from parts in the fallback path is a defect: nothing there supplies a verified slug.
 - The separator line is exactly `-- | -- | -- | -- |`, and every row has exactly four cells.
 - Every Work ID cell and every Sprint cell is a markdown link; no Assignee cell is.
 - Rows are sorted on all three keys in order: cycle `startsAt` descending, then team key ascending, then work ID numerically ascending.
 - The runlist line is the last line, preceded by a blank line.
+- Both reports give the body file as an absolute path ending in `:1`, so it is clickable from the terminal.
+- No worktree was removed without an explicit `remove` from the user, and none was removed while a question was still open.
+- Where a worktree was removed, the body file was copied into the main working copy first and its new path was reported.
 - `gh pr create` returned a URL, or `gh pr edit` succeeded and re-reading the PR shows the intended body and an unchanged title.
 
 ## Common mistakes
@@ -349,9 +542,11 @@ Confirm each against real output, not intent:
 | One story split across several rows | Dedupe on work ID — many commits, one row |
 | Row set pulled from a Linear cycle or board | Only `git log {BASE}..{HEAD}` defines the row set |
 | Mention-only ID given a row because it resolves in Linear | Resolving proves the issue exists, not that it shipped here; require `owning` ≥ 1 |
-| Hotfix back-merge tail given a row | Its work is already in `BASE`; run the `shipped` test and drop the tail |
-| Straddling story dropped as a back-merge tail | Provenance decides: reached `BASE` via a `HEAD` → `BASE` merge means keep |
-| Rows filtered by whether the diff touches deployable metadata | Wrong discriminator — a version-only fix still ships; ask whether it reached `BASE` |
+| Hotfix story dropped because its fix already reached `BASE` | Every candidate Test 1 kept is a row; Test 2 classifies, it never drops |
+| Hotfix row included silently | Name it in the closing report, or the table reads as a claim that the fix ships today |
+| Hotfix class marked in a table cell or an extra column | The table's four columns are fixed; the class belongs in the closing report |
+| Hotfix block reduced to a count | Name every work ID and title; a count says a category exists, not which story |
+| Rows filtered by whether the diff touches deployable metadata | Wrong discriminator — provenance decides the class, and no class is excluded |
 | A prior release PR's body cited as precedent | Prior bodies reproduce prior errors; re-derive from the range every run |
 | Stale refs after a failed fetch | Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/verify-remote-refs.mjs" {BASE} {HEAD}`; a non-zero exit stops the run |
 | Reimplementing the freshness check inline | It lives in one shared script so it cannot drift; a `sed`-based rewrite already broke it silently on one platform |
@@ -375,5 +570,15 @@ Confirm each against real output, not intent:
 | Update presented as a fresh table | Show it as a diff — rows added, removed, moved |
 | Extra headings or a summary added to the body | The body is the table plus the runlist line, nothing else |
 | PR opened without the review gate | Write the file, wait for an explicit `yes`, then submit |
+| Body file named as plain text, or as a relative path | Give it as an absolute path ending in `:1`, which the terminal makes clickable |
+| `$BODY_FILE` reused in a later command | Shell variables do not survive between commands; set it again in each one |
+| Closing report names only the PR | Name the body file too; it is the review artifact and stays on disk |
 | An answered input mistaken for approval | Confirming a branch or title is not `yes` |
+| Worktree cleaned up on the skill's own judgement | Ask; anything other than an explicit `remove` means keep |
+| Approval to publish read as approval to clean up | Two separate decisions, two separate answers |
+| Worktree removed while a question was still open | Phase 9 runs only when nothing is outstanding |
+| `git worktree remove --force .` run from inside | It succeeds and strands the shell in a deleted directory; run it from the main working copy |
+| Worktree removed and the branch left behind | Removal does not delete the branch; `git branch -D` is a separate step |
+| Body file lost with the worktree | It is untracked, so copy it into the main working copy before removing anything |
+| `ExitWorktree` expected to clean up a hand-made worktree | It only touches one `EnterWorktree` made this session; otherwise give the user the git commands |
 | User's hand edits re-rendered away | After `yes`, submit the file as it stands |
