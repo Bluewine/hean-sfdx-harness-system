@@ -1,6 +1,6 @@
 ---
 name: uninstall
-description: Reverse every change setup made — restores shell startup files, removes the files it copied, and reads back the .gitignore lines it added for the user to remove themselves
+description: Reverse every change setup made — strips only the marked alias block from the shell startup file, removes copied rules and memories, deletes the repository's .claude folder and .mcp.json, uninstalls the plugins setup added and then hean-harness itself
 allowed-tools: ["Bash", "Read"]
 ---
 
@@ -17,7 +17,19 @@ left in place because it is theirs rather than ours.
    node "${CLAUDE_PLUGIN_ROOT}/scripts/lib/manifest.mjs" revert --dry-run true
    ```
 
-2. Show the user that list and ask whether to go ahead with the reversal. Wait for an answer.
+2. Show the user that list and ask whether to go ahead. Wait for an answer. The question names:
+   - each `marker-block` entry whose target is a shell startup file (`.zshrc`, `.bashrc`,
+     `.bash_profile`, `.profile`): the file, its `lines` value, and its `preview` text quoted in
+     full. Say that only those lines and the one blank line above them are removed, and that the
+     file is copied to `~/.claude/hean-harness/backups/` first.
+   - each `repo-folder` entry: the `.claude` folder is deleted with everything in it, including
+     skill output such as rendered pull request bodies and reports
+   - each `repo-file` entry: the repository's `.mcp.json` is deleted
+   - each entry whose `action` starts with `run:`: the plugin or marketplace it removes
+   - that hean-harness itself is uninstalled last, which removes its skills, agents and hooks
+
+   A startup-file entry marked `"ok": false` in the dry run is left untouched by the reversal.
+   Quote its `note` in the question.
 
 3. Reverse what setup did:
 
@@ -25,31 +37,55 @@ left in place because it is theirs rather than ours.
    node "${CLAUDE_PLUGIN_ROOT}/scripts/lib/manifest.mjs" revert
    ```
 
-4. Read back the lines setup added to the repository's `.gitignore`, which uninstall does not
+4. Check each shell startup file the reversal edited. Its result carries a `backup` path. Compare
+   the backup with the file:
+
+   ```bash
+   diff "<backup>" "<startup file>"
+   ```
+
+   Every line of the diff must be a deletion (`<`), and the deleted lines must be the `preview`
+   from step 1 plus at most one blank line. When the diff shows anything else, copy the backup
+   back over the startup file with `cp`, and report both paths and the diff.
+
+5. Read back the lines setup added to the repository's `.gitignore`, which uninstall does not
    remove on its own — a user may have written their own lines around them:
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/lib/gitignore.mjs" lines
    ```
 
-5. Report:
+6. Uninstall hean-harness itself. This runs last, because the scripts above live inside the
+   plugin:
+
+   ```bash
+   claude plugin uninstall hean-harness@hean-sfdx-harness-system
+   ```
+
+7. Report:
    - each entry and whether it succeeded; an entry marked `"ok": false` needs the user to act, so
      say what it was and why it failed
-   - every entry of type `external`, which is something setup ran rather than a file it wrote —
-     the superpowers plugin, the marketplace it came from, and the Linear MCP server, when setup
-     added them. Uninstall does not undo these, because the user may now rely on them elsewhere,
-     and the Linear entry sits in a `.mcp.json` that may declare other servers too. Give each
-     entry's `note`, which is the exact command that undoes it, and leave the choice to them.
-   - the `.gitignore` lines from step 4, naming each one, and that removing them is theirs to do
-   - anything already written to `.claude/skills/<skill-name>/output/` stays where it is; those are
-     the user's own reports and rendered files, not ours
-   - that copies of any file setup replaced are still in `~/.claude/hean-harness/backups/`
-   - that they should open a new terminal, because the alias is still loaded in this one
+   - each shell startup file edited, the result of the step 4 check, and its backup path
+   - each `repo-folder` and `repo-file` entry, naming what was deleted; a `.mcp.json` that git
+     tracks is kept, so say so and name it
+   - each `run:` entry and whether the plugin or marketplace was removed
+   - each remaining `external` entry with action `manual`, giving its `note`, which is the exact
+     command that undoes it
+   - the `.gitignore` lines from step 5, naming each one, and that removing them is theirs to do
+   - that the `hean-sfdx-harness-system` marketplace stays configured, because the user added it
+     before setup ran, and that `claude plugin marketplace remove hean-sfdx-harness-system`
+     removes it
+   - that copies of any file setup replaced or edited are still in
+     `~/.claude/hean-harness/backups/`
+   - that they should open a new terminal and restart Claude Code, because the alias and the
+     plugin are still loaded in this session
 
 ## Rules
 
-- Never delete anything under `.claude/skills/<skill-name>/output/`. Those files are the user's
-  own, produced by their runs.
-- Never delete the backups folder. It holds copies of their own files.
+- Edit a shell startup file only through the reversal in step 3. Never edit one with `sed`, an
+  editor tool, or a rewrite of the whole file.
 - Lines a user added to a startup file after setup ran are left alone — only the marked block is
-  removed.
+  removed, wherever it sits in the file.
+- The repository's `.claude` folder is deleted whole. Git ignores it and setup writes all of it
+  on each clone, so nothing in it is shared with the team.
+- Never delete the backups folder. It holds copies of their own files.

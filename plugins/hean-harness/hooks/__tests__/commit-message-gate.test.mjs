@@ -8,7 +8,7 @@
  */
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -19,10 +19,24 @@ const HOOKS = dirname(dirname(fileURLToPath(import.meta.url)));
 const HOOK = join(HOOKS, 'commit-message-gate.mjs');
 const GIT_HOOK = join(dirname(HOOKS), 'assets', 'githooks', 'commit-msg');
 
+// One repository per saved commit format answer, plus one where setup never ran.
+const sandbox = mkdtempSync(join(tmpdir(), 'gate-'));
+const repoWith = (name, choice) => {
+  const repo = join(sandbox, name);
+  mkdirSync(join(repo, '.claude'), { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  if (choice) writeFileSync(join(repo, '.claude', 'hean-harness.json'), JSON.stringify({ commitFormat: choice }));
+  return repo;
+};
+const ON = repoWith('on', 'on');
+const OFF = repoWith('off', 'off');
+const NONE = repoWith('none', null);
+const NOT_A_REPO = mkdtempSync(join(tmpdir(), 'gate-plain-'));
+
 /** Run the hook exactly as Claude Code does, and say whether it denied. */
-function denied(command) {
+function denied(command, cwd = ON) {
   const out = execFileSync('node', [HOOK], {
-    input: JSON.stringify({ tool_name: 'Bash', tool_input: { command } }),
+    input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, cwd }),
     encoding: 'utf8'
   });
   if (!out.trim()) return false;
@@ -79,8 +93,8 @@ const DENY = [
 ];
 
 let pass = 0, fail = 0;
-const check = (label, expectDeny, command) => {
-  const got = denied(command);
+const check = (label, expectDeny, command, cwd) => {
+  const got = denied(command, cwd);
   const ok = got === expectDeny;
   ok ? pass++ : fail++;
   if (!ok) console.log(`  FAIL  ${label}\n        ${JSON.stringify(command)}\n        expected ${expectDeny ? 'deny' : 'allow'}, got ${got ? 'deny' : 'allow'}`);
@@ -90,6 +104,15 @@ console.log('Allowed');
 for (const [label, cmd] of ALLOW) check(label, false, cmd);
 console.log('Denied');
 for (const [label, cmd] of DENY) check(label, true, cmd);
+
+console.log('Switch');
+const BAD = `git commit -m "Add the dedupe check"`;
+check('format switched off', false, BAD, OFF);
+check('setup never asked here', false, BAD, NONE);
+check('not a repository', false, BAD, NOT_A_REPO);
+check('format switched on', true, BAD, ON);
+rmSync(sandbox, { recursive: true, force: true });
+rmSync(NOT_A_REPO, { recursive: true, force: true });
 
 // The git hook reads the message from a file. The subject is its first line.
 const SUBJECTS = [

@@ -20,6 +20,11 @@
  * assets/githooks/commit-msg repeats this pattern for commits typed outside
  * Claude Code. Change both together.
  *
+ * Enforced only in a repository whose saved commit format choice is on. Setup
+ * asks once per repository and /hean-harness:commit-format switches it later.
+ * With no saved choice, which includes every repository setup never ran in, the
+ * gate lets every subject through.
+ *
  * Only a message given on the command line can be checked. A commit that opens
  * an editor, reads a file with -F, or reuses a message with -C passes through
  * untouched, because there is nothing here to read.
@@ -28,6 +33,7 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 export const SUBJECT = /^@[A-Z]+-[0-9]+(-[A-Z]{2})?:\s(\[Sonar\]\s)?[A-Z](.*)$/;
 
@@ -134,6 +140,20 @@ const REASON = (subject) =>
   `Take the work item reference from the current branch name, prefix it with @, ` +
   `follow it with one colon and one space, and start the summary with a capital letter.`;
 
+/**
+ * Is the commit format switched on in the repository the session is in?
+ * Read only once a subject has already failed, so a passing commit pays nothing.
+ */
+async function enforcedFor(cwd) {
+  let repo;
+  try {
+    repo = execFileSync('git', ['-C', cwd, 'rev-parse', '--show-toplevel'],
+                        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch { return false; }
+  const { readChoice } = await import('../scripts/lib/commit-format.mjs');
+  return readChoice(repo) === 'on';
+}
+
 const isMain = process.argv[1] && process.argv[1].endsWith('commit-message-gate.mjs');
 if (isMain) {
   let input = {};
@@ -143,7 +163,7 @@ if (isMain) {
     .map(m => m.split('\n')[0])
     .find(subject => !SUBJECT.test(subject));
 
-  if (bad !== undefined) {
+  if (bad !== undefined && await enforcedFor(input?.cwd || process.cwd())) {
     process.stdout.write(JSON.stringify({
       hookSpecificOutput: {
         hookEventName: 'PreToolUse',

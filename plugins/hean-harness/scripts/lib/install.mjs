@@ -8,10 +8,11 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { dirname, relative, join } from 'node:path';
+import { dirname, relative, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { record, backup, stripBlock, block, setJsonKey, getJsonKey } from './manifest.mjs';
+import { record, backup, findBlock, block, setJsonKey, getJsonKey } from './manifest.mjs';
+import { claudeDir } from './paths.mjs';
 
 // <plugin>/scripts/lib/install.mjs -> <plugin>
 const PLUGIN_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
@@ -64,9 +65,18 @@ export function installFile(source, dest) {
  * When the file did not exist, it is recorded as a file we created, so
  * uninstall deletes it. When it did exist, only the block is recorded, so
  * uninstall removes the block and leaves the user's own content alone.
+ *
+ * A block already in the file is replaced where it sits — top, middle or end —
+ * so a shell startup file keeps the order its owner gave it. With no block, one
+ * is appended after a blank line, which stripBlock removes along with it, so
+ * install then uninstall gives back the file byte for byte. No other line is
+ * touched, and the result is read back; on a mismatch the backup is put back.
+ *
+ * A malformed or duplicated block throws before anything is recorded or written.
  */
 export function installBlock(file, marker, body, style = 'hash') {
   const existed = existsSync(file);
+  const found = existed ? findBlock(file, marker, style) : null;
   const saved = existed ? backup(file) : null;
 
   // One entry, always the same type. Recording a file-copy here as well would
@@ -76,15 +86,25 @@ export function installBlock(file, marker, body, style = 'hash') {
   record({ type: 'marker-block', target: file, marker, style,
            backup: saved, existedBefore: existed });
 
-  if (existed) stripBlock(file, marker, style);
-  else mkdirSync(dirname(file), { recursive: true });
+  const blk = block(marker, body, style);      // "\n<open>...<close>\n"
+  let next;
+  if (found) {
+    const { lines, start, end } = found;
+    next = [...lines.slice(0, start), ...blk.slice(1, -1).split('\n'), ...lines.slice(end + 1)].join('\n');
+  } else if (existed) {
+    const current = readFileSync(file, 'utf8');
+    next = current === '' ? blk.slice(1) : current + (current.endsWith('\n') ? '' : '\n') + blk;
+  } else {
+    mkdirSync(dirname(file), { recursive: true });
+    next = blk.slice(1);
+  }
 
-  const current = existed && existsSync(file) ? readFileSync(file, 'utf8') : '';
-  const head = current.trim() ? current.replace(/\n+$/, '\n') : '';
-  const blk = block(marker, body, style);
-  writeFileSync(file, head ? head + blk : blk.replace(/^\n/, ''));
-
-  return { existed, replaced: existed };
+  writeFileSync(file, next);
+  if (readFileSync(file, 'utf8') !== next) {
+    if (saved) copyFileSync(saved, file);
+    throw new Error(`${file} did not read back as written.${saved ? ' The backup was put back.' : ''}`);
+  }
+  return { existed, replaced: Boolean(found) };
 }
 
 /**
@@ -135,6 +155,30 @@ export function installGitConfig(repo, key, value) {
            existedBefore: previous !== undefined, previousValue: previous });
   execFileSync('git', ['-C', repo, 'config', key, value], { stdio: 'ignore' });
   return { previous };
+}
+
+/**
+ * Record the repository's .claude folder, so uninstall deletes it with
+ * everything in it. The folder is ignored by git and holds nothing but what
+ * setup and the skills wrote on this clone.
+ *
+ * Refuses when the repository is the home folder, because its .claude is
+ * Claude Code's own configuration.
+ */
+export function installRepoFolder(repo) {
+  const target = join(repo, '.claude');
+  if (resolve(target) === resolve(claudeDir())) return { recorded: false, target };
+  record({ type: 'repo-folder', target });
+  return { recorded: true, target };
+}
+
+/**
+ * Record the repository's .mcp.json, so uninstall deletes it. Git ignores it
+ * and setup adds the Linear server to it on each clone. Uninstall keeps it when
+ * git tracks it, because a committed file is the team's.
+ */
+export function installRepoMcpFile(repo) {
+  record({ type: 'repo-file', target: join(repo, '.mcp.json') });
 }
 
 /**

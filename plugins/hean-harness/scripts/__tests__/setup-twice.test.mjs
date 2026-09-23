@@ -44,8 +44,13 @@ const check = (label, ok, detail = '') => {
 };
 
 try {
+  run('setup.mjs', ['--repo', repo, '--commit-format', 'on']);
+  const report = join(repo, '.claude', 'skills', 'create-pr', 'output', 'body.md');
+  mkdirSync(dirname(report), { recursive: true });
+  writeFileSync(report, 'a rendered body\n');
+  // no flag this time: the answer saved by the first run is used
   run('setup.mjs', ['--repo', repo]);
-  run('setup.mjs', ['--repo', repo]);
+  check('a second setup keeps skill output in the repository .claude folder', existsSync(report));
 
   const manifest = JSON.parse(readFileSync(join(home, '.claude', 'hean-harness', 'install-manifest.json'), 'utf8'));
   const jsonKey = manifest.changes.find(c => c.type === 'json-key');
@@ -63,9 +68,26 @@ try {
   check('core.hooksPath points at the hook folder', hooksPath() === '.githooks', String(hooksPath()));
   check('the hook folder is ignored',
         readFileSync(join(repo, '.gitignore'), 'utf8').split('\n').includes('.githooks/'));
+  check('the .claude folder is ignored',
+        readFileSync(join(repo, '.gitignore'), 'utf8').split('\n').includes('.claude/'));
   check('the MCP server file is ignored',
         readFileSync(join(repo, '.gitignore'), 'utf8').split('\n').includes('.mcp.json'));
   check('no npm install without a package.json', !existsSync(join(repo, 'node_modules')));
+  check('the commit format answer is saved and reused',
+        JSON.parse(readFileSync(join(repo, '.claude', 'hean-harness.json'), 'utf8')).commitFormat === 'on');
+
+  run('commit-format.mjs', ['off', '--repo', repo]);
+  check('switching off removes the hook and unsets core.hooksPath',
+        !existsSync(hook) && hooksPath() === undefined, String(hooksPath()));
+  run('commit-format.mjs', ['on', '--repo', repo]);
+  check('switching on again puts both back',
+        existsSync(hook) && hooksPath() === '.githooks', String(hooksPath()));
+
+  // the user moved the alias block between their own lines
+  const zshrc = join(home, '.zshrc');
+  const blockText = readFileSync(zshrc, 'utf8').slice(MY_ZSHRC.length + 1);
+  writeFileSync(zshrc, 'export MY_OWN=1\n\n' + blockText + 'alias ll="ls -la"\n');
+  writeFileSync(join(repo, '.mcp.json'), '{ "mcpServers": {} }\n');
 
   const revert = JSON.parse(run('lib/manifest.mjs', ['revert']));
   check('every recorded change reverses', revert.every(c => c.ok),
@@ -76,10 +98,14 @@ try {
         JSON.stringify(settings.statusLine) === JSON.stringify(MY_STATUSLINE),
         JSON.stringify(settings.statusLine));
   check('their other settings are untouched', settings.theme === 'dark');
-  check('the shell profile comes back byte for byte',
+  check('the alias block is removed from the middle of the shell profile, and nothing else',
         readFileSync(join(home, '.zshrc'), 'utf8') === MY_ZSHRC);
   check('the hook folder is removed', !existsSync(join(repo, '.githooks')));
   check('core.hooksPath is unset again', hooksPath() === undefined, String(hooksPath()));
+  check('the repository .claude folder is deleted', !existsSync(join(repo, '.claude')));
+  check('the repository .mcp.json is deleted', !existsSync(join(repo, '.mcp.json')));
+  check('no folder setup created is left in the home directory',
+        !existsSync(join(home, '.claude', 'projects')) && !existsSync(join(home, '.claude', 'rules')));
   check('nothing of the plugin is left in the home directory',
         !existsSync(join(home, '.claude', 'hean-harness', 'install-manifest.json')));
 } finally {

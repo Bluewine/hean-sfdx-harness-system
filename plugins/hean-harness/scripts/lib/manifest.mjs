@@ -12,10 +12,10 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync,
          rmSync, readdirSync, rmdirSync, renameSync, statSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
-import { basename, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { claudeDir } from './paths.mjs';
 
 export const STATE_DIR = join(claudeDir(), 'hean-harness');
@@ -29,7 +29,9 @@ const REVERSIBLE = {
   'json-key':     'Restore the previous value, or remove the key if it was absent before.',
   'dir-create':   'Remove the directory, but only if it is still empty.',
   'git-config':   'Restore the previous value in the repository, or unset the key if it had none.',
-  'external':     'Cannot be reversed automatically. Reported for manual action.'
+  'repo-folder':  'Delete the repository\'s .claude folder and everything in it. Uninstall only.',
+  'repo-file':    'Delete the repository\'s .mcp.json unless git tracks it. Uninstall only.',
+  'external':     'Run the recorded plugin or marketplace removal on uninstall; anything else is reported.'
 };
 
 export function load() {
@@ -177,25 +179,26 @@ export function block(marker, body, style = 'hash') {
 }
 
 /**
- * Remove a marker-delimited block from a file, leaving everything else alone.
+ * Find a managed block without changing anything.
  *
- * Surgical removal rather than restoring the backup: a developer may have
- * edited the same file after install, and restoring would destroy that work.
- *
- * The writer puts one blank separator line before the opening marker, so that
- * line is removed with the block. Trailing blank lines are normalised to a
- * single final newline.
+ * Returns null when there is none. Throws when the file cannot be edited
+ * safely: an opening marker with no closing marker, where treating "no close"
+ * as "to end of file" would discard everything the user wrote below it, or two
+ * opening markers, where which lines belong to the block is a guess.
  */
-export function stripBlock(file, marker, style = 'hash') {
-  if (!existsSync(file)) return false;
+export function findBlock(file, marker, style = 'hash') {
+  if (!existsSync(file)) return null;
   const { open, close } = markers(marker, style);
   const lines = readFileSync(file, 'utf8').split('\n');
-
-  // Find both ends before removing anything. A block whose closing marker has
-  // been deleted is malformed, and treating "no close" as "to end of file"
-  // would discard everything the user wrote below it.
-  const start = lines.findIndex(l => l.trim() === open);
-  if (start < 0) return false;
+  const opens = lines.flatMap((l, i) => (l.trim() === open ? [i] : []));
+  if (!opens.length) return null;
+  if (opens.length > 1) {
+    throw new Error(
+      `${file} has ${opens.length} opening ${marker} markers, on lines ${opens.map(i => i + 1).join(', ')}. ` +
+      `Refusing to edit it, because which lines belong to the block cannot be told apart. ` +
+      `Delete the extra blocks by hand.`);
+  }
+  const start = opens[0];
   const end = lines.findIndex((l, i) => i > start && l.trim() === close);
   if (end < 0) {
     throw new Error(
@@ -203,12 +206,41 @@ export function stripBlock(file, marker, style = 'hash') {
       `Refusing to edit it, because everything below the opening marker would be lost. ` +
       `Restore the closing line "${close}", or delete the block by hand.`);
   }
+  return { lines, start, end, text: lines.slice(start, end + 1).join('\n') };
+}
+
+/**
+ * Remove a marker-delimited block from a file, leaving everything else alone.
+ *
+ * Surgical removal rather than restoring the backup: a developer may have
+ * edited the same file after install, and restoring would destroy that work.
+ * The block may sit at the top, in the middle or at the end of the file.
+ *
+ * Only the block's own lines go, plus the one blank line the writer puts
+ * before the opening marker. Every other byte is kept, including blank lines
+ * at the end of the file. The written result is read back and compared; on a
+ * mismatch the original content is put back and the call throws.
+ *
+ * backupFirst copies the file aside before editing and returns the copy's path.
+ */
+export function stripBlock(file, marker, style = 'hash', { backupFirst = false } = {}) {
+  const found = findBlock(file, marker, style);
+  if (!found) return { found: false, backup: null };
+  const { lines, start, end } = found;
 
   const out = [...lines.slice(0, start), ...lines.slice(end + 1)];
   // the writer puts one blank separator line before the opening marker
   if (start > 0 && out[start - 1] !== undefined && out[start - 1].trim() === '') out.splice(start - 1, 1);
-  writeFileSync(file, out.join('\n').replace(/\n+$/, '') + '\n');
-  return true;
+  const before = lines.join('\n');
+  const after = out.join('\n');
+
+  const saved = backupFirst ? backup(file) : null;
+  writeFileSync(file, after);
+  if (readFileSync(file, 'utf8') !== after) {
+    writeFileSync(file, before);
+    throw new Error(`${file} did not read back as written. The original content was put back.`);
+  }
+  return { found: true, backup: saved };
 }
 
 export function setJsonKey(obj, path, value) {
@@ -226,12 +258,51 @@ export function getJsonKey(obj, path) {
   return path.split('.').reduce((n, p) => (n == null ? undefined : n[p]), obj);
 }
 
-/** Reverse every recorded change, newest first. Never throws on one failure. */
-export function revert({ dryRun = false } = {}) {
+/** Which keep category a change falls in, or null when it has none. */
+export function category(c) {
+  if (c.type === 'repo-folder' || c.type === 'repo-file') return 'uninstall-only';
+  if (c.type === 'external' && runnableUndo(c.undoHint)) return 'uninstall-only';
+  if (c.type === 'marker-block') return 'blocks';
+  if (c.type === 'git-config' && c.key === 'core.hooksPath') return 'githooks';
+  if (/[\\/]\.githooks([\\/]|$)/.test(String(c.target))) return 'githooks';
+  return null;
+}
+
+/**
+ * Reverse every recorded change, newest first. Never throws on one failure.
+ *
+ * A repository's .claude folder is deleted after everything else, so a backup
+ * restored into it earlier in the loop never fails for want of the folder.
+ *
+ * keep is for the revert setup runs before reinstalling. Each category named in
+ * it is skipped, and its entries stay in the manifest for uninstall:
+ *
+ *   uninstall-only  the repository's .claude folder and .mcp.json, and the plugin
+ *                   removals. Deleting the folder would take the skill output a
+ *                   clone has built up; removing superpowers would only have it
+ *                   installed again.
+ *   blocks          marked blocks. Setup replaces each one where it sits, so the
+ *                   alias stays where the user put it in their startup file.
+ *   githooks        the commit-msg hook and core.hooksPath. The repository may
+ *                   have come to rely on the hook, so a reinstall replaces it
+ *                   only when asked.
+ *
+ * only, when given, limits the revert to the entries it returns true for. The
+ * rest are left untouched in the manifest. Turning the commit format off uses it
+ * to undo the hook alone.
+ */
+export function revert({ dryRun = false, keep = [], only = null } = {}) {
   const m = load();
   const results = [];
-  for (const c of [...m.changes].reverse()) {
+  const mcpFileRecorded = m.changes.some(c => c.type === 'repo-file' && basename(c.target) === '.mcp.json');
+  const newestFirst = [...m.changes].reverse();
+  const ordered = [...newestFirst.filter(c => c.type !== 'repo-folder'),
+                   ...newestFirst.filter(c => c.type === 'repo-folder')];
+  for (const c of ordered) {
     const r = { type: c.type, target: c.target, action: null, ok: true, note: null };
+    if (keep.includes(category(c)) || (only && !only(c))) {
+      r.action = 'kept'; r.kept = true; results.push(r); continue;
+    }
     try {
       switch (c.type) {
         case 'file-copy':
@@ -249,9 +320,15 @@ export function revert({ dryRun = false } = {}) {
           r.action = c.existedBefore === false
             ? `strip block "${c.marker}", then remove the file if we created it and nothing else is in it`
             : `strip block "${c.marker}"`;
-          if (!dryRun) {
-            const found = stripBlock(c.target, c.marker, c.style);
+          if (dryRun) {
+            const b = findBlock(c.target, c.marker, c.style);
+            if (b) { r.lines = `${b.start + 1}-${b.end + 1} of ${b.lines.length}`; r.preview = b.text; }
+            else r.note = 'block already absent';
+          } else {
+            const { found, backup: saved } = stripBlock(c.target, c.marker, c.style,
+                                                       { backupFirst: true });
             if (!found) r.note = 'block already absent';
+            if (saved) r.backup = saved;
             // we created this file; drop it only if the user put nothing in it
             if (c.existedBefore === false && existsSync(c.target)) {
               if (readFileSync(c.target, 'utf8').trim() === '') rmSync(c.target);
@@ -275,6 +352,10 @@ export function revert({ dryRun = false } = {}) {
             rmdirSync(c.target);
           } else if (existsSync(c.target) && readdirSync(c.target).length) {
             r.note = 'not empty; kept';
+            // Before a reinstall the folder may hold a kept file. Setup finds the
+            // folder there and does not record it again, so the entry stays, or
+            // uninstall would leave the emptied folder behind.
+            if (keep.length) r.kept = true;
           }
           break;
         case 'git-config':
@@ -288,10 +369,48 @@ export function revert({ dryRun = false } = {}) {
             } catch (e) { if (c.existedBefore || e.status !== 5) throw e; }
           }
           break;
-        case 'external':
+        case 'repo-folder':
+          // A repository run from the home folder would name ~/.claude itself.
+          if (basename(c.target) !== '.claude' || resolve(c.target) === resolve(claudeDir())) {
+            r.ok = false; r.note = 'refused: not a repository .claude folder'; break;
+          }
+          r.action = 'delete folder and everything in it';
+          if (!dryRun && existsSync(c.target)) rmSync(c.target, { recursive: true, force: true });
+          break;
+        case 'repo-file': {
+          if (basename(c.target) !== '.mcp.json') {
+            r.ok = false; r.note = 'refused: not a repository .mcp.json'; break;
+          }
+          // A committed file is the team's, whatever setup did to it on this clone.
+          const tracked = spawnSync('git', ['-C', dirname(c.target), 'ls-files', '--error-unmatch', basename(c.target)],
+                                    { stdio: 'ignore' }).status === 0;
+          if (tracked) { r.action = 'kept'; r.note = 'git tracks this file; left for the team to decide'; break; }
+          r.action = 'delete file';
+          if (!existsSync(c.target)) r.note = 'already absent';
+          else if (!dryRun) rmSync(c.target);
+          break;
+        }
+        case 'external': {
+          const cmd = runnableUndo(c.undoHint);
+          if (cmd) {
+            r.action = `run: ${cmd.join(' ')}`;
+            if (dryRun) break;
+            const p = spawnSync(cmd[0], cmd.slice(1), { encoding: 'utf8' });
+            const output = `${p.stdout ?? ''}${p.stderr ?? ''}`.replace(/\u001b\[[0-9;]*m/g, '').trim();
+            if (p.status === 0) break;
+            // gone already, whether the user removed it or never kept it
+            if (/not (installed|found)|does not exist|no such/i.test(output)) { r.note = 'already removed'; break; }
+            r.ok = false; r.note = output || p.error?.message || `exit ${p.status}`;
+            break;
+          }
+          if (String(c.target).startsWith('mcp:') && mcpFileRecorded) {
+            r.action = 'removed with the repository .mcp.json';
+            break;
+          }
           r.action = 'manual';
           r.note = c.undoHint || 'reverse by hand';
           break;
+        }
       }
     } catch (e) {
       r.ok = false; r.note = e.message;
@@ -299,7 +418,7 @@ export function revert({ dryRun = false } = {}) {
     results.push(r);
   }
   if (!dryRun) {
-    const remaining = results.filter(r => !r.ok);
+    const remaining = results.filter(r => !r.ok || r.kept);
     if (remaining.length === 0) {
       rmSync(MANIFEST, { force: true });
       // our own folder goes too, but only once it is empty — backups are kept
@@ -312,6 +431,21 @@ export function revert({ dryRun = false } = {}) {
            save(m); }
   }
   return results;
+}
+
+/**
+ * The removal commands revert runs by itself, split into arguments.
+ *
+ * Only a plugin uninstall or a marketplace removal, each naming one thing. Any
+ * other hint stays a note for the user, because running recorded text through a
+ * shell would run whatever the manifest file happens to hold.
+ */
+function runnableUndo(hint) {
+  const m = /^claude plugin (uninstall|marketplace remove) ([\w.@-]+)$/.exec(String(hint ?? '').trim());
+  if (!m) return null;
+  return m[1] === 'uninstall'
+    ? ['claude', 'plugin', 'uninstall', m[2]]
+    : ['claude', 'plugin', 'marketplace', 'remove', m[2]];
 }
 
 // ---- CLI -------------------------------------------------------------------

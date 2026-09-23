@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Adds the skill-output pattern to the repository's .gitignore.
+ * Adds the .claude folder, the hook folder and the MCP server file to the
+ * repository's .gitignore.
  *
  * It asks nothing and records what it wrote, so uninstall takes out our lines
  * and leaves the rest of the file alone.

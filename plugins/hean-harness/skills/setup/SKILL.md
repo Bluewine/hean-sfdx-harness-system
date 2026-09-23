@@ -16,12 +16,24 @@ Install the environment. Show the user what will change before changing it.
    node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" --dry-run
    ```
 
-2. Show that output to the user and ask whether to go ahead. Wait for an answer.
+2. Show that output to the user and ask whether to go ahead. Wait for an answer. When the output
+   has a line starting `!! KEPT`, quote each one in the question and ask about each separately:
+   - an existing `.githooks/commit-msg`: keep it, or replace it with the plugin's copy
+     (`--replace-githook`, a backup is kept)
+   - an existing `.mcp.json`: keep it unchanged, or add the Linear server to it (`--edit-mcp`)
 
-3. When the user agrees, run it:
+   Keeping is the default. Never pass either flag without the user choosing it.
+
+   When the output has a line starting `!! ASK — COMMIT FORMAT NOT CHOSEN`, ask whether to
+   enforce the `@WORK-ID: Summary` commit subject format in this repository: `on` refuses a
+   commit without a work item reference and installs the commit-msg hook; `off` enforces
+   nothing. Ask only then. A saved answer is reused, and `/hean-harness:commit-format` changes it
+   later.
+
+3. When the user agrees, run it, adding only the flags the user chose:
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs"
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" [--replace-githook] [--edit-mcp] [--commit-format on|off]
    ```
 
 4. Report, using the script's own summary:
@@ -33,9 +45,11 @@ Install the environment. Show the user what will change before changing it.
    - whether the superpowers plugin was installed. When it was, say that a restart of Claude Code
      is needed before it can be used, because a plugin's skills and hooks are read when a session
      starts. Nothing in the running session picks it up.
-   - whether the git hooks step added `.githooks/commit-msg` and set `core.hooksPath` to `.githooks`,
-     or found them already in place. When the step says `core.hooksPath` points elsewhere, repeat the
-     command it printed.
+   - whether the commit format is on or off, and whether the commit format step added, replaced
+     or removed `.githooks/commit-msg` and set `core.hooksPath` to `.githooks`, or found them
+     already in place. Repeat every `!! KEPT` line from the output under its own heading, so a
+     kept hook or `.mcp.json` is not missed. When the step says `core.hooksPath` points
+     elsewhere, repeat the command it printed.
    - whether `npm install` ran, was skipped because `node_modules` was already there or the
      repository has no `package.json`, or failed. When it failed, quote the reason the step printed.
    - whether a Linear MCP server was added, or one was already there. When one was added, say that
@@ -48,8 +62,9 @@ Install the environment. Show the user what will change before changing it.
    add to their shell startup file if they would rather type just `claude` in future. Show the
    command in full. Do not write their startup file yourself.
 
-6. The last step adds three lines to the repository's `.gitignore`: `.claude/skills/*/output/`,
-   so skill output is never committed; `.githooks/`, so the hook setup installs is never
+6. The last step adds three lines to the repository's `.gitignore`: `.claude/`, so the rules,
+   memories and agents setup writes into the repository, and all skill output, are never
+   committed; `.githooks/`, so the hook setup installs is never
    committed; and `.mcp.json`, so the Linear server setup adds is never committed. Name each line
    in the report. When the step says a line was already there, say so
    rather than implying it was written again.

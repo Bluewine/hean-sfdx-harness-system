@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /**
- * Puts a commit-msg hook in the repository's .githooks folder and points git at it.
+ * Applies the repository's commit format choice: with it on, puts a commit-msg
+ * hook in the repository's .githooks folder and points git at it; with it off,
+ * takes away the hook this plugin put there.
  *
  * The plugin's own commit gate sees only commits Claude Code runs with -m. A
  * commit typed in a terminal or an editor is checked by git's commit-msg hook,
@@ -13,28 +15,34 @@
  * succeed again, and setting core.hooksPath here makes the hook run before
  * anyone runs npm install.
  *
- * A hook file already there belongs to the repository and is left alone. So is
- * a core.hooksPath pointing somewhere else, which another tool may own.
+ * The choice is asked once. --commit-format on|off gives it; without the flag
+ * the answer saved in the repository is used, and with neither nothing is
+ * installed and the step says the question is still open.
+ *
+ * A hook file already there is left alone, whether the repository or a previous
+ * install put it there, because the repository may rely on it. --replace-githook
+ * replaces it, keeping a backup. A core.hooksPath pointing somewhere else is
+ * always left alone, because another tool may own it.
  */
 
-import { existsSync, chmodSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 
-import { init } from './lib/manifest.mjs';
-import { installDir, installFile, installGitConfig, getGitConfig } from './lib/install.mjs';
-
-const HERE = dirname(fileURLToPath(import.meta.url));
-const SOURCE = join(dirname(HERE), 'assets', 'githooks', 'commit-msg');
-const HOOKS_DIR = '.githooks';
+import { readChoice, applyChoice, settingsFile } from './lib/commit-format.mjs';
 
 const argv = process.argv.slice(2);
 const dryRun = argv.includes('--dry-run');
 const repoArg = argv.indexOf('--repo');
+const replace = argv.includes('--replace-githook');
+const formatArg = argv.indexOf('--commit-format');
+const given = formatArg >= 0 ? argv[formatArg + 1] : null;
 const log = (...a) => console.log(...a);
 
 function main() {
+  if (given !== null && given !== 'on' && given !== 'off') {
+    console.error(`--commit-format takes on or off, not "${given}".`);
+    process.exit(1);
+  }
+
   const start = repoArg >= 0 ? argv[repoArg + 1] : process.cwd();
   let repo;
   try {
@@ -45,35 +53,21 @@ function main() {
     return;
   }
 
-  const hook = join(repo, HOOKS_DIR, 'commit-msg');
-  const hookExists = existsSync(hook);
-  const hooksPath = getGitConfig(repo, 'core.hooksPath');
-  const setPath = hooksPath === undefined;
-  const otherPath = !setPath && hooksPath !== HOOKS_DIR;
+  const saved = readChoice(repo);
+  const choice = given ?? saved;
+  if (!choice) {
+    log('!! ASK — COMMIT FORMAT NOT CHOSEN for this repository.');
+    log('!! Enforce the "@WORK-ID: Summary" commit subject format here? Run setup with');
+    log('!! --commit-format on or --commit-format off. Nothing is enforced until then.');
+    log('');
+    if (dryRun) log('Dry run. Nothing was changed.');
+    return;
+  }
+  if (!given) log(`Using the answer saved in ${settingsFile(repo)}`);
 
-  log(`Hook           ${hook}`);
-  log(`               ${hookExists ? 'present, left as it is' : 'to add'}`);
-  log(`core.hooksPath ${hooksPath ?? 'unset'}`);
-  log(`               ${setPath ? `to set to ${HOOKS_DIR}` : otherPath ? 'points elsewhere, left as it is' : 'already correct'}`);
+  for (const line of applyChoice(repo, choice, { replace, dryRun })) log(line);
   log('');
-
-  if (dryRun) { log('Dry run. Nothing was changed.'); return; }
-
-  init('0.1.0');
-  if (!hookExists) {
-    installDir(join(repo, HOOKS_DIR));
-    installFile(SOURCE, hook);
-    chmodSync(hook, 0o755);
-    log(`Added ${hook}`);
-  }
-  if (setPath) {
-    installGitConfig(repo, 'core.hooksPath', HOOKS_DIR);
-    log(`Set core.hooksPath to ${HOOKS_DIR}`);
-  }
-  if (otherPath) {
-    log(`core.hooksPath is ${hooksPath}, so git runs the hooks there and not ${hook}.`);
-    log(`Run "git config core.hooksPath ${HOOKS_DIR}" if this hook should run instead.`);
-  }
+  if (dryRun) log('Dry run. Nothing was changed.');
 }
 
 main();

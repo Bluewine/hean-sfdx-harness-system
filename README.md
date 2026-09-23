@@ -25,6 +25,16 @@ Check the result:
 /hean-harness:doctor
 ```
 
+## Commit format
+
+Setup asks once per repository whether to enforce the `@WORK-ID: Summary` commit subject format.
+
+- `on` refuses a commit without a work item reference, in Claude Code and through a `commit-msg`
+  hook for commits typed in a terminal.
+- `off` enforces nothing. A repository where setup never ran is never checked.
+- Switch it later with `/hean-harness:commit-format on` or `/hean-harness:commit-format off`. The
+  next commit follows the new state, with no restart.
+
 ## What setup leaves to you
 
 - **A JDK 11 or newer.** Installing one needs administrator rights. Setup reports whether a real one
@@ -46,14 +56,30 @@ CLAUDE_CONFIG_DIR=~/harness-trial/.claude claude
 - Authenticated orgs, git identity and SSH access still work inside it.
 - Delete `~/harness-trial` when you are done.
 
+## Updating
+
+```bash
+claude plugin marketplace update hean-sfdx-harness-system
+claude plugin update hean-harness@hean-sfdx-harness-system
+```
+
+1. Restart Claude Code. The updated plugin loads when a session starts.
+2. Open the repository and run `/hean-harness:setup`. Setup copies the rules, memories and alias
+   into place, so a plugin update alone does not change them.
+3. Reload your shell with the command setup prints, then restart Claude Code again.
+
 ## Reinstalling
 
 Run `/hean-harness:setup` again.
 
-- It clears what the previous install recorded before writing anything.
-- It removes only what it recorded. Files you wrote yourself in the same folders stay.
+- It removes the rules and memories the previous install copied, then writes the current ones.
+  Files you wrote yourself in the same folders stay.
 - A file it replaced is restored from its backup.
-- Its block is taken out of your `CLAUDE.md`. The rest of your file stays.
+- Its blocks in your shell startup file and `CLAUDE.md` are replaced where they sit. The rest of
+  each file stays as it is.
+- An existing `.githooks/commit-msg` or `.mcp.json` in the repository is kept, and setup says so
+  in a `!! KEPT` line. Setup asks whether to replace the hook (`--replace-githook`) or add the
+  Linear server to `.mcp.json` (`--edit-mcp`).
 
 ## Uninstalling
 
@@ -62,15 +88,14 @@ Run `/hean-harness:setup` again.
 ```
 
 - It lists every change before reversing it.
-- It takes only its own lines out of files you also own.
-- Copies of anything it replaced stay in `~/.claude/hean-harness/backups/`.
+- It takes only its own lines out of files you also own, including the alias block in your shell
+  startup file, wherever that block sits.
+- It deletes the repository's `.claude` folder and `.mcp.json`. A `.mcp.json` that git tracks is kept.
+- It uninstalls superpowers and its marketplace when setup added them, then hean-harness itself.
+- Copies of anything it replaced or edited stay in `~/.claude/hean-harness/backups/`.
 - Open a new terminal afterwards. The alias is still loaded in the current one.
 
-Three things it leaves to you, with the exact command for each:
-
-- the `.gitignore` lines it added
-- anything in `.claude/skills/<skill-name>/output/`
-- the superpowers plugin and the Linear server
+It leaves the `.gitignore` lines it added to you, and prints them.
 
 ## Requirements
 

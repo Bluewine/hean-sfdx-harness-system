@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import { init } from './lib/manifest.mjs';
-import { installFile, installBlock, installDir } from './lib/install.mjs';
+import { installFile, installBlock, installDir, installRepoFolder } from './lib/install.mjs';
 import { MARKER } from './lib/shell.mjs';
 import { claudeDir } from './lib/paths.mjs';
 
@@ -95,6 +95,8 @@ function main() {
   for (const f of userFiles) installFile(join(USER_SRC, f), join(USER_DEST, f));
   log(`Installed ${userFiles.length} writing rules for every repository`);
 
+  const folder = installRepoFolder(repo);
+  if (!folder.recorded) log(`Not recording ${folder.target} for uninstall — it is Claude Code's own configuration`);
   installDir(projDest);
   for (const f of projFiles) installFile(join(PROJ_SRC, f), join(projDest, f));
   log(`Installed ${projFiles.length} Salesforce rules into this repository`);

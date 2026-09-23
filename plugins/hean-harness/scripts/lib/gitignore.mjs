@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * Keeps each skill's output, the git hook setup installs, and the MCP server
- * file setup writes out of git.
+ * Keeps the repository's .claude folder, the git hook setup installs, and the
+ * MCP server file setup writes out of git.
  *
- * A skill that writes a file writes it to .claude/skills/<skill-name>/output/,
- * so one pattern covers every skill, including skills added later. What lands
- * there — a rendered pull request body, a report, a screenshot — belongs to one
- * run on one clone and would collide on any other, so it is ignored rather than
- * shared.
+ * Setup writes the project rules, memories and agents into .claude on each
+ * clone, and every skill writes its output under .claude/skills/<skill-name>/
+ * output/. All of it comes from the plugin or from one run on one clone, so the
+ * whole folder is ignored rather than shared. Ignoring does not untrack a file
+ * the repository already committed there.
  *
  * The .githooks folder is installed by setup on each clone, so a branch that
  * deletes it from the repository cannot take the hook away again.
@@ -21,7 +21,7 @@ import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';
 
-export const IGNORE_LINES = ['.claude/skills/*/output/', '.githooks/', '.mcp.json'];
+export const IGNORE_LINES = ['.claude/', '.githooks/', '.mcp.json'];
 
 export const COMMENT = '# hean-harness: installed or written on each clone, not shared';
 

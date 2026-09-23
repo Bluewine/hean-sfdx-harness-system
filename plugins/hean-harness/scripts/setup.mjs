@@ -19,6 +19,10 @@ const argv = process.argv.slice(2);
 const dryRun = argv.includes('--dry-run');
 const repoArg = argv.indexOf('--repo');
 const repo = repoArg >= 0 ? argv[repoArg + 1] : null;
+// Opt-ins for files the repository may own. Every step gets them; each reads its own.
+const optIns = ['--replace-githook', '--edit-mcp'].filter(f => argv.includes(f));
+const formatArg = argv.indexOf('--commit-format');
+if (formatArg >= 0) optIns.push('--commit-format', argv[formatArg + 1]);
 
 /**
  * Each step, in the order it runs.
@@ -42,7 +46,7 @@ const STEPS = [
   { name: 'Rule files',    script: 'install-rules.mjs',        wantsRepo: true },
   { name: 'Memories',      script: 'install-memories.mjs',       wantsRepo: true },
   { name: 'Status line',   script: 'install-statusline.mjs' },
-  { name: 'Git hooks',     script: 'install-githooks.mjs',     wantsRepo: true },
+  { name: 'Commit format', script: 'install-githooks.mjs',     wantsRepo: true },
   // After the hooks: npm install runs the repository's prepare script, which
   // may need .githooks to exist. A failure here, such as a private registry the
   // machine is not signed in to, must not stop the .gitignore step.
@@ -58,6 +62,7 @@ for (const step of STEPS) {
   if (dryRun && !step.noDryFlag) args.push('--dry-run');
   if (!dryRun && step.installsOnRealRun) args.push('--install');
   if (step.wantsRepo && repo) args.push('--repo', repo);
+  args.push(...optIns);
 
   console.log(`\n${line}\n  ${step.name}\n${line}`);
   const r = spawnSync('node', args, { stdio: 'inherit' });

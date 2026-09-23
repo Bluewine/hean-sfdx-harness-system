@@ -8,8 +8,11 @@
  * are reported with the command that fixes them and left to the reader.
  */
 
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { init } from './lib/manifest.mjs';
-import { recordExternal } from './lib/install.mjs';
+import { recordExternal, installRepoMcpFile } from './lib/install.mjs';
 import { allChecks, reportChecks, checkSuperpowers, currentRepo,
          present, run, marketplacePresent,
          SUPERPOWERS, SUPERPOWERS_MARKETPLACE, SUPERPOWERS_SOURCE } from './lib/environment.mjs';
@@ -17,6 +20,7 @@ import { findLinear, addLinear, removeCommand, LINEAR_NAME } from './lib/mcp.mjs
 
 const argv = process.argv.slice(2);
 const doInstall = argv.includes('--install');
+const editMcp = argv.includes('--edit-mcp');
 const repoArg = argv.indexOf('--repo');
 const log = (...a) => console.log(...a);
 
@@ -80,6 +84,7 @@ function installLinear(repo) {
     log('Left as it is — a second server at the same address would need authenticating on its own.');
     return false;
   }
+  if (mcpKept(repo)) { keptNotice(repo); return false; }
 
   init('0.1.0');
   log(`Running: claude mcp add --transport http --scope project ${LINEAR_NAME} ...`);
@@ -91,6 +96,17 @@ function installLinear(repo) {
   // servers, so uninstall names the one key rather than the file
   recordExternal(`mcp:${LINEAR_NAME}`, removeCommand);
   return true;
+}
+
+/** An existing .mcp.json is the repository's, and is edited only when asked. */
+const mcpKept = repo => !editMcp && existsSync(join(repo, '.mcp.json'));
+
+function keptNotice(repo) {
+  log('');
+  log('!! KEPT — NOT CHANGED: ' + join(repo, '.mcp.json'));
+  log('!! The file is already there, so the Linear server was not added to it.');
+  log('!! To add it, run setup again with --edit-mcp.');
+  log('');
 }
 
 function main() {
@@ -105,7 +121,10 @@ function main() {
   if (!doInstall) {
     const pending = [];
     if (!sp.ok) pending.push('the superpowers plugin');
-    if (!checks.find(c => c.name === 'Linear').result.ok) pending.push('a Linear MCP server');
+    if (!checks.find(c => c.name === 'Linear').result.ok) {
+      if (repo && mcpKept(repo)) keptNotice(repo);
+      else pending.push('a Linear MCP server');
+    }
     const nm = checks.find(c => c.name === 'node modules').result;
     if (!nm.ok && !nm.skipped) pending.push('the npm packages');
     if (pending.length) {
@@ -118,6 +137,8 @@ function main() {
       : `${missing} thing${missing > 1 ? 's need' : ' needs'} attention. Re-run with --install to install what can be installed automatically.`);
     return;
   }
+
+  if (repo) { init('0.1.0'); installRepoMcpFile(repo); }
 
   if (!sp.ok) {
     if (installSuperpowers(sp)) {

@@ -33,6 +33,8 @@ import { claudeDir } from './lib/paths.mjs';
 
 const argv = process.argv.slice(2);
 const dryRun = argv.includes('--dry-run');
+// kept for the install ahead, which replaces blocks in place and the hook only when asked
+const keep = ['uninstall-only', 'blocks', ...(argv.includes('--replace-githook') ? [] : ['githooks'])];
 const log = (...a) => console.log(...a);
 
 /** What each kind of recorded change is, in words, for the count lines. */
@@ -41,6 +43,8 @@ const KINDS = {
   'marker-block': 'marked block added to a file you also own',
   'json-key':     'setting this plugin changed',
   'dir-create':   'folder this plugin created',
+  'repo-folder':  'repository .claude folder, kept until uninstall',
+  'repo-file':    'repository .mcp.json, kept until uninstall',
   'external':     'command run outside these files'
 };
 const describe = type => KINDS[type] ?? type;
@@ -96,14 +100,21 @@ function main() {
   log('Only these are removed. Files you wrote yourself are left alone, and a file');
   log('this plugin replaced is restored from its backup.');
   log('');
+  log('Kept for the install ahead: marked blocks, which it replaces where they sit;');
+  log(keep.includes('githooks')
+    ? 'the git hook, which it replaces only with --replace-githook; and'
+    : 'and');
+  log('the repository .claude folder, .mcp.json and plugins, which only uninstall removes.');
+  log('');
 
   if (dryRun) { log('Dry run. Nothing was changed.'); return; }
 
-  const results = revert({ dryRun: false });
+  const results = revert({ dryRun: false, keep });
   const failed = results.filter(r => !r.ok);
+  const kept = results.filter(r => r.kept);
   const manual = results.filter(r => r.ok && r.action === 'manual');
 
-  log(`Cleared ${results.length - failed.length} of ${results.length}`);
+  log(`Cleared ${results.length - failed.length - kept.length} of ${results.length}, kept ${kept.length}`);
 
   if (manual.length) {
     log('');
