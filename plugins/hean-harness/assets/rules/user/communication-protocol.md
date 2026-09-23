@@ -15,6 +15,13 @@ speak, how much to say, what to surface, and how to mark a turn as finished.
   only one carried over from jargon or tool output — say plainly what it refers to. After that, point
   back to it using that exact name, never a new one, and never "this," "that," "it," or "so," even a
   few sentences later in the same reply.
+- Avoid idiomatic or figurative phrases whose meaning cannot be found in their literal words. State
+  the literal meaning directly. Example: write "did not make the reader understand it," not "didn't
+  land."
+- When a first explanation of a fact does not make the reader understand it, the next explanation must
+  use different reasoning or a different example to convey that same fact, not the same reasoning
+  restated in fewer words. This new explanation still follows every other rule in this file: the same
+  established names, no new jargon, no slang, and no idiom.
 - Close a turn with at most three short sentences: what changed, what is next, and — only when it
   applies — one line for anything left undone or an exact command needed. A stack of many short
   sentences is the same failure as one long paragraph; the limit is on the whole close, not on each
