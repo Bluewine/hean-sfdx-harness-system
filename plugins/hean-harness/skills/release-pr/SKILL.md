@@ -1,6 +1,6 @@
 ---
 name: release-pr
-description: Release-train PR merging the integration branch into a release branch for a UAT deployment — dedupes the commit range into one row per Linear story carrying title, assignee, and sprint, classes each story as new, straddling or already-deployed-by-hotfix and names the last kind out loud, opens or updates the deployment PR, then offers to wind up the worktree it ran in
+description: Release-train PR merging the integration branch into a release branch for a UAT deployment — dedupes the commit range into one row per Linear story carrying title, assignee, and sprint, says out loud which stories were already deployed by a hotfix instead of quietly leaving them out, opens or updates the deployment PR, then offers to wind up the worktree it ran in
 ---
 
 > Applies to internal Salesforce projects, where this is the standard way of working.
@@ -30,7 +30,7 @@ The PR body IS exactly these parts, in this order, and nothing else:
 No title heading, no summary paragraph, no "What was done" section, no commit list, no trailing notes. The separator has no leading pipe and does have a trailing pipe — reproduce it byte for byte, with one `--` cell per column.
 
 **The table has no column for how a story reached `BASE`.** Every row looks alike, by design — four
-columns and nothing else. The hotfix class is stated in the closing report instead, never as a marker
+columns and nothing else. Whether a story was already deployed by a hotfix is stated in the closing report instead, never as a marker
 in a cell, a footnote under the table, or a fifth column. Changing the table's shape breaks the
 contract this section defines.
 
@@ -71,7 +71,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/verify-remote-refs.mjs" {BASE} {HEAD} || exi
 
 A failing `git fetch` is tolerable on its own — SSH auth breaks routinely while `gh` keeps working over HTTPS. **A stale ref is not**: stop and tell the user the range would be wrong. Only continue when the script exits 0.
 
-## Phase 2 — Enumerate the range and classify work IDs
+## Phase 2 — List the work IDs in the range and sort them out
 
 ```bash
 git log --format='%s' origin/{BASE}..origin/{HEAD}
@@ -86,7 +86,7 @@ CANDIDATES=$(git log --format='%s' origin/{BASE}..origin/{HEAD} \
 printf '%s\n' "$CANDIDATES"
 ```
 
-Assign `CANDIDATES` here so the classification snippets below are self-contained and run in the same shell invocation. `{BASE}` and `{HEAD}` are placeholders you substitute; `$CANDIDATES` is a real shell variable this command creates.
+Assign `CANDIDATES` here so the two tests below are self-contained and run in the same shell invocation. `{BASE}` and `{HEAD}` are placeholders you substitute; `$CANDIDATES` is a real shell variable this command creates.
 
 Scanning the whole subject (not just an anchored `@WORK-ID:` prefix) is deliberate — some stories reach the range only through a merge subject that carries the ID in the branch name, e.g. `Merge pull request #NNN from <org>/work-ABC-120_Fix_...`. Anchoring to the prefix drops those rows.
 
@@ -94,7 +94,7 @@ Scanning the whole subject (not just an anchored `@WORK-ID:` prefix) is delibera
 
 This list is `CANDIDATES`, not yet the row set. Its order carries no meaning — Phase 5 sorts rows deterministically from sprint and work ID, so nothing downstream depends on `git log` order.
 
-### Test 1 — owning vs mention-only
+### Test 1 — does the story have commits of its own here?
 
 A candidate earns a row only if it *owns* at least one commit — appearing as the `@ID:` subject prefix, or as the `work-ID` branch name in a merge subject. A candidate that appears only inside another story's subject is a cross-reference, not shipped work:
 
@@ -107,7 +107,7 @@ printf '%s\n' "$CANDIDATES" | while IFS= read -r id; do
 done
 ```
 
-Iterate with `while read`, not `for id in $CANDIDATES`. Under zsh an unquoted parameter expansion is not word-split, so `for` would run once with the entire newline-joined list as a single `id`, build a nonsense pattern, and report every candidate as owning. The failure is silent and inverts the filter, so mention-only IDs sail through into the table.
+Iterate with `while read`, not `for id in $CANDIDATES`. Under zsh an unquoted parameter expansion is not word-split, so `for` would run once with the entire newline-joined list as a single `id`, build a nonsense pattern, and report every work ID as having its own commits. The failure is silent and inverts the test, so IDs that were only mentioned in passing sail through into the table.
 
 `owning=0` → drop it from the row set and report it at the Phase 6 checkpoint with the subjects it appeared in. This is a real case, not a hypothetical: an ID has reached a range solely through subjects like `@ABC-96: Adjust Profile according to XYZ-205`, where `XYZ-205` is delivered in a different repository. Do not relax this test because the ID resolves in Linear — resolving proves the issue exists, not that it shipped here.
 
@@ -115,15 +115,16 @@ Commits carrying no work ID produce no row. Release plumbing such as `Update Rel
 
 ### Test 2 — how each story reached `BASE`
 
-**Every candidate Test 1 kept earns a row. Test 2 never removes one.** It works out *how* a story got
-into `BASE`, because one of the answers has to be said out loud in the closing report. Nothing here
-filters.
+**Every story Test 1 kept gets a row. This test never removes one.** It works out how each story's
+work reached `BASE`, because one of the three answers has to be said out loud in the closing report.
+Nothing here filters anything.
 
-**A rule that dropped hotfix stories would lose them silently.** A hotfix deployed straight to `BASE`
-reaches `HEAD` only as a back-merge, so an exclusion built on that shape removes the story from the
-deployment PR and leaves nothing in the output to show a judgement was made. The reader cannot audit a
-row that is not there. The hotfix path is also mechanical — a hotfix always has a back-merge branch — so
-a story that took it is a known shape to label, not an anomaly to assess.
+**Leaving a hotfix story out loses it silently.** A hotfix goes straight to `BASE` on its own branch,
+and the only thing that reaches `HEAD` afterwards is the commit copying it back. A rule that drops the
+story on that basis removes it from the deployment PR and leaves nothing on screen to show a decision
+was taken — and nobody can check a row that is not there. The hotfix route is also always the same
+shape: a hotfix always has a copy-back branch. So a story that took that route is a known case to
+label, not an odd one to weigh up.
 
 The hotfix path uses branch names the `work-{WORK-ID}` convention does not cover:
 
@@ -146,31 +147,31 @@ printf '%s\n' "$CANDIDATES" | while IFS= read -r id; do
 done
 ```
 
-Each candidate lands in exactly one of three classes. All three are rows.
+Every story is one of three kinds. All three get a row.
 
-| `shipped` | Provenance on the `BASE` side | Class | Reported at the end |
+| Is any of it in `BASE` already? | How it got there | What that means | Say so at the end |
 |---|---|---|---|
-| `0` | — | **new** — entirely new to `BASE` | no |
-| `≥ 1` | a `HEAD` → `BASE` merge | **straddle** — earlier work already went, more is going now | no |
-| `≥ 1` | a `hotfix-*` merge | **hotfix** — the fix is already live on `BASE`; the range carries its back-merge | **yes, by name** |
+| no | — | none of this story has been deployed yet | no |
+| yes | through an earlier `HEAD` → `BASE` merge | part of it went out last time, the rest goes out now | no |
+| yes | through a `hotfix-*` branch | the fix is already live; this range only carries the commit that copies it back to `HEAD` | **yes, name the story** |
 
-**The discriminator is provenance, not payload.** Inspect the `BASE`-side commits: arriving under a
-`hotfix-*` merge subject means hotfix, arriving under a `HEAD` → `BASE` merge means straddle.
-`backmerge ≥ 1` corroborates the hotfix class but is not required, because a back-merge can arrive
-through a differently-named branch.
+**Read the `BASE`-side commits to tell the last two apart.** A `hotfix-*` merge subject means the fix
+went out on its own; a `HEAD` → `BASE` merge subject means it went out with a previous deployment.
+`backmerge ≥ 1` supports the hotfix answer but is not required, because the copy-back commit can arrive
+on a differently-named branch.
 
-**Do not substitute a diff test for the provenance test.** The tempting shortcut is to classify by
-whether the range commits touch deployable metadata. A story whose entire content is a version-file
-correction has no metadata diff and is still `new`. Payload size answers nothing here.
+**Do not decide this by looking at the diff.** The tempting shortcut is to judge by whether the range
+commits touch deployable metadata. A story whose whole content is a version-file correction has no
+metadata diff and has still never been deployed. The size of the change answers nothing here.
 
-**What a hotfix row means, so the report can say it.** The fix reached `BASE` on its own branch and is
-already deployed there; this PR is not what delivers it. What the range carries is the back-merge that
-returns it to `HEAD`. The row exists because the story is part of this deployment's contents, and the
-closing report names it so nobody reads the table as a claim that the fix ships today.
+**What to say about an already-live fix.** It reached `BASE` on its own branch and is deployed there
+now; this PR is not what delivers it. What this range carries is the commit that copies it back to
+`HEAD`. It gets a row because the story is part of what this deployment contains, and the closing report
+names it so nobody reads the table as a claim that the fix goes out today.
 
 **A prior release PR's body is not evidence.** Citing one as precedent reproduces whatever it got
 wrong, and compounds it, because each run then finds one more prior body agreeing. Re-derive the row
-set and the classes from the range every time.
+set and these answers from the range every time.
 
 ## Phase 3 — Resolve each story in Linear
 
@@ -244,6 +245,8 @@ Nothing here depends on commit order, so the ordering is reproducible from the f
 
 Everything the user must see or decide goes in **one message**. Do not ask in stages — a run that interrupts three separate times to confirm a branch, then an exclusion, then a URL, wastes the user's turn budget and buries the decisions.
 
+One message does not mean one answer. Each thing that needs deciding is asked as its own numbered item and needs its own answer back.
+
 Work `PR_TITLE` out as far as the known inputs allow, so the checkpoint can show it. It is not always finishable at this point, and that is expected.
 
 **When `PR_NUMBER` is set, `PR_TITLE` is that PR's current title, unchanged.** Do not recompute it. That title already carries the release champion's deployment date, and rewriting it separates the PR from the deployment it names.
@@ -254,7 +257,7 @@ Work `PR_TITLE` out as far as the known inputs allow, so the checkpoint can show
 gh pr list --base {BASE} --state all --limit 20 --json number,title,headRefName
 ```
 
-Take the prevailing title stem from those results, then resolve `{DEPLOY_DATE}` into it **only once the date is known**. If the date is still open, show the stem with `{DEPLOY_DATE}` left unresolved, request it as item 7, and finalize the title from the answer. Never fill the placeholder with today's date just to have something to display — a date shown at the checkpoint reads as decided, and the user approves it without noticing it was invented.
+Take the prevailing title stem from those results, then resolve `{DEPLOY_DATE}` into it **only once the date is known**. If the date is still open, show the stem with `{DEPLOY_DATE}` left unresolved, request it as its own numbered question, and finalize the title from the answer. Never fill the placeholder with today's date just to have something to display — a date shown at the checkpoint reads as decided, and the user approves it without noticing it was invented.
 
 Two things drive a suffix, and they are independent:
 
@@ -263,19 +266,55 @@ Two things drive a suffix, and they are independent:
 
 The convention is not perfectly uniform in history — older PRs predate it, and some hotfixes carry no suffix. Treat the rule as the default and take the user's correction.
 
-The checkpoint message carries, in this order:
+The checkpoint message carries context first, then decisions.
 
-1. The range and its candidate count.
-2. Every mention-only exclusion (`owning=0`), each with the subject(s) it appeared in.
-3. Every story classed **hotfix** by Test 2, each with the `hotfix-*` merge subject on the `BASE` side that puts it in that class. These are rows, not exclusions — they are listed so the user sees the classification before the body is written, and can correct one that is really a straddle.
-4. Every unresolved ID, each with the subject it came from, plus every story with an unresolved field — no sprint title, or no assignee.
-5. The proposed row set in final order, showing Work ID, Subject, Assignee, and Sprint. When updating, present this as a diff against the existing PR body — rows added, rows removed, rows whose position changed — not as a fresh table. The user has already approved the rows that are staying.
-6. The `PR_TITLE`, and whether it was preserved from the existing PR or computed.
-7. Requests for exactly the open inputs — `DEPLOY_DATE` whenever a new PR is being opened and the request did not carry it, `RUNLIST_URL` if not already supplied, `PR_NUMBER` if update mode was inferred rather than given, and confirmation of `BASE`/`HEAD`.
+**What you found — shown, not asked.** Label these rather than numbering them, so the numbers belong to
+the questions alone:
 
-If no item in 2, 3, 4, or 7 has content — no exclusions, nothing unresolved, every input already given — there is nothing to decide: skip straight to Phase 7 and let the draft's own `yes` gate serve as the single approval.
+- **Range** — the two branches and how many work IDs are in the range.
+- **Table** — the proposed rows in final order: Work ID, Subject, Assignee, Sprint. When updating, show
+  this as a difference against the existing PR body — rows added, rows removed, rows that moved — not as
+  a fresh table. The user already approved the rows that are staying.
+- **Title** — the `PR_TITLE`, and whether it was kept from the existing PR or worked out.
 
-Wait for the answer. Nothing has touched GitHub at this point and nothing may until Phase 8.
+**What you need answered — numbered 1, 2, 3, each needing its own answer.**
+
+Every unsettled thing gets its own numbered line, saying what it is, what the evidence is, and which
+answers it accepts. One thing, one number, one answer. Never put two on one line, and never write one as
+a passing remark.
+
+| What is unsettled | Show the user | Ask it like this |
+|---|---|---|
+| A work ID that appears only inside some other story's commit message | that commit subject | "I would leave `{ID}` out. Answer: `leave out`, or `include`" |
+| A story whose fix already reached `BASE` through a hotfix | the `hotfix-*` merge subject | "`{ID}` already went live through `{BRANCH}`, so this PR only carries the commit copying it back. It stays in the table either way. Answer: `right`, or `no, some of its work is still going out now`" |
+| A work ID that is not in the issue tracker | the commit subject it came from | "I cannot find `{ID}`. Answer: the correct ID, or `leave out`" |
+| A story missing its sprint or its assignee | which one is missing | "`{ID}` has no {field}. Answer: the value, or `leave blank`" |
+| Something the run needs and was not given — the deployment date, the runlist link, which PR to update, or confirmation of the two branches | what is missing and why it is needed | ask for it directly |
+
+**Write the question out in plain words every time.** No internal shorthand in anything the user reads:
+no counters like `owning=0`, no labels this file uses internally, no phase numbers. The person answering
+has the commit subject in front of them and nothing else; a word they have to work out is a word that
+gets the wrong answer.
+
+**Every numbered question needs its own answer before the body is written.** This is what the checkpoint
+is for, and there is one specific way it fails: a story you would leave out is shown as a note, the user
+answers the deployment date, and a finished exchange gets read as a settled checkpoint. Nobody ever
+decided about the story. It stays out on a default nobody chose, and the finished table gives no sign of
+it.
+
+**A reply that answers some of them is a partial answer, not approval.** Say which numbers came back,
+list exactly which are still open, and ask again for only those. Do not re-ask the ones already answered
+— that reads as not having listened — and do not add anything new to the re-ask.
+
+**Never work out an answer for the user.** Not from silence, not from what they said about a different
+question, not from a general `yes` or `looks good`, and not from their tone. A `yes` here approves
+nothing on its own: the go-ahead to publish comes later, after the body is written, and it is a separate
+answer.
+
+**When there is nothing to ask** — nothing being left out, nothing missing, nothing still needed — skip
+the checkpoint, write the body, and let the `yes` on the draft be the one approval.
+
+Nothing has touched GitHub at this point and nothing may until Phase 8.
 
 ## Phase 7 — Render and write the review file
 
@@ -317,7 +356,7 @@ Title: {PR_TITLE}
 Review or edit the file, then type `yes` to submit.
 ```
 
-Leave the hotfix line out entirely when Test 2 classed none. A line reading `0 of them` is noise.
+Leave the hotfix line out entirely when no story was already deployed by one. A line reading `0 of them` is noise.
 When there is one, name every ID — a count alone tells the reader something is there and not what.
 
 `{ABSOLUTE_PATH}` is what the write command's closing `echo` printed. That `echo` sits inside the
@@ -388,7 +427,7 @@ Body: {ABSOLUTE_PATH}:1
 Already deployed to {BASE} by hotfix, listed in this PR for completeness:
   {WORK-ID}  {TITLE}
   {WORK-ID}  {TITLE}
-These reached {BASE} on their own branches. This PR carries their back-merges, not their fixes.
+These went live on their own branches. This PR only carries the commits that copy them back.
 ```
 
 The PR URL is what was published. The body file is what was published *from*, and it stays on disk
@@ -397,9 +436,9 @@ clickable form Phase 7 used, rather than leaving the reader to scroll back for i
 
 **Say the hotfix block out loud, every time there is one.** The table cannot carry the distinction: it
 has four fixed columns and a hotfix row looks exactly like any other. Somebody reading it will take
-every row as work this deployment delivers. That is right for a `new` or `straddle` row and wrong for a
-hotfix row, and the only place the difference can be stated is here. Omit the block when Test 2 classed
-no story as hotfix; never omit it to keep the report short.
+every row as work this deployment delivers. That is true of every other row and false of this one, and
+here is the only place the difference can be said. Omit the block when no story was already deployed by
+a hotfix; never omit it to keep the report short.
 
 **Name the stories, do not summarise them.** `2 hotfix stories included` tells the reader a category
 exists. `ABC-285 Fix work type sync` tells them which story to go and check.
@@ -521,8 +560,8 @@ whenever they want.
 
 Confirm each against real output, not intent:
 
-- The row count derives as `candidates − mention-only − unresolved-or-folded − user-skipped`, and every subtraction was reported at the checkpoint. Check the derivation, not a fixed equality — a new exclusion class must show up as a reported subtraction rather than silently breaking the count. Test 2 is not a subtraction: every candidate it classes is a row.
-- Every story Test 2 classed **hotfix** has a row, and every one of them is named in the closing report.
+- The row count derives as `work IDs in range − mentioned-in-passing − not found in the tracker − left out by the user`, and every subtraction was shown at the checkpoint. Check the derivation, not a fixed number — a new reason for leaving a story out must appear as a reported subtraction rather than silently changing the count. Test 2 subtracts nothing: every story it looks at gets a row.
+- Every story whose fix already reached `BASE` through a hotfix has a row, and every one of them is named in the closing report.
 - Every `Work ID` href is a string that came out of Linear — returned by `get_issue`, or pasted by the user from the browser — and never one you assembled from the title.
 - Every sprint link either uses that row's own team key with the workspace slug taken from Linear's `url`, or is a URL the user pasted whole. A link built from parts in the fallback path is a defect: nothing there supplies a verified slug.
 - The separator line is exactly `-- | -- | -- | -- |`, and every row has exactly four cells.
@@ -530,6 +569,7 @@ Confirm each against real output, not intent:
 - Rows are sorted on all three keys in order: cycle `startsAt` descending, then team key ascending, then work ID numerically ascending.
 - The runlist line is the last line, preceded by a blank line.
 - Both reports give the body file as an absolute path ending in `:1`, so it is clickable from the terminal.
+- Every numbered question at the checkpoint got its own answer, and none was settled by an answer to a different one, by a general `yes`, or by silence.
 - No worktree was removed without an explicit `remove` from the user, and none was removed while a question was still open.
 - Where a worktree was removed, the body file was copied into the main working copy first and its new path was reported.
 - `gh pr create` returned a URL, or `gh pr edit` succeeded and re-reading the PR shows the intended body and an unchanged title.
@@ -541,12 +581,12 @@ Confirm each against real output, not intent:
 | Rows built from commit subjects | Rows are stories; dedupe work IDs and use the Linear title |
 | One story split across several rows | Dedupe on work ID — many commits, one row |
 | Row set pulled from a Linear cycle or board | Only `git log {BASE}..{HEAD}` defines the row set |
-| Mention-only ID given a row because it resolves in Linear | Resolving proves the issue exists, not that it shipped here; require `owning` ≥ 1 |
+| A work ID given a row because the tracker knows it, though it has no commits of its own here | Being in the tracker proves the issue exists, not that it was delivered here; require at least one commit of its own |
 | Hotfix story dropped because its fix already reached `BASE` | Every candidate Test 1 kept is a row; Test 2 classifies, it never drops |
 | Hotfix row included silently | Name it in the closing report, or the table reads as a claim that the fix ships today |
-| Hotfix class marked in a table cell or an extra column | The table's four columns are fixed; the class belongs in the closing report |
+| "Already deployed" written into a table cell or an extra column | The table's four columns are fixed; say it in the closing report |
 | Hotfix block reduced to a count | Name every work ID and title; a count says a category exists, not which story |
-| Rows filtered by whether the diff touches deployable metadata | Wrong discriminator — provenance decides the class, and no class is excluded |
+| Stories left out because their diff touches no deployable metadata | Wrong test — how the work reached `BASE` is what matters, and no answer to that leaves a story out |
 | A prior release PR's body cited as precedent | Prior bodies reproduce prior errors; re-derive from the range every run |
 | Stale refs after a failed fetch | Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/verify-remote-refs.mjs" {BASE} {HEAD}`; a non-zero exit stops the run |
 | Reimplementing the freshness check inline | It lives in one shared script so it cannot drift; a `sed`-based rewrite already broke it silently on one platform |
@@ -574,6 +614,9 @@ Confirm each against real output, not intent:
 | `$BODY_FILE` reused in a later command | Shell variables do not survive between commands; set it again in each one |
 | Closing report names only the PR | Name the body file too; it is the review artifact and stays on disk |
 | An answered input mistaken for approval | Confirming a branch or title is not `yes` |
+| Something unsettled shown as a note rather than asked | Give it a number and say which answers it takes; what you found and what you need answered are separate |
+| Checkpoint treated as settled because one question was answered | Each numbered question needs its own answer; list the ones still open and ask again for only those |
+| A default acted on because nobody objected | Silence decides nothing; an unanswered question stops the run |
 | Worktree cleaned up on the skill's own judgement | Ask; anything other than an explicit `remove` means keep |
 | Approval to publish read as approval to clean up | Two separate decisions, two separate answers |
 | Worktree removed while a question was still open | Phase 9 runs only when nothing is outstanding |
