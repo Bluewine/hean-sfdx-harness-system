@@ -43,9 +43,13 @@ Install the environment. Show the user what will change before changing it.
    - what each step did
    - the exact command the user has to run to reload their shell
    - anything the summary says needs doing by hand
-   - whether the superpowers plugin was installed. When it was, say that a restart of Claude Code
-     is needed before it can be used, because a plugin's skills and hooks are read when a session
-     starts. Nothing in the running session picks it up.
+   - whether the superpowers plugin and the ego-browser skill (`browser-skills@ego-agent-skills`)
+     were installed. When either was, say that a restart of Claude Code is needed before it can be
+     used, because a plugin's skills and hooks are read when a session starts. Nothing in the
+     running session picks it up. When the ego-browser skill was skipped because ego lite's
+     onboarding already wrote it to the user's skills folder, say so.
+   - when the output has a line starting `Recommended: install the ego lite browser`, repeat it
+     with its link. The user installs ego lite themselves; setup never downloads it.
    - whether the commit format is on or off, and whether the commit format step added, replaced
      or removed `.githooks/commit-msg` and set `core.hooksPath` to `.githooks`, or found them
      already in place. Repeat every `!! KEPT` line from the output under its own heading, so a

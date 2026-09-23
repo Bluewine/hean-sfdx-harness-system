@@ -78,10 +78,19 @@ in a terminal are not checked. The agents' instructions for the two questions ar
 `sync-to-branch` and `commit-walk-sync` ship as `SKILL.mdx`, which Claude Code does not load. To use
 one again, rename its file back to `SKILL.md`.
 
+## Browser
+
+Setup installs the `ego-browser` skill from ego lite's own plugin
+(`browser-skills@ego-agent-skills`), unless ego lite's onboarding already wrote it to
+`~/.claude/skills/ego-browser`. Agents test in the browser with ego-browser when ego lite is
+installed, and with Playwright MCP when it is not.
+
 ## What setup leaves to you
 
 - **A JDK 11 or newer.** Installing one needs administrator rights. Setup reports whether a real one
   is present and prints the command for your system.
+- **The ego lite browser, recommended.** Download it yourself from https://lite.ego.app/. It is
+  free and macOS only. Setup reports whether it is installed.
 - **Signing in to Linear.** Setup adds the server when none is present. Run `/mcp` in a session to
   sign in.
 
@@ -138,7 +147,8 @@ Run `/hean-harness:setup` again.
   startup file, wherever that block sits.
 - It empties the repository's `.claude` folder and deletes `.mcp.json`. `.claude/manifest/` and any
   file git tracks are kept.
-- It uninstalls superpowers and its marketplace when setup added them, then hean-harness itself.
+- It uninstalls superpowers, the ego-browser skill and their marketplaces when setup added them,
+  then hean-harness itself. The ego lite browser is yours and stays.
 - Copies of anything it replaced or edited stay in `~/.claude/hean-harness/backups/`.
 - The commit approval state of past sessions stays in `~/.claude/hean-harness/sessions/`.
 - Open a new terminal afterwards. The alias is still loaded in the current one.

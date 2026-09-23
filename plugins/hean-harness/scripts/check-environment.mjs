@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 /**
- * Reports on the things this environment needs, and installs the one that can
+ * Reports on the things this environment needs, and installs what can
  * be installed without asking for administrator rights.
  *
- * Only superpowers is installed here. Java, the sf CLI, the code analyzer and
- * python each need administrator rights or a choice about versions, so those
- * are reported with the command that fixes them and left to the reader.
+ * Only plugins are installed here: superpowers, and the ego-browser skill unless
+ * ego lite's onboarding already wrote it. Java, the sf CLI, the code analyzer,
+ * python and the ego lite browser each need administrator rights, a download
+ * or a choice about versions, so those are reported with the command or link
+ * that fixes them and left to the reader.
  */
 
 import { existsSync } from 'node:fs';
@@ -13,9 +15,9 @@ import { join } from 'node:path';
 
 import { init } from './lib/manifest.mjs';
 import { recordExternal, installRepoMcpFile } from './lib/install.mjs';
-import { allChecks, reportChecks, checkSuperpowers, currentRepo,
+import { allChecks, reportChecks, checkSuperpowers, checkEgoSkills, checkEgoLite, currentRepo,
          present, run, marketplacePresent,
-         SUPERPOWERS, SUPERPOWERS_MARKETPLACE, SUPERPOWERS_SOURCE } from './lib/environment.mjs';
+         SUPERPOWERS_PLUGIN, EGO_PLUGIN, EGO_LITE_URL } from './lib/environment.mjs';
 import { findLinear, addLinear, removeCommand, LINEAR_NAME } from './lib/mcp.mjs';
 
 const argv = process.argv.slice(2);
@@ -25,40 +27,48 @@ const repoArg = argv.indexOf('--repo');
 const log = (...a) => console.log(...a);
 
 /**
- * Put superpowers in place.
+ * Put a plugin in place.
  *
  * Two commands, because a plugin cannot be installed before the marketplace
  * carrying it has been added, and a fresh Claude Code configuration has none.
  * Each command is safe to repeat: the marketplace reports it is already on
  * disk, and the install reports the plugin is already installed.
  */
-function installSuperpowers(sp) {
+function installPlugin(p, r) {
   if (!present('claude')) {
-    log('The claude command is not on PATH, so superpowers cannot be installed from here.');
-    log(`Install it yourself with: claude plugin install ${SUPERPOWERS}`);
+    log(`The claude command is not on PATH, so ${p.id} cannot be installed from here.`);
+    log(`Install it yourself with: claude plugin install ${p.id}`);
     return false;
   }
 
   init();
 
-  if (sp.state === 'disabled') {
-    log(`Running: claude plugin enable ${SUPERPOWERS}`);
-    log(run('claude', ['plugin', 'enable', SUPERPOWERS]).trim());
+  if (r.state === 'disabled') {
+    log(`Running: claude plugin enable ${p.id}`);
+    log(run('claude', ['plugin', 'enable', p.id]).trim());
     return true;
   }
 
-  if (!marketplacePresent()) {
-    log(`Running: claude plugin marketplace add ${SUPERPOWERS_SOURCE}`);
-    log(run('claude', ['plugin', 'marketplace', 'add', SUPERPOWERS_SOURCE]).trim());
+  if (!marketplacePresent(p.marketplace)) {
+    log(`Running: claude plugin marketplace add ${p.source}`);
+    log(run('claude', ['plugin', 'marketplace', 'add', p.source]).trim());
     // ours to undo only because it was not there before
-    recordExternal(`marketplace:${SUPERPOWERS_MARKETPLACE}`,
-                   `claude plugin marketplace remove ${SUPERPOWERS_MARKETPLACE}`);
+    recordExternal(`marketplace:${p.marketplace}`,
+                   `claude plugin marketplace remove ${p.marketplace}`);
   }
 
-  log(`Running: claude plugin install ${SUPERPOWERS}`);
-  log(run('claude', ['plugin', 'install', SUPERPOWERS]).trim());
-  recordExternal(SUPERPOWERS, `claude plugin uninstall ${SUPERPOWERS}`);
+  log(`Running: claude plugin install ${p.id}`);
+  log(run('claude', ['plugin', 'install', p.id]).trim());
+  recordExternal(p.id, `claude plugin uninstall ${p.id}`);
   return true;
+}
+
+/** The ego lite browser is each user's own install; say where to get it when it is missing. */
+function recommendEgoLite() {
+  if (!checkEgoLite().recommend) return;
+  log('Recommended: install the ego lite browser yourself from ' + EGO_LITE_URL);
+  log('The ego-browser skill drives it for browser tasks. ego lite is free and macOS only.');
+  log('');
 }
 
 /**
@@ -117,10 +127,12 @@ function main() {
   log('');
 
   const sp = checkSuperpowers();
+  const ego = checkEgoSkills();
 
   if (!doInstall) {
     const pending = [];
     if (!sp.ok) pending.push('the superpowers plugin');
+    if (!ego.ok) pending.push('the ego-browser skill');
     if (!checks.find(c => c.name === 'Linear').result.ok) {
       if (repo && mcpKept(repo)) keptNotice(repo);
       else pending.push('a Linear MCP server');
@@ -132,6 +144,7 @@ function main() {
       log(`Setup installs ${list} when it runs for real.`);
       log('');
     }
+    recommendEgoLite();
     log(missing === 0
       ? 'Everything needed is in place.'
       : `${missing} thing${missing > 1 ? 's need' : ' needs'} attention. Re-run with --install to install what can be installed automatically.`);
@@ -140,15 +153,18 @@ function main() {
 
   if (repo) { init(); installRepoMcpFile(repo); }
 
-  if (!sp.ok) {
-    if (installSuperpowers(sp)) {
+  for (const [p, r, label] of [[SUPERPOWERS_PLUGIN, sp, 'Superpowers'], [EGO_PLUGIN, ego, 'The ego-browser skill']]) {
+    if (r.ok) continue;
+    if (installPlugin(p, r)) {
       log('Recorded, so uninstall will tell you how to undo it.');
       // the plugin's own skills and hooks are read when a session starts, so
       // this session does not have them however well the install went
-      log('Superpowers loads at the start of a session, so restart Claude Code before using it.');
+      log(`${label} loads at the start of a session, so restart Claude Code before using it.`);
     }
     log('');
   }
+
+  recommendEgoLite();
 
   if (installLinear(repo)) {
     log('Recorded, so uninstall will tell you how to undo it.');
@@ -157,7 +173,8 @@ function main() {
   }
 
   const manual = checks.filter(c => !c.result.ok && !c.result.skipped
-                                    && c.name !== 'superpowers' && c.name !== 'Linear'
+                                    && c.name !== 'superpowers' && c.name !== 'ego skills'
+                                    && c.name !== 'Linear'
                                     && c.name !== 'node modules');
   if (manual.length) {
     log('These are not installed automatically, because they need administrator rights or');

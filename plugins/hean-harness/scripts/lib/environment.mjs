@@ -11,8 +11,8 @@
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
-import { platform } from 'node:os';
-import { join } from 'node:path';
+import { homedir, platform } from 'node:os';
+import { dirname, join } from 'node:path';
 import { claudeDir } from './paths.mjs';
 import { findLinear, LINEAR_HOST } from './mcp.mjs';
 
@@ -34,6 +34,23 @@ export const SUPERPOWERS_MARKETPLACE = 'claude-plugins-official';
 // and the error names the clone rather than the missing key, so it reads as the
 // marketplace being unreachable.
 export const SUPERPOWERS_SOURCE = 'https://github.com/anthropics/claude-plugins-official.git';
+
+/**
+ * The plugins setup installs from a marketplace: the id to install, the
+ * marketplace that carries it, and where that marketplace is cloned from.
+ */
+export const SUPERPOWERS_PLUGIN = { id: SUPERPOWERS, marketplace: SUPERPOWERS_MARKETPLACE, source: SUPERPOWERS_SOURCE };
+
+/**
+ * The ego-browser skill, published by ego lite's makers as a plugin. It drives
+ * the ego lite browser, which each user installs themselves (EGO_LITE_URL).
+ */
+export const EGO_PLUGIN = {
+  id: 'browser-skills@ego-agent-skills',
+  marketplace: 'ego-agent-skills',
+  source: 'https://github.com/citrolabs/ego-lite.git'
+};
+export const EGO_LITE_URL = 'https://lite.ego.app/';
 
 /** Is the marketplace that carries superpowers configured on this machine? */
 export function marketplacePresent(name = SUPERPOWERS_MARKETPLACE) {
@@ -78,9 +95,10 @@ export function checkJava() {
     : { ok: false, detail: `JDK ${v}, but 11 or newer is needed` };
 }
 
-export function checkSuperpowers() {
+/** Is this plugin installed and enabled? */
+export function checkPlugin(p) {
   if (!present('claude')) {
-    const cached = join(claudeDir(), 'plugins', 'cache', 'claude-plugins-official', 'superpowers');
+    const cached = join(claudeDir(), 'plugins', 'cache', p.marketplace, p.id.split('@')[0]);
     return existsSync(cached)
       ? { ok: true, detail: 'found in the plugin cache' }
       : { ok: false, state: 'missing', detail: 'the claude command is not on PATH and nothing is cached' };
@@ -91,14 +109,45 @@ export function checkSuperpowers() {
   try {
     const rows = JSON.parse(runOut('claude', ['plugin', 'list', '--json']));
     if (!Array.isArray(rows)) return { ok: false, state: 'unknown', detail: 'the plugin list could not be read' };
-    hit = rows.filter(p => p && p.id === SUPERPOWERS);
+    hit = rows.filter(r => r && r.id === p.id);
   } catch {
     return { ok: false, state: 'unknown', detail: 'the plugin list could not be read' };
   }
   if (hit.length === 0) return { ok: false, state: 'missing', detail: 'not installed' };
-  return hit.some(p => p.enabled)
+  return hit.some(r => r.enabled)
     ? { ok: true, detail: 'installed and enabled' }
     : { ok: false, state: 'disabled', detail: 'installed but switched off' };
+}
+
+export const checkSuperpowers = () => checkPlugin(SUPERPOWERS_PLUGIN);
+
+/** Where ego lite's own onboarding writes the ego-browser skill. */
+export const egoOnboardingSkill = () => join(claudeDir(), 'skills', 'ego-browser', 'SKILL.md');
+
+/**
+ * Is the ego-browser skill available? ego lite's onboarding writes its own copy
+ * into the user's skills folder. Installing the plugin beside it would load the
+ * same skill twice under two names, so that copy counts as installed.
+ */
+export function checkEgoSkills() {
+  if (existsSync(egoOnboardingSkill())) {
+    return { ok: true, onboarding: true, detail: `written by ego lite's onboarding to ${dirname(egoOnboardingSkill())}` };
+  }
+  return checkPlugin(EGO_PLUGIN);
+}
+
+/**
+ * Is the ego lite browser installed? Each user installs it themselves, so it is
+ * recommended rather than required: only the ego-browser skill needs it.
+ */
+export function checkEgoLite() {
+  if (platform() !== 'darwin') {
+    return { ok: true, optional: true, detail: `not available here — ego lite is macOS only (${EGO_LITE_URL})` };
+  }
+  const apps = ['/Applications/ego lite.app', join(homedir(), 'Applications', 'ego lite.app')];
+  if (apps.some(a => existsSync(a)) || present('ego-browser')) return { ok: true, detail: 'installed' };
+  return { ok: true, optional: true, recommend: true,
+           detail: `not installed — recommended for browser tasks; install it yourself from ${EGO_LITE_URL}` };
 }
 
 /**
@@ -196,26 +245,31 @@ export const linearFix =
   `claude mcp add --transport http --scope project linear-server https://${LINEAR_HOST}/mcp`;
 
 /**
- * The command that fixes superpowers, which is two commands when the marketplace
+ * The command that fixes a plugin, which is two commands when the marketplace
  * it comes from has not been added yet.
  */
-export function superpowersFix(sp = checkSuperpowers()) {
-  if (sp.state === 'disabled') return `claude plugin enable ${SUPERPOWERS}`;
-  const install = `claude plugin install ${SUPERPOWERS}`;
-  return marketplacePresent()
+export function pluginFix(p, r = checkPlugin(p)) {
+  if (r.state === 'disabled') return `claude plugin enable ${p.id}`;
+  const install = `claude plugin install ${p.id}`;
+  return marketplacePresent(p.marketplace)
     ? install
-    : `claude plugin marketplace add ${SUPERPOWERS_SOURCE} && ${install}`;
+    : `claude plugin marketplace add ${p.source} && ${install}`;
 }
+
+export const superpowersFix = (sp = checkSuperpowers()) => pluginFix(SUPERPOWERS_PLUGIN, sp);
 
 /** Every check, in report order, with the command that fixes each one. */
 export function allChecks(repo) {
   const sp = checkSuperpowers();
+  const ego = checkEgoSkills();
   return [
     { name: 'Java',          result: checkJava(),             fix: javaFix() },
     { name: 'sf CLI',        result: checkSfCli(),            fix: sfCliFix },
     { name: 'code analyzer', result: checkCodeAnalyzer(),     fix: analyzerFix },
     { name: 'node modules',  result: checkNodeModules(repo),  fix: nodeModulesFix },
     { name: 'superpowers',   result: sp,       fix: superpowersFix(sp) },
+    { name: 'ego skills',    result: ego,      fix: ego.ok ? null : pluginFix(EGO_PLUGIN, ego) },
+    { name: 'ego lite',      result: checkEgoLite(),          fix: null },
     { name: 'Linear',        result: checkLinearMcp(repo),    fix: linearFix },
     { name: 'python3',       result: checkPython(),           fix: pythonFix() }
   ];
