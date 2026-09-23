@@ -36,7 +36,7 @@ function main() {
   init('0.1.0');
   const r = ensureIgnored(repo);
   if (r.added.length) {
-    log(`Added ${r.added.length} line${r.added.length > 1 ? 's' : ''} so skill output is never committed`);
+    log(`Added ${r.added.length} line${r.added.length > 1 ? 's' : ''} so files written on each clone are never committed`);
     // ours to undo, and only the lines we actually wrote
     recordExternal(`gitignore:${r.file}`,
       `remove these lines from ${r.file}: ${r.added.join(', ')} (and the comment above them)`);

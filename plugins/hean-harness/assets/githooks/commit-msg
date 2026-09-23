@@ -1,0 +1,20 @@
+#!/bin/sh
+#
+# Refuses a commit whose subject line does not carry a work item reference.
+# Installed by hean-harness setup when the repository has no .githooks/commit-msg.
+#
+# The plugin's commit-message-gate.mjs applies the same pattern to commits that
+# Claude Code runs. Change both together.
+
+subject=$(head -n 1 "$1")
+
+# @WORK-ID, an optional two-letter team suffix, one colon, one space, an
+# optional [Sonar] tag, then a capital letter.
+if ! printf '%s\n' "$subject" | grep -qE '^@[A-Z]+-[0-9]+(-[A-Z]{2})?:[[:space:]](\[Sonar\][[:space:]])?[A-Z](.*)$'; then
+  echo "ERROR: Commit subject must read '@WORK-ID: Capitalised summary'."
+  echo "  e.g. '@DEXRWO-3: Add field to Work Order layout'"
+  echo "       '@DEXRWO-3-UK: Add field to Work Order layout'   (team suffix)"
+  echo "       '@DEXRWO-3: [Sonar] Remove the unused variable'  (Sonar fix only)"
+  echo "  One colon, one space, and a capital letter to start the summary."
+  exit 1
+fi

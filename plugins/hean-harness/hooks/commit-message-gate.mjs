@@ -12,8 +12,13 @@
  *
  *   @ABC-123: Add the thing
  *   @ABC-123-UK: Add the thing        (a two-letter suffix, where a team uses one)
+ *   @ABC-123: [Sonar] Remove the thing (a Sonar fix, which the PR skills list apart)
  *
- * The work item reference, one colon, one space, then a capital letter.
+ * The work item reference, one colon, one space, an optional `[Sonar] ` tag,
+ * then a capital letter.
+ *
+ * assets/githooks/commit-msg repeats this pattern for commits typed outside
+ * Claude Code. Change both together.
  *
  * Only a message given on the command line can be checked. A commit that opens
  * an editor, reads a file with -F, or reuses a message with -C passes through
@@ -24,7 +29,7 @@
 
 import { readFileSync } from 'node:fs';
 
-export const SUBJECT = /^@[A-Z]+-[0-9]+(-[A-Z]{2})?:\s[A-Z](.*)$/;
+export const SUBJECT = /^@[A-Z]+-[0-9]+(-[A-Z]{2})?:\s(\[Sonar\]\s)?[A-Z](.*)$/;
 
 /**
  * Blank out anything that is text rather than a command, keeping every position.
@@ -124,7 +129,8 @@ const REASON = (subject) =>
   `Required shape:  @WORK-ID: Capitalised imperative summary\n` +
   `Pattern:         ${SUBJECT.source}\n\n` +
   `    @ABC-123: Add the work type dedupe check\n` +
-  `    @ABC-123-UK: Add the work type dedupe check      (with a team suffix)\n\n` +
+  `    @ABC-123-UK: Add the work type dedupe check      (with a team suffix)\n` +
+  `    @ABC-123: [Sonar] Remove the unused variable     (a Sonar fix)\n\n` +
   `Take the work item reference from the current branch name, prefix it with @, ` +
   `follow it with one colon and one space, and start the summary with a capital letter.`;
 

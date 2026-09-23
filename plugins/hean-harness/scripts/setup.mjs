@@ -42,6 +42,11 @@ const STEPS = [
   { name: 'Rule files',    script: 'install-rules.mjs',        wantsRepo: true },
   { name: 'Memories',      script: 'install-memories.mjs',       wantsRepo: true },
   { name: 'Status line',   script: 'install-statusline.mjs' },
+  { name: 'Git hooks',     script: 'install-githooks.mjs',     wantsRepo: true },
+  // After the hooks: npm install runs the repository's prepare script, which
+  // may need .githooks to exist. A failure here, such as a private registry the
+  // machine is not signed in to, must not stop the .gitignore step.
+  { name: 'Dependencies',  script: 'install-dependencies.mjs', wantsRepo: true, keepGoing: true },
   { name: 'Ignored paths', script: 'init-gitignore.mjs',       wantsRepo: true }
 ];
 

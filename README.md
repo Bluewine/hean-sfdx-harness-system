@@ -68,7 +68,7 @@ Run `/hean-harness:setup` again.
 
 Three things it leaves to you, with the exact command for each:
 
-- the `.gitignore` line it added
+- the `.gitignore` lines it added
 - anything in `.claude/skills/<skill-name>/output/`
 - the superpowers plugin and the Linear server
 

@@ -12,6 +12,7 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync,
          rmSync, readdirSync, rmdirSync, renameSync, statSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { basename, join } from 'node:path';
@@ -27,6 +28,7 @@ const REVERSIBLE = {
   'marker-block': 'Strip the marked block out of the file, leaving the rest untouched.',
   'json-key':     'Restore the previous value, or remove the key if it was absent before.',
   'dir-create':   'Remove the directory, but only if it is still empty.',
+  'git-config':   'Restore the previous value in the repository, or unset the key if it had none.',
   'external':     'Cannot be reversed automatically. Reported for manual action.'
 };
 
@@ -273,6 +275,17 @@ export function revert({ dryRun = false } = {}) {
             rmdirSync(c.target);
           } else if (existsSync(c.target) && readdirSync(c.target).length) {
             r.note = 'not empty; kept';
+          }
+          break;
+        case 'git-config':
+          r.action = c.existedBefore ? `set ${c.key} back to ${c.previousValue}` : `unset ${c.key}`;
+          if (!dryRun) {
+            if (!existsSync(c.target)) { r.note = 'repository is gone'; break; }
+            // --unset exits 5 when the key is already gone, which is the state we want
+            try {
+              execFileSync('git', ['-C', c.target, 'config',
+                ...(c.existedBefore ? [c.key, c.previousValue] : ['--unset', c.key])], { stdio: 'ignore' });
+            } catch (e) { if (c.existedBefore || e.status !== 5) throw e; }
           }
           break;
         case 'external':

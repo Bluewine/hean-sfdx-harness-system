@@ -106,8 +106,11 @@ function main() {
     const pending = [];
     if (!sp.ok) pending.push('the superpowers plugin');
     if (!checks.find(c => c.name === 'Linear').result.ok) pending.push('a Linear MCP server');
+    const nm = checks.find(c => c.name === 'node modules').result;
+    if (!nm.ok && !nm.skipped) pending.push('the npm packages');
     if (pending.length) {
-      log(`Setup installs ${pending.join(' and ')} when it runs for real.`);
+      const list = pending.length > 1 ? `${pending.slice(0, -1).join(', ')} and ${pending.at(-1)}` : pending[0];
+      log(`Setup installs ${list} when it runs for real.`);
       log('');
     }
     log(missing === 0
@@ -133,7 +136,8 @@ function main() {
   }
 
   const manual = checks.filter(c => !c.result.ok && !c.result.skipped
-                                    && c.name !== 'superpowers' && c.name !== 'Linear');
+                                    && c.name !== 'superpowers' && c.name !== 'Linear'
+                                    && c.name !== 'node modules');
   if (manual.length) {
     log('These are not installed automatically, because they need administrator rights or');
     log('depend on your setup. Run them yourself:');

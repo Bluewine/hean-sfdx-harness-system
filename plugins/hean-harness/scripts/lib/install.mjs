@@ -7,6 +7,7 @@
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { dirname, relative, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -113,6 +114,27 @@ export function installJsonKey(file, key, value) {
   writeFileSync(file, JSON.stringify(json, null, 2) + '\n');
 
   return { existed, hadKey: had, previous };
+}
+
+/** Read one key from a repository's git config, or undefined when it is unset. */
+export function getGitConfig(repo, key) {
+  try {
+    return execFileSync('git', ['-C', repo, 'config', '--get', key],
+                        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch { return undefined; }
+}
+
+/**
+ * Set one key in a repository's git config, remembering what was there before.
+ * Uninstall puts the old value back, or unsets the key when it had none.
+ */
+export function installGitConfig(repo, key, value) {
+  const previous = getGitConfig(repo, key);
+  // Recorded before the write, as above.
+  record({ type: 'git-config', target: repo, key, value,
+           existedBefore: previous !== undefined, previousValue: previous });
+  execFileSync('git', ['-C', repo, 'config', key, value], { stdio: 'ignore' });
+  return { previous };
 }
 
 /**

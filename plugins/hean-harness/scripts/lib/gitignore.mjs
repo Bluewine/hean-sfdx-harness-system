@@ -1,12 +1,19 @@
 #!/usr/bin/env node
 /**
- * Keeps each skill's output out of git.
+ * Keeps each skill's output, the git hook setup installs, and the MCP server
+ * file setup writes out of git.
  *
  * A skill that writes a file writes it to .claude/skills/<skill-name>/output/,
  * so one pattern covers every skill, including skills added later. What lands
  * there — a rendered pull request body, a report, a screenshot — belongs to one
  * run on one clone and would collide on any other, so it is ignored rather than
  * shared.
+ *
+ * The .githooks folder is installed by setup on each clone, so a branch that
+ * deletes it from the repository cannot take the hook away again.
+ *
+ * .mcp.json holds the Linear server setup adds. Each person signs in to that
+ * server on their own machine, so the file is written per clone, not shared.
  */
 
 import { readFileSync, existsSync, appendFileSync } from 'node:fs';
@@ -14,9 +21,9 @@ import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';
 
-export const IGNORE_LINES = ['.claude/skills/*/output/'];
+export const IGNORE_LINES = ['.claude/skills/*/output/', '.githooks/', '.mcp.json'];
 
-export const COMMENT = '# hean-harness: skill output, one run on one clone, not shared';
+export const COMMENT = '# hean-harness: installed or written on each clone, not shared';
 
 export function repoRoot(start = process.cwd()) {
   try {

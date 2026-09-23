@@ -1,15 +1,23 @@
 #!/usr/bin/env node
 /**
  * What the commit message gate must let through, and what it must stop.
+ * Also checks that the git hook setup installs accepts and refuses the same
+ * subjects, since the two carry the pattern separately.
  *
  * Run: node hooks/__tests__/commit-message-gate.test.mjs
  */
 
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-const HOOK = join(dirname(dirname(fileURLToPath(import.meta.url))), 'commit-message-gate.mjs');
+import { SUBJECT } from '../commit-message-gate.mjs';
+
+const HOOKS = dirname(dirname(fileURLToPath(import.meta.url)));
+const HOOK = join(HOOKS, 'commit-message-gate.mjs');
+const GIT_HOOK = join(dirname(HOOKS), 'assets', 'githooks', 'commit-msg');
 
 /** Run the hook exactly as Claude Code does, and say whether it denied. */
 function denied(command) {
@@ -25,6 +33,8 @@ const ALLOW = [
   ['plain, correct',            `git commit -m "@ABC-123: Add the dedupe check"`],
   ['two-letter suffix',         `git commit -m "@ABC-123-UK: Add the dedupe check"`],
   ['long numeric id',           `git commit -m "@W-22028215: Fix the null territory"`],
+  ['Sonar tag',                 `git commit -m "@ABC-123: [Sonar] Remove the unused variable"`],
+  ['Sonar tag with suffix',     `git commit -m "@ABC-123-UK: [Sonar] Remove the unused variable"`],
   ['single quotes',             `git commit -m '@ABC-1: Update the layout'`],
   ['--message',                 `git commit --message "@ABC-1: Update the layout"`],
   ['--message=',                `git commit --message="@ABC-1: Update the layout"`],
@@ -58,6 +68,9 @@ const DENY = [
   ['no number',                 `git commit -m "@ABC: Add the dedupe check"`],
   ['empty subject',             `git commit -m ""`],
   ['a tag before the id',       `git commit -m "[Sonar] @ABC-123: Add the check"`],
+  ['Sonar tag, lowercase',      `git commit -m "@ABC-123: [Sonar] remove the variable"`],
+  ['Sonar tag, no space after', `git commit -m "@ABC-123: [Sonar]Remove the variable"`],
+  ['lowercase Sonar tag',       `git commit -m "@ABC-123: [sonar] Remove the variable"`],
   ['bad subject, good body',    `git commit -m "add the check\n\n@ABC-123: Add the check"`],
   ['bundled -am, bad subject',  `git commit -am "add the dedupe check"`],
   ['second command is bad',     `git add -A && git commit -m "wip"`],
@@ -77,6 +90,36 @@ console.log('Allowed');
 for (const [label, cmd] of ALLOW) check(label, false, cmd);
 console.log('Denied');
 for (const [label, cmd] of DENY) check(label, true, cmd);
+
+// The git hook reads the message from a file. The subject is its first line.
+const SUBJECTS = [
+  '@ABC-123: Add the dedupe check',
+  '@ABC-123-UK: Add the dedupe check',
+  '@ABC-123: [Sonar] Remove the unused variable',
+  'Add the dedupe check',
+  '@ABC-123: add the dedupe check',
+  '@ABC-123:Add the dedupe check',
+  '@ABC-123-UKX: Add the dedupe check',
+  '[Sonar] @ABC-123: Add the check',
+  '@ABC-123: [Sonar] remove the variable',
+  '@ABC-123: [sonar] Remove the variable',
+  'add the check\n\n@ABC-123: Add the check'
+];
+console.log('Git hook matches the gate');
+const dir = mkdtempSync(join(tmpdir(), 'hean-commit-msg-'));
+try {
+  for (const msg of SUBJECTS) {
+    const file = join(dir, 'COMMIT_EDITMSG');
+    writeFileSync(file, msg + '\n');
+    const hookDenied = spawnSync('sh', [GIT_HOOK, file], { stdio: 'ignore' }).status !== 0;
+    const gateDenied = !SUBJECT.test(msg.split('\n')[0]);
+    const ok = hookDenied === gateDenied;
+    ok ? pass++ : fail++;
+    if (!ok) console.log(`  FAIL  ${JSON.stringify(msg)}\n        gate ${gateDenied ? 'denies' : 'allows'}, git hook ${hookDenied ? 'denies' : 'allows'}`);
+  }
+} finally {
+  rmSync(dir, { recursive: true, force: true });
+}
 
 console.log(`\n  ${pass} passed, ${fail} failed, ${pass + fail} total`);
 process.exit(fail ? 1 : 0);

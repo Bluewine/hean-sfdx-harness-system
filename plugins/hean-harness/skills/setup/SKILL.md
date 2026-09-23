@@ -33,6 +33,11 @@ Install the environment. Show the user what will change before changing it.
    - whether the superpowers plugin was installed. When it was, say that a restart of Claude Code
      is needed before it can be used, because a plugin's skills and hooks are read when a session
      starts. Nothing in the running session picks it up.
+   - whether the git hooks step added `.githooks/commit-msg` and set `core.hooksPath` to `.githooks`,
+     or found them already in place. When the step says `core.hooksPath` points elsewhere, repeat the
+     command it printed.
+   - whether `npm install` ran, was skipped because `node_modules` was already there or the
+     repository has no `package.json`, or failed. When it failed, quote the reason the step printed.
    - whether a Linear MCP server was added, or one was already there. When one was added, say that
      it still has to be signed in to, with `/mcp` in a session, and that no script can do that part.
      When one was already there, name it and say nothing was changed.
@@ -43,9 +48,11 @@ Install the environment. Show the user what will change before changing it.
    add to their shell startup file if they would rather type just `claude` in future. Show the
    command in full. Do not write their startup file yourself.
 
-6. The last step adds one line to the repository's `.gitignore` so that skill output —
-   `.claude/skills/<skill-name>/output/` — is never committed. Name the line in the report. When
-   the step says the line was already there, say so rather than implying it was written again.
+6. The last step adds three lines to the repository's `.gitignore`: `.claude/skills/*/output/`,
+   so skill output is never committed; `.githooks/`, so the hook setup installs is never
+   committed; and `.mcp.json`, so the Linear server setup adds is never committed. Name each line
+   in the report. When the step says a line was already there, say so
+   rather than implying it was written again.
 
 ## Rules
 

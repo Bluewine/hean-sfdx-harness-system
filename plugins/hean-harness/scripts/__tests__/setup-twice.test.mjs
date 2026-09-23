@@ -11,7 +11,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
@@ -53,6 +53,20 @@ try {
         JSON.stringify(jsonKey?.previousValue) === JSON.stringify(MY_STATUSLINE),
         JSON.stringify(jsonKey?.previousValue));
 
+  const hook = join(repo, '.githooks', 'commit-msg');
+  const hooksPath = () => {
+    try { return execFileSync('git', ['-C', repo, 'config', '--get', 'core.hooksPath'], { encoding: 'utf8' }).trim(); }
+    catch { return undefined; }
+  };
+  check('the commit-msg hook is installed and executable',
+        existsSync(hook) && (statSync(hook).mode & 0o111) !== 0);
+  check('core.hooksPath points at the hook folder', hooksPath() === '.githooks', String(hooksPath()));
+  check('the hook folder is ignored',
+        readFileSync(join(repo, '.gitignore'), 'utf8').split('\n').includes('.githooks/'));
+  check('the MCP server file is ignored',
+        readFileSync(join(repo, '.gitignore'), 'utf8').split('\n').includes('.mcp.json'));
+  check('no npm install without a package.json', !existsSync(join(repo, 'node_modules')));
+
   const revert = JSON.parse(run('lib/manifest.mjs', ['revert']));
   check('every recorded change reverses', revert.every(c => c.ok),
         `${revert.filter(c => c.ok).length}/${revert.length}`);
@@ -64,6 +78,8 @@ try {
   check('their other settings are untouched', settings.theme === 'dark');
   check('the shell profile comes back byte for byte',
         readFileSync(join(home, '.zshrc'), 'utf8') === MY_ZSHRC);
+  check('the hook folder is removed', !existsSync(join(repo, '.githooks')));
+  check('core.hooksPath is unset again', hooksPath() === undefined, String(hooksPath()));
   check('nothing of the plugin is left in the home directory',
         !existsSync(join(home, '.claude', 'hean-harness', 'install-manifest.json')));
 } finally {

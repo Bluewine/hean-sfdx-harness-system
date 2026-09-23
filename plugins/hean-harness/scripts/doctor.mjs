@@ -22,6 +22,7 @@ import { allChecks, reportChecks, currentRepo } from './lib/environment.mjs';
 import { claudeCommand } from './lib/shell.mjs';
 import { repoRoot, missingLines, IGNORE_LINES } from './lib/gitignore.mjs';
 import { STATE_DIR } from './lib/manifest.mjs';
+import { getGitConfig } from './lib/install.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN_ROOT = dirname(HERE);
@@ -57,6 +58,12 @@ function checkChange(c) {
     }
     case 'dir-create':
       return existsSync(c.target) ? { state: 'ok' } : { state: 'missing', note: 'the folder is gone' };
+    case 'git-config': {
+      if (!existsSync(c.target)) return { state: 'missing', note: 'the repository is gone' };
+      const now = getGitConfig(c.target, c.key);
+      return now === c.value ? { state: 'ok' }
+        : { state: 'changed', note: `${c.key} is ${now ?? 'unset'}, setup set ${c.value}` };
+    }
     case 'external':
       return { state: 'external', note: c.undoHint };
     default:
@@ -109,7 +116,7 @@ function main() {
     log('');
   }
 
-  // skill output must stay out of git
+  // files setup writes on each clone must stay out of git
   const repo = currentRepo() ?? repoRoot();
   const gi = missingLines(repo);
   log('Ignored paths');
@@ -118,7 +125,7 @@ function main() {
   }
   log(`  ${short(gi.file)}`);
   if (gi.missing.length) {
-    log('  Skill output would be committed. Run the setup skill again to add the missing lines.');
+    log('  A file written on each clone would be committed. Run the setup skill again to add the missing lines.');
   }
   log('');
 
