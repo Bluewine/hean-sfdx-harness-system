@@ -32,17 +32,6 @@
           }
         ]
       }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/result-marker-gate.mjs\"",
-            "timeout": 10
-          }
-        ]
-      }
     ]
   }
 }
