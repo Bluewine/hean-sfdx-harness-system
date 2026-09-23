@@ -38,10 +38,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
-import { basename, dirname } from 'node:path';
-
-import { commandsIn, folder } from '../scripts/lib/command-line.mjs';
+import { gitCommands, repoOf } from '../scripts/lib/command-line.mjs';
 
 export const SUBJECT = /^@[A-Z]+-[0-9]+(-[A-Z]{2})?:\s(\[Sonar\]\s)?[A-Z](.*)$/;
 
@@ -64,9 +61,6 @@ export function messageOf(argv) {
   return null;
 }
 
-// git's own options that come before the subcommand and take the next word as a value
-const GIT_VALUE_OPTS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env', '--exec-path', '--super-prefix']);
-
 /**
  * Every command-line commit in this script, with where it commits.
  *
@@ -76,26 +70,10 @@ const GIT_VALUE_OPTS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--names
  */
 export function commits(cmd, cwd) {
   const found = [];
-  for (const { words: w, env, dir } of commandsIn(cmd, cwd)) {
-    if (w[0] !== 'git' && basename(w[0]) !== 'git') continue;
-
-    let here = dir;
-    let gitDir = env.GIT_DIR !== undefined ? folder(env.GIT_DIR, dir) : undefined;
-    let workTree = env.GIT_WORK_TREE !== undefined ? folder(env.GIT_WORK_TREE, dir) : undefined;
-    let j = 1;
-    for (; j < w.length; j++) {
-      const a = w[j];
-      if (!a.startsWith('-')) break;
-      const eq = a.indexOf('=');
-      const name = eq > 0 ? a.slice(0, eq) : a;
-      const value = eq > 0 ? a.slice(eq + 1) : (GIT_VALUE_OPTS.has(a) ? w[++j] : undefined);
-      if (name === '-C') here = folder(value, here);
-      else if (name === '--git-dir') gitDir = folder(value, here);
-      else if (name === '--work-tree') workTree = folder(value, here);
-    }
-    if (w[j] !== 'commit') continue;
-    const message = messageOf(w.slice(j + 1));
-    if (message !== null) found.push({ message, dir: here, gitDir, workTree });
+  for (const { sub, args, dir, gitDir, workTree } of gitCommands(cmd, cwd)) {
+    if (sub !== 'commit') continue;
+    const message = messageOf(args);
+    if (message !== null) found.push({ message, dir, gitDir, workTree });
   }
   return found;
 }
@@ -103,18 +81,6 @@ export function commits(cmd, cwd) {
 /** Every command-line commit message in this script, in the order they run. */
 export function commitMessages(cmd) {
   return commits(cmd, process.cwd()).map(c => c.message);
-}
-
-/**
- * The top of the repository a commit goes to, or null when there is none.
- * --work-tree wins, then --git-dir, then the folder the commit runs in.
- */
-function repoOf(c, sessionCwd) {
-  const start = c.workTree ?? (c.gitDir && basename(c.gitDir) === '.git' ? dirname(c.gitDir) : null) ?? c.dir ?? sessionCwd;
-  try {
-    return execFileSync('git', ['-C', start, 'rev-parse', '--show-toplevel'],
-                        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-  } catch { return null; }
 }
 
 const REASON = (subject, repo) =>

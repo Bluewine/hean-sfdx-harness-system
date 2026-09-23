@@ -2,12 +2,14 @@
  * Reads a Bash tool call's command text the way the shell would split it, so
  * the hooks can find the commands in it and the folder each one runs in.
  *
- * Shared by the commit message gate and the org write gate. Both need the same
- * answer to "which command runs where", and two copies of a parser drift.
+ * Shared by the commit message gate, the commit approval gate and the org write
+ * gate. All need the same answer to "which command runs where", and copies of a
+ * parser drift.
  */
 
+import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
-import { isAbsolute, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 
 /**
  * Split a shell command into its simple commands, each a list of words.
@@ -103,4 +105,51 @@ export function* commandsIn(script, cwd) {
     if (w[0] === 'popd') { dir = null; continue; }
     yield { words: w, env, dir };
   }
+}
+
+// git's own options that come before the subcommand and take the next word as a value
+const GIT_VALUE_OPTS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env', '--exec-path', '--super-prefix']);
+
+/**
+ * Every git command in the script, with where it runs.
+ *
+ * Yields { sub, args, dir, gitDir, workTree }: the subcommand, the words after
+ * it, and the folder the command acts on. dir follows a `cd` earlier in the
+ * script and `git -C`; it is null when the text cannot say which folder.
+ * gitDir and workTree come from --git-dir, --work-tree, GIT_DIR and
+ * GIT_WORK_TREE, and are undefined when none is given.
+ */
+export function* gitCommands(script, cwd) {
+  for (const { words: w, env, dir } of commandsIn(script, cwd)) {
+    if (w[0] !== 'git' && basename(w[0]) !== 'git') continue;
+    let here = dir;
+    let gitDir = env.GIT_DIR !== undefined ? folder(env.GIT_DIR, dir) : undefined;
+    let workTree = env.GIT_WORK_TREE !== undefined ? folder(env.GIT_WORK_TREE, dir) : undefined;
+    let j = 1;
+    for (; j < w.length; j++) {
+      const a = w[j];
+      if (!a.startsWith('-')) break;
+      const eq = a.indexOf('=');
+      const name = eq > 0 ? a.slice(0, eq) : a;
+      const value = eq > 0 ? a.slice(eq + 1) : (GIT_VALUE_OPTS.has(a) ? w[++j] : undefined);
+      if (name === '-C') here = folder(value, here);
+      else if (name === '--git-dir') gitDir = folder(value, here);
+      else if (name === '--work-tree') workTree = folder(value, here);
+    }
+    if (w[j] === undefined) continue;
+    yield { sub: w[j], args: w.slice(j + 1), dir: here, gitDir, workTree };
+  }
+}
+
+/**
+ * The top of the repository a git command acts on, or null when there is none.
+ * --work-tree wins, then --git-dir, then the folder the command runs in, then
+ * the session's working folder.
+ */
+export function repoOf(c, sessionCwd) {
+  const start = c.workTree ?? (c.gitDir && basename(c.gitDir) === '.git' ? dirname(c.gitDir) : null) ?? c.dir ?? sessionCwd;
+  try {
+    return execFileSync('git', ['-C', start, 'rev-parse', '--show-toplevel'],
+                        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch { return null; }
 }
