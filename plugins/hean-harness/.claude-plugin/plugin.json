@@ -1,6 +1,6 @@
 {
   "name": "hean-harness",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Bootstraps a proven Claude Code working environment into any Salesforce SFDX repository: enforced rules, agents, skills, memories, hooks, and status line.",
   "author": {
     "name": "Daniel Min"
