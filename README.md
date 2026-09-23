@@ -51,6 +51,24 @@ checked against the role saved for the target org.
 - `.claude/rules/org-roles.md` tells agents how to find each org's role from the CI files, and that
   pipeline orgs lagging behind the development org is expected.
 
+## Commit approval
+
+Agents in Claude Code do not commit on their own. A `git commit` is allowed only:
+
+- in a turn where you typed `/hean-harness:commit`, after reviewing the uncommitted changes. The
+  model cannot start that skill, and the approval ends with your next message;
+- inside `/hean-harness:uat-hotfix` or `/hean-harness:version-bump`, whose commits are their job;
+- inside an implementation run whose answers allow it.
+
+Before implementation starts, the agent asks two questions: the development mode (subagent-driven
+or main session) and whether to commit per task.
+
+- **Commit per task:** each task is committed, and the commits stay.
+- **No commits, main session:** every commit is refused.
+- **No commits, subagent-driven:** each task commits, because its review reads the commits.
+  `/hean-harness:finish-implementation` then undoes them back to where the run started and leaves
+  every change unstaged. Push and `git reset --hard` are refused until that happens.
+
 ## What setup leaves to you
 
 - **A JDK 11 or newer.** Installing one needs administrator rights. Setup reports whether a real one
