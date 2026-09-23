@@ -20,36 +20,28 @@
  * there, leaves core.hooksPath to the repository, and ignores --replace-githook.
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, chmodSync, realpathSync } from 'node:fs';
+import { readFileSync, existsSync, chmodSync, realpathSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { load, revert, category, init } from './manifest.mjs';
 import { installDir, installFile, installGitConfig, getGitConfig } from './install.mjs';
 import { repoTracksHooks } from './gitignore.mjs';
+import { settingsFile, readSettings, writeSetting } from './settings.mjs';
+
+export { settingsFile };
 
 const PLUGIN_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 export const HOOK_SOURCE = join(PLUGIN_ROOT, 'assets', 'githooks', 'commit-msg');
 export const HOOKS_DIR = '.githooks';
 
-export const settingsFile = repo => join(repo, '.claude', 'hean-harness.json');
-
 /** 'on', 'off', or null when setup has not asked in this repository. */
 export function readChoice(repo) {
-  try {
-    const v = JSON.parse(readFileSync(settingsFile(repo), 'utf8')).commitFormat;
-    return v === 'on' || v === 'off' ? v : null;
-  } catch { return null; }
+  const v = readSettings(repo).commitFormat;
+  return v === 'on' || v === 'off' ? v : null;
 }
 
-export function writeChoice(repo, value) {
-  const file = settingsFile(repo);
-  let json = {};
-  try { json = JSON.parse(readFileSync(file, 'utf8')); } catch { /* new file */ }
-  json.commitFormat = value;
-  mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify(json, null, 2) + '\n');
-}
+export const writeChoice = (repo, value) => writeSetting(repo, 'commitFormat', value);
 
 /**
  * A path with symlinks resolved, including for a file that no longer exists:
