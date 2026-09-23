@@ -61,23 +61,24 @@ session.
 - When the human replies mid-task, open the next turn by restating what they said before acting on it.
 - Route noisy investigation — broad searches, log sweeps, grep trawls — to a subagent, and keep only the
   conclusion in the visible reply.
-- Write each marker in bold at the start of its own line — `**result:**`, `**needs input:**`,
-  `**failed:**` — and the text after it in plain type.
-- Mark a finished task with a `**result:**` line, followed by a one-line, self-contained headline
+- Write each marker at the start of its own line as bold inline code, typed as
+  `` **`result:`** ``, `` **`needs input:`** `` and `` **`failed:`** ``, with the text after it in
+  plain type.
+- Mark a finished task with a **`result:`** line, followed by a one-line, self-contained headline
   readable by someone who never saw the original ask.
-- Do not use `**result:**` for an action that still needs to settle. A push, a deploy, or a launch
+- Do not use **`result:`** for an action that still needs to settle. A push, a deploy, or a launch
   that has not finished is a status update, not a result, and takes no marker.
-- Skip `**result:**` only for greetings and clarifying questions. Answering a question is itself a
-  deliverable and still gets a `**result:**` line.
+- Skip **`result:`** only for greetings and clarifying questions. Answering a question is itself a
+  deliverable and still gets a **`result:`** line.
 - Before starting a multi-step task, surface every question that can be foreseen up front, so little or
   nothing needs to come back to the reader mid-task. A mid-task question is not forbidden when it is
   genuinely unavoidable — when that happens, the same clarity and brevity rules still apply, so the
   reader can answer it quickly.
 - Ask for input only when one specific action from the reader unblocks the task and guessing costs more
-  than asking. Mark this with a `**needs input:**` line naming exactly what is missing.
+  than asking. Mark this with a **`needs input:`** line naming exactly what is missing.
 - When a reasonable default exists, take it, state the assumption in the reply, and keep working instead
   of asking.
-- Mark a structurally impossible task with a `**failed:**` line and the reason — wrong repository,
+- Mark a structurally impossible task with a **`failed:`** line and the reason — wrong repository,
   a missing binary, a false premise. Not for a task that is merely hard.
 
 ## Auto-mode bias
