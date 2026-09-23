@@ -6,7 +6,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { writeFileSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -89,6 +89,22 @@ const jobDir = join(work, 'job-shared');
 check('first stop of a turn is held',        true,  'no marker', { promptId: 'p1', jobDir });
 check('second stop of the same turn passes', false, 'no marker, still', { promptId: 'p1', jobDir });
 check('the next turn is held again',         true,  'no marker', { promptId: 'p2', jobDir });
+
+// A turn that ends with background work still running is a status update.
+console.log('Background work in flight');
+const withState = (name, inFlight) => {
+  const dir = join(work, name);
+  mkdirSync(dir, { recursive: true });
+  if (inFlight !== undefined) writeFileSync(join(dir, 'state.json'), JSON.stringify({ inFlight }));
+  return dir;
+};
+const STATUS = 'Build still running; will report when it finishes.';
+check('a background task is running',       false, STATUS, { jobDir: withState('run', { tasks: 1, queued: 0, kinds: ['local_bash'] }) });
+check('a background task is queued',        false, STATUS, { jobDir: withState('queue', { tasks: 0, queued: 1, kinds: [] }) });
+check('a monitor is still draining',        false, STATUS, { jobDir: withState('mon', { tasks: 0, queued: 0, drainableMonitors: 1 }) });
+check('nothing in flight',                  true,  STATUS, { jobDir: withState('idle', { tasks: 0, queued: 0, kinds: [] }) });
+check('no state file',                      true,  STATUS, { jobDir: withState('none') });
+check('state file with another shape',      true,  STATUS, { jobDir: withState('odd', 'running') });
 
 console.log(`\n  ${pass} passed, ${fail} failed, ${pass + fail} total`);
 rmSync(work, { recursive: true, force: true });

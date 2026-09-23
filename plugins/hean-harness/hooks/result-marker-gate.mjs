@@ -11,6 +11,10 @@
  * Wording in a rule file can be missed. This cannot, so the marker lives here
  * and the wording lives beside it as the explanation.
  *
+ * A turn that ends while the session still has background work running — a
+ * command, a monitor, a poll on a build — is a status update, not a finished
+ * task, and needs no marker. The hook stays silent then.
+ *
  * Reads the Stop hook payload on standard input. Either blocks once with a
  * reason, or says nothing.
  */
@@ -63,6 +67,21 @@ export function replyText(payload) {
 }
 
 /**
+ * Is background work of this session still running?
+ *
+ * Claude Code keeps a count of the job's running and queued background tasks
+ * in state.json under the job directory. That file is not a stable interface:
+ * when it is missing or unreadable, or its shape changes, this says no, and the
+ * hook falls back to blocking once rather than going silent.
+ */
+export function workInFlight(jobDir) {
+  try {
+    const f = JSON.parse(readFileSync(join(jobDir, 'state.json'), 'utf8'))?.inFlight;
+    return [f?.tasks, f?.queued, f?.drainableMonitors].some(n => Number(n) > 0);
+  } catch { return false; }
+}
+
+/**
  * Block at most once per turn.
  *
  * A hook that blocks every time turns a missing marker into a session that
@@ -107,6 +126,8 @@ if (isMain) {
   const text = replyText(payload);
   // nothing said this turn, or a marker already there
   if (!text || !text.trim() || hasMarker(text)) process.exit(0);
+  // work still running: this turn is a status update
+  if (workInFlight(process.env.CLAUDE_JOB_DIR)) process.exit(0);
   if (alreadyBlocked(payload)) process.exit(0);
 
   process.stdout.write(JSON.stringify({ decision: 'block', reason: REASON }));
