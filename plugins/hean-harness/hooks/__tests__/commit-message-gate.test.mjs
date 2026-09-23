@@ -111,6 +111,23 @@ check('format switched off', false, BAD, OFF);
 check('setup never asked here', false, BAD, NONE);
 check('not a repository', false, BAD, NOT_A_REPO);
 check('format switched on', true, BAD, ON);
+
+// The repository checked is the one the commit goes to, not the session's folder.
+console.log('Target repository');
+const B = `commit -m "Add the dedupe check"`;
+check('cd into an unenrolled repo',        false, `cd ${NONE} && git ${B}`, ON);
+check('cd into an enrolled repo',          true,  `cd ${ON} && git ${B}`, NONE);
+check('relative cd',                       true,  `cd ../on && git ${B}`, NONE);
+check('git -C an enrolled repo',           true,  `git -C ${ON} ${B}`, NONE);
+check('git -C an unenrolled repo',         false, `git -C ${NONE} ${B}`, ON);
+check('git -C twice, relative',            true,  `git -C ${sandbox} -C on ${B}`, NONE);
+check('git -c before commit',              true,  `git -c user.name=x ${B}`, ON);
+check('--git-dir of an enrolled repo',     true,  `git --git-dir=${ON}/.git ${B}`, NONE);
+check('--work-tree of an unenrolled repo', false, `git --work-tree=${NONE} --git-dir=${NONE}/.git ${B}`, ON);
+check('cd inside a subshell ends there',   true,  `(cd ${NONE} && git status) && git ${B}`, ON);
+check('cd to a variable falls back',       true,  `cd "$X" && git ${B}`, ON);
+check('two commits, second is enrolled',   true,  `git -C ${NONE} ${B} && git -C ${ON} ${B}`, OFF);
+check('good subject in an enrolled repo',  false, `cd ${ON} && git commit -m "@ABC-1: Update the layout"`, NONE);
 rmSync(sandbox, { recursive: true, force: true });
 rmSync(NOT_A_REPO, { recursive: true, force: true });
 

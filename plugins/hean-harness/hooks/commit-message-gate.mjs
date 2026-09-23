@@ -25,6 +25,11 @@
  * With no saved choice, which includes every repository setup never ran in, the
  * gate lets every subject through.
  *
+ * The repository checked is the one each commit goes to, not the session's
+ * working folder: a `cd` earlier in the same command, `git -C`, `--git-dir` and
+ * `--work-tree` are followed. A folder the text cannot name — a variable, a
+ * command substitution — falls back to the session's working folder.
+ *
  * Only a message given on the command line can be checked. A commit that opens
  * an editor, reads a file with -F, or reuses a message with -C passes through
  * untouched, because there is nothing here to read.
@@ -34,52 +39,30 @@
 
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { homedir } from 'node:os';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 
 export const SUBJECT = /^@[A-Z]+-[0-9]+(-[A-Z]{2})?:\s(\[Sonar\]\s)?[A-Z](.*)$/;
 
 /**
- * Blank out anything that is text rather than a command, keeping every position.
+ * Split a shell command into its simple commands, each a list of words.
  *
- * Used only to find where a real `git commit` starts. A script that prints the
- * words "git commit" in a message is not committing anything, and the message
- * itself is read from the original text at the position this copy reports.
+ * Quotes are removed and their contents kept whole, so `-m "two words"` is one
+ * word. Outside quotes, ; & | and a newline end a command, a # at the start of a
+ * word starts a comment, ( at the start of a word opens a subshell and ) closes
+ * one, reported as their own entries so a `cd` inside one can be undone.
+ * A $( ... ) substitution stays inside the word it belongs to.
  */
-export function blankOutText(source) {
-  let out = '';
-  let quote = null;
-  let inComment = false;
-  for (let i = 0; i < source.length; i++) {
-    const c = source[i];
-    if (inComment) { out += c === '\n' ? (inComment = false, c) : ' '; continue; }
-    if (quote) {
-      if (quote === '"' && c === '\\') { out += '  '; i++; continue; }
-      if (c === quote) quote = null;
-      out += c === '\n' ? c : ' ';
-      continue;
-    }
-    if (c === '\\') { out += ' '; if (source[i + 1] !== undefined) { out += ' '; i++; } continue; }
-    if (c === '"' || c === "'") { quote = c; out += ' '; continue; }
-    if (c === '#' && (i === 0 || /\s/.test(source[i - 1]))) { inComment = true; out += ' '; continue; }
-    out += c;
-  }
-  return out;
-}
-
-/**
- * Split one command into its words, from `start` up to whatever ends it.
- *
- * Quotes are removed and their contents kept whole, so `-m "two words"` gives
- * one word. A separator inside quotes does not end the command; outside them,
- * any of ; && || | or a newline does.
- */
-export function words(source, start = 0) {
+export function simpleCommands(source) {
   const out = [];
+  let cmd = [];
   let cur = '';
   let started = false;
   let quote = null;
-  const push = () => { if (started) { out.push(cur); cur = ''; started = false; } };
+  const pushWord = () => { if (started) { cmd.push(cur); cur = ''; started = false; } };
+  const pushCmd = () => { pushWord(); if (cmd.length) out.push(cmd); cmd = []; };
 
-  for (let i = start; i < source.length; i++) {
+  for (let i = 0; i < source.length; i++) {
     const c = source[i];
     if (quote) {
       if (quote === '"' && c === '\\' && source[i + 1] !== undefined) { cur += source[++i]; continue; }
@@ -88,12 +71,27 @@ export function words(source, start = 0) {
       continue;
     }
     if (c === '"' || c === "'") { quote = c; started = true; continue; }
-    if (c === '\\' && source[i + 1] !== undefined) { cur += source[++i]; started = true; continue; }
-    if (c === '\n' || c === ';' || c === '|' || c === '&') { push(); break; }
-    if (/\s/.test(c)) { push(); continue; }
+    if (c === '\\' && source[i + 1] !== undefined) {
+      if (source[i + 1] === '\n') { i++; continue; }   // line continuation
+      cur += source[++i]; started = true; continue;
+    }
+    if (c === '$' && source[i + 1] === '(') {
+      let depth = 0;
+      for (; i < source.length; i++) {
+        cur += source[i];
+        if (source[i] === '(') depth++;
+        else if (source[i] === ')' && --depth === 0) break;
+      }
+      started = true;
+      continue;
+    }
+    if (c === '#' && !started) { while (i < source.length && source[i] !== '\n') i++; pushCmd(); continue; }
+    if ((c === '(' && !started) || c === ')') { pushCmd(); out.push([c]); continue; }
+    if (c === '\n' || c === ';' || c === '|' || c === '&') { pushCmd(); continue; }
+    if (/\s/.test(c)) { pushWord(); continue; }
     cur += c; started = true;
   }
-  push();
+  pushCmd();
   return out;
 }
 
@@ -116,22 +114,92 @@ export function messageOf(argv) {
   return null;
 }
 
-/** Every command-line commit message in this script, in the order they run. */
-export function commitMessages(cmd) {
-  const blanked = blankOutText(cmd);
+// git's own options that come before the subcommand and take the next word as a value
+const GIT_VALUE_OPTS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env', '--exec-path', '--super-prefix']);
+
+/** A folder named in the command, or null when the text cannot say which. */
+function folder(word, base) {
+  if (word === undefined || base === null) return null;
+  if (/[$`*?]/.test(word)) return null;
+  if (word === '~' || word.startsWith('~/')) return join(homedir(), word.slice(1));
+  return isAbsolute(word) ? word : resolve(base, word);
+}
+
+/**
+ * Every command-line commit in this script, with where it commits.
+ *
+ * Each entry is { message, dir, gitDir, workTree }. dir is the folder the commit
+ * runs in, or null when a `cd` earlier in the script names a folder the text
+ * cannot resolve; the caller then falls back to the session's working folder.
+ */
+export function commits(cmd, cwd) {
   const found = [];
-  const re = /\bgit\s+commit\b/g;
-  let m;
-  while ((m = re.exec(blanked)) !== null) {
-    const msg = messageOf(words(cmd, m.index));
-    if (msg !== null) found.push(msg);
+  let dir = cwd;
+  const stack = [];
+  for (const words of simpleCommands(cmd)) {
+    if (words[0] === '(') { stack.push(dir); continue; }
+    if (words[0] === ')') { if (stack.length) dir = stack.pop(); continue; }
+
+    // leading NAME=value assignments apply to this command only
+    let i = 0;
+    const env = {};
+    while (i < words.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i])) {
+      const eq = words[i].indexOf('=');
+      env[words[i].slice(0, eq)] = words[i].slice(eq + 1);
+      i++;
+    }
+    const w = words.slice(i);
+    if (!w.length) continue;
+
+    if (w[0] === 'cd' || w[0] === 'pushd') {
+      dir = w[1] === undefined ? homedir() : folder(w[1], dir);
+      continue;
+    }
+    if (w[0] === 'popd') { dir = null; continue; }
+    if (w[0] !== 'git' && basename(w[0]) !== 'git') continue;
+
+    let here = dir;
+    let gitDir = env.GIT_DIR !== undefined ? folder(env.GIT_DIR, dir) : undefined;
+    let workTree = env.GIT_WORK_TREE !== undefined ? folder(env.GIT_WORK_TREE, dir) : undefined;
+    let j = 1;
+    for (; j < w.length; j++) {
+      const a = w[j];
+      if (!a.startsWith('-')) break;
+      const eq = a.indexOf('=');
+      const name = eq > 0 ? a.slice(0, eq) : a;
+      const value = eq > 0 ? a.slice(eq + 1) : (GIT_VALUE_OPTS.has(a) ? w[++j] : undefined);
+      if (name === '-C') here = folder(value, here);
+      else if (name === '--git-dir') gitDir = folder(value, here);
+      else if (name === '--work-tree') workTree = folder(value, here);
+    }
+    if (w[j] !== 'commit') continue;
+    const message = messageOf(w.slice(j + 1));
+    if (message !== null) found.push({ message, dir: here, gitDir, workTree });
   }
   return found;
 }
 
-const REASON = (subject) =>
+/** Every command-line commit message in this script, in the order they run. */
+export function commitMessages(cmd) {
+  return commits(cmd, process.cwd()).map(c => c.message);
+}
+
+/**
+ * The top of the repository a commit goes to, or null when there is none.
+ * --work-tree wins, then --git-dir, then the folder the commit runs in.
+ */
+function repoOf(c, sessionCwd) {
+  const start = c.workTree ?? (c.gitDir && basename(c.gitDir) === '.git' ? dirname(c.gitDir) : null) ?? c.dir ?? sessionCwd;
+  try {
+    return execFileSync('git', ['-C', start, 'rev-parse', '--show-toplevel'],
+                        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch { return null; }
+}
+
+const REASON = (subject, repo) =>
   `This commit subject does not carry a work item reference:\n\n` +
   `    ${subject}\n\n` +
+  `The commit format is on in ${repo}.\n\n` +
   `Required shape:  @WORK-ID: Capitalised imperative summary\n` +
   `Pattern:         ${SUBJECT.source}\n\n` +
   `    @ABC-123: Add the work type dedupe check\n` +
@@ -140,37 +208,29 @@ const REASON = (subject) =>
   `Take the work item reference from the current branch name, prefix it with @, ` +
   `follow it with one colon and one space, and start the summary with a capital letter.`;
 
-/**
- * Is the commit format switched on in the repository the session is in?
- * Read only once a subject has already failed, so a passing commit pays nothing.
- */
-async function enforcedFor(cwd) {
-  let repo;
-  try {
-    repo = execFileSync('git', ['-C', cwd, 'rev-parse', '--show-toplevel'],
-                        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-  } catch { return false; }
-  const { readChoice } = await import('../scripts/lib/commit-format.mjs');
-  return readChoice(repo) === 'on';
-}
-
 const isMain = process.argv[1] && process.argv[1].endsWith('commit-message-gate.mjs');
 if (isMain) {
   let input = {};
   try { input = JSON.parse(readFileSync(0, 'utf8')); } catch { process.exit(0); }
+  const sessionCwd = input?.cwd || process.cwd();
 
-  const bad = commitMessages(input?.tool_input?.command ?? '')
-    .map(m => m.split('\n')[0])
-    .find(subject => !SUBJECT.test(subject));
-
-  if (bad !== undefined && await enforcedFor(input?.cwd || process.cwd())) {
+  // Each commit is checked against its own repository's answer. The answer is
+  // read only once a subject has already failed, so a passing commit pays nothing.
+  for (const c of commits(input?.tool_input?.command ?? '', sessionCwd)) {
+    const subject = c.message.split('\n')[0];
+    if (SUBJECT.test(subject)) continue;
+    const repo = repoOf(c, sessionCwd);
+    if (!repo) continue;
+    const { readChoice } = await import('../scripts/lib/commit-format.mjs');
+    if (readChoice(repo) !== 'on') continue;
     process.stdout.write(JSON.stringify({
       hookSpecificOutput: {
         hookEventName: 'PreToolUse',
         permissionDecision: 'deny',
-        permissionDecisionReason: REASON(bad)
+        permissionDecisionReason: REASON(subject, repo)
       }
     }));
+    break;
   }
   process.exit(0);
 }
