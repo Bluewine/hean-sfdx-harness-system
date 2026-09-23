@@ -39,61 +39,11 @@
 
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { homedir } from 'node:os';
-import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { basename, dirname } from 'node:path';
+
+import { commandsIn, folder } from '../scripts/lib/command-line.mjs';
 
 export const SUBJECT = /^@[A-Z]+-[0-9]+(-[A-Z]{2})?:\s(\[Sonar\]\s)?[A-Z](.*)$/;
-
-/**
- * Split a shell command into its simple commands, each a list of words.
- *
- * Quotes are removed and their contents kept whole, so `-m "two words"` is one
- * word. Outside quotes, ; & | and a newline end a command, a # at the start of a
- * word starts a comment, ( at the start of a word opens a subshell and ) closes
- * one, reported as their own entries so a `cd` inside one can be undone.
- * A $( ... ) substitution stays inside the word it belongs to.
- */
-export function simpleCommands(source) {
-  const out = [];
-  let cmd = [];
-  let cur = '';
-  let started = false;
-  let quote = null;
-  const pushWord = () => { if (started) { cmd.push(cur); cur = ''; started = false; } };
-  const pushCmd = () => { pushWord(); if (cmd.length) out.push(cmd); cmd = []; };
-
-  for (let i = 0; i < source.length; i++) {
-    const c = source[i];
-    if (quote) {
-      if (quote === '"' && c === '\\' && source[i + 1] !== undefined) { cur += source[++i]; continue; }
-      if (c === quote) { quote = null; continue; }
-      cur += c;
-      continue;
-    }
-    if (c === '"' || c === "'") { quote = c; started = true; continue; }
-    if (c === '\\' && source[i + 1] !== undefined) {
-      if (source[i + 1] === '\n') { i++; continue; }   // line continuation
-      cur += source[++i]; started = true; continue;
-    }
-    if (c === '$' && source[i + 1] === '(') {
-      let depth = 0;
-      for (; i < source.length; i++) {
-        cur += source[i];
-        if (source[i] === '(') depth++;
-        else if (source[i] === ')' && --depth === 0) break;
-      }
-      started = true;
-      continue;
-    }
-    if (c === '#' && !started) { while (i < source.length && source[i] !== '\n') i++; pushCmd(); continue; }
-    if ((c === '(' && !started) || c === ')') { pushCmd(); out.push([c]); continue; }
-    if (c === '\n' || c === ';' || c === '|' || c === '&') { pushCmd(); continue; }
-    if (/\s/.test(c)) { pushWord(); continue; }
-    cur += c; started = true;
-  }
-  pushCmd();
-  return out;
-}
 
 /**
  * The message a `git commit` was given on the command line, or null.
@@ -117,14 +67,6 @@ export function messageOf(argv) {
 // git's own options that come before the subcommand and take the next word as a value
 const GIT_VALUE_OPTS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env', '--exec-path', '--super-prefix']);
 
-/** A folder named in the command, or null when the text cannot say which. */
-function folder(word, base) {
-  if (word === undefined || base === null) return null;
-  if (/[$`*?]/.test(word)) return null;
-  if (word === '~' || word.startsWith('~/')) return join(homedir(), word.slice(1));
-  return isAbsolute(word) ? word : resolve(base, word);
-}
-
 /**
  * Every command-line commit in this script, with where it commits.
  *
@@ -134,28 +76,7 @@ function folder(word, base) {
  */
 export function commits(cmd, cwd) {
   const found = [];
-  let dir = cwd;
-  const stack = [];
-  for (const words of simpleCommands(cmd)) {
-    if (words[0] === '(') { stack.push(dir); continue; }
-    if (words[0] === ')') { if (stack.length) dir = stack.pop(); continue; }
-
-    // leading NAME=value assignments apply to this command only
-    let i = 0;
-    const env = {};
-    while (i < words.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i])) {
-      const eq = words[i].indexOf('=');
-      env[words[i].slice(0, eq)] = words[i].slice(eq + 1);
-      i++;
-    }
-    const w = words.slice(i);
-    if (!w.length) continue;
-
-    if (w[0] === 'cd' || w[0] === 'pushd') {
-      dir = w[1] === undefined ? homedir() : folder(w[1], dir);
-      continue;
-    }
-    if (w[0] === 'popd') { dir = null; continue; }
+  for (const { words: w, env, dir } of commandsIn(cmd, cwd)) {
     if (w[0] !== 'git' && basename(w[0]) !== 'git') continue;
 
     let here = dir;
