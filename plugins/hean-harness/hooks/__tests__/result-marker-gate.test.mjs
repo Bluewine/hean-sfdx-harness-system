@@ -15,7 +15,7 @@ const HOOK = join(dirname(dirname(fileURLToPath(import.meta.url))), 'result-mark
 const work = mkdtempSync(join(tmpdir(), 'marker-gate-'));
 
 /** Build a transcript whose last assistant message says `text`, then run the hook. */
-function blocked(text, { job = true, stopActive = false, blocks = null } = {}) {
+function blocked(text, { job = true, stopActive = false, blocks = null, last, promptId, jobDir } = {}) {
   const tp = join(work, `t-${Math.random().toString(36).slice(2)}.jsonl`);
   const content = blocks ?? (text === null ? [{ type: 'tool_use', name: 'Bash' }]
                                            : [{ type: 'text', text }]);
@@ -24,11 +24,14 @@ function blocked(text, { job = true, stopActive = false, blocks = null } = {}) {
     JSON.stringify({ message: { role: 'assistant', content } })
   ].join('\n') + '\n');
 
-  const env = { ...process.env, CLAUDE_JOB_DIR: join(work, 'job-' + Math.random().toString(36).slice(2)) };
+  const env = { ...process.env, CLAUDE_JOB_DIR: jobDir ?? join(work, 'job-' + Math.random().toString(36).slice(2)) };
   if (!job) delete env.CLAUDE_JOB_DIR;
 
+  const payload = { transcript_path: tp, session_id: 's1', stop_hook_active: stopActive };
+  if (last !== undefined) payload.last_assistant_message = last;
+  if (promptId !== undefined) payload.prompt_id = promptId;
   const out = execFileSync('node', [HOOK], {
-    input: JSON.stringify({ transcript_path: tp, session_id: 's1', stop_hook_active: stopActive }),
+    input: JSON.stringify(payload),
     encoding: 'utf8', env
   });
   if (!out.trim()) return false;
@@ -72,6 +75,20 @@ for (const [label, text] of ALLOW) {
 }
 console.log('Held');
 for (const [label, text] of DENY) check(label, true, text);
+
+// The transcript is written asynchronously; at Stop time it can still end with
+// the text before the last tool call. The payload's own copy of the reply wins.
+console.log('Reply taken from the payload');
+check('transcript lags, payload reply has the marker', false,
+      'Checking the report first.', { last: 'Confirmed.\n\nneeds input: whether to build the fix' });
+check('payload reply has no marker, transcript does', true,
+      'result: an older reply', { last: 'All done, everything works.' });
+
+console.log('Once per turn');
+const jobDir = join(work, 'job-shared');
+check('first stop of a turn is held',        true,  'no marker', { promptId: 'p1', jobDir });
+check('second stop of the same turn passes', false, 'no marker, still', { promptId: 'p1', jobDir });
+check('the next turn is held again',         true,  'no marker', { promptId: 'p2', jobDir });
 
 console.log(`\n  ${pass} passed, ${fail} failed, ${pass + fail} total`);
 rmSync(work, { recursive: true, force: true });
