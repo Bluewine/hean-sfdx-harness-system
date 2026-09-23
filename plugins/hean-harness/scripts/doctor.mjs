@@ -20,7 +20,7 @@ import { homedir } from 'node:os';
 import { load, MANIFEST, markers } from './lib/manifest.mjs';
 import { allChecks, reportChecks, currentRepo } from './lib/environment.mjs';
 import { claudeCommand } from './lib/shell.mjs';
-import { repoRoot, missingLines, IGNORE_LINES } from './lib/gitignore.mjs';
+import { repoRoot, missingLines } from './lib/gitignore.mjs';
 import { STATE_DIR } from './lib/manifest.mjs';
 import { getGitConfig } from './lib/install.mjs';
 
@@ -120,7 +120,7 @@ function main() {
   const repo = currentRepo() ?? repoRoot();
   const gi = missingLines(repo);
   log('Ignored paths');
-  for (const l of IGNORE_LINES) {
+  for (const l of gi.lines) {
     log(`  ${gi.missing.includes(l) ? 'not there' : 'present  '}  ${l}`);
   }
   log(`  ${short(gi.file)}`);

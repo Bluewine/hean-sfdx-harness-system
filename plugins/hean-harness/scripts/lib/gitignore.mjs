@@ -10,7 +10,10 @@
  * the repository already committed there.
  *
  * The .githooks folder is installed by setup on each clone, so a branch that
- * deletes it from the repository cannot take the hook away again.
+ * deletes it from the repository cannot take the hook away again. A repository
+ * that tracks its own hooks there owns the folder: its line is left out, because
+ * ignoring a folder the repository commits stops a restored hook from being
+ * added back, and a clean clone then has no folder for a script that expects one.
  *
  * .mcp.json holds the Linear server setup adds. Each person signs in to that
  * server on their own machine, so the file is written per clone, not shared.
@@ -22,6 +25,22 @@ import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';
 
 export const IGNORE_LINES = ['.claude/', '.githooks/', '.mcp.json'];
+
+/** Does git track anything at this path inside the repository? */
+export function trackedUnder(repo, path) {
+  try {
+    return execFileSync('git', ['-C', repo, 'ls-files', '--', path],
+                        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() !== '';
+  } catch { return false; }
+}
+
+/** The repository commits its own git hooks, so the hooks folder is its own. */
+export const repoTracksHooks = repo => trackedUnder(repo, '.githooks');
+
+/** The lines this repository gets. */
+export function ignoreLines(repo) {
+  return repoTracksHooks(repo) ? IGNORE_LINES.filter(l => l !== '.githooks/') : IGNORE_LINES;
+}
 
 export const COMMENT = '# hean-harness: installed or written on each clone, not shared';
 
@@ -37,7 +56,8 @@ export function missingLines(repo) {
   const gi = join(repo, '.gitignore');
   const existing = existsSync(gi) ? readFileSync(gi, 'utf8') : '';
   const have = new Set(existing.split('\n').map(l => l.trim()));
-  return { file: gi, existing, missing: IGNORE_LINES.filter(l => !have.has(l)) };
+  const lines = ignoreLines(repo);
+  return { file: gi, existing, lines, missing: lines.filter(l => !have.has(l)) };
 }
 
 /**
@@ -65,13 +85,13 @@ if (isMain) {
   switch (a[0]) {
     case 'lines':
       console.log(`  in ${join(repo, '.gitignore')}:`);
-      for (const l of IGNORE_LINES) console.log(`    ${l}`);
+      for (const l of ignoreLines(repo)) console.log(`    ${l}`);
       break;
     case 'status': {
-      const { file, missing } = missingLines(repo);
+      const { file, lines, missing } = missingLines(repo);
       console.log(missing.length
-        ? `  ${missing.length} of ${IGNORE_LINES.length} not in ${file}: ${missing.join(', ')}`
-        : `  all ${IGNORE_LINES.length} present in ${file}`);
+        ? `  ${missing.length} of ${lines.length} not in ${file}: ${missing.join(', ')}`
+        : `  all ${lines.length} present in ${file}`);
       break;
     }
     case 'ensure': {

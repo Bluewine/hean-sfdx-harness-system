@@ -108,6 +108,31 @@ try {
         !existsSync(join(home, '.claude', 'projects')) && !existsSync(join(home, '.claude', 'rules')));
   check('nothing of the plugin is left in the home directory',
         !existsSync(join(home, '.claude', 'hean-harness', 'install-manifest.json')));
+
+  // A repository that commits its own hook owns the hooks folder.
+  const home2 = join(root, 'home2');
+  const own = join(root, 'own-hooks');
+  mkdirSync(join(home2, '.claude'), { recursive: true });
+  mkdirSync(join(own, '.githooks'), { recursive: true });
+  execFileSync('git', ['-C', own, 'init', '-q', '-b', 'main']);
+  const TEAM_HOOK = '#!/bin/sh\n# the team\'s own hook\nexit 0\n';
+  writeFileSync(join(own, '.githooks', 'commit-msg'), TEAM_HOOK);
+  execFileSync('git', ['-C', own, 'add', '.githooks/commit-msg']);
+  const env2 = { ...env, HOME: home2 };
+  execFileSync('node', [join(SCRIPTS, 'setup.mjs'), '--repo', own, '--commit-format', 'on', '--replace-githook'],
+               { env: env2, encoding: 'utf8', stdio: 'pipe' });
+  const ownHooksPath = () => {
+    try { return execFileSync('git', ['-C', own, 'config', '--get', 'core.hooksPath'], { encoding: 'utf8' }).trim(); }
+    catch { return undefined; }
+  };
+  check('a tracked hooks folder is not added to .gitignore',
+        !readFileSync(join(own, '.gitignore'), 'utf8').split('\n').includes('.githooks/'));
+  check('the tracked hook is left as it is, even with --replace-githook',
+        readFileSync(join(own, '.githooks', 'commit-msg'), 'utf8') === TEAM_HOOK);
+  check('core.hooksPath is left to the repository', ownHooksPath() === undefined, String(ownHooksPath()));
+  execFileSync('node', [join(SCRIPTS, 'lib', 'manifest.mjs'), 'revert'], { env: env2, encoding: 'utf8', stdio: 'pipe' });
+  check('uninstall leaves the tracked hook in place',
+        readFileSync(join(own, '.githooks', 'commit-msg'), 'utf8') === TEAM_HOOK);
 } finally {
   rmSync(root, { recursive: true, force: true });
 }

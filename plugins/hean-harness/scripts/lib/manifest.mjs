@@ -17,6 +17,7 @@ import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { basename, dirname, join, resolve } from 'node:path';
 import { claudeDir } from './paths.mjs';
+import { trackedUnder } from './gitignore.mjs';
 
 export const STATE_DIR = join(claudeDir(), 'hean-harness');
 export const MANIFEST = join(STATE_DIR, 'install-manifest.json');
@@ -306,6 +307,8 @@ export function revert({ dryRun = false, keep = [], only = null } = {}) {
     try {
       switch (c.type) {
         case 'file-copy':
+          // A file git tracks belongs to the repository now, whoever wrote it first.
+          if (tracked(c.target)) { r.action = 'kept'; r.note = 'git tracks this file; left as it is'; break; }
           if (c.existedBefore && c.backup && existsSync(c.backup)) {
             r.action = 'restore backup';
             if (!dryRun) copyFileSync(c.backup, c.target);
@@ -359,6 +362,10 @@ export function revert({ dryRun = false, keep = [], only = null } = {}) {
           }
           break;
         case 'git-config':
+          // The repository's own hooks live in that folder, so the setting is the repository's.
+          if (c.key === 'core.hooksPath' && existsSync(c.target) && trackedUnder(c.target, c.value ?? '.githooks')) {
+            r.action = 'kept'; r.note = 'the repository tracks its hooks there; left as it is'; break;
+          }
           r.action = c.existedBefore ? `set ${c.key} back to ${c.previousValue}` : `unset ${c.key}`;
           if (!dryRun) {
             if (!existsSync(c.target)) { r.note = 'repository is gone'; break; }
@@ -431,6 +438,16 @@ export function revert({ dryRun = false, keep = [], only = null } = {}) {
            save(m); }
   }
   return results;
+}
+
+/**
+ * Is this file tracked by the git repository it sits in? Files under the
+ * configuration folder are never part of one, so they are not checked.
+ */
+function tracked(target) {
+  if (resolve(target).startsWith(resolve(claudeDir()))) return false;
+  const dir = dirname(target);
+  return existsSync(dir) && trackedUnder(dir, basename(target));
 }
 
 /**

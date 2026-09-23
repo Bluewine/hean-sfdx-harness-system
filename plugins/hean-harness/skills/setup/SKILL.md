@@ -18,8 +18,9 @@ Install the environment. Show the user what will change before changing it.
 
 2. Show that output to the user and ask whether to go ahead. Wait for an answer. When the output
    has a line starting `!! KEPT`, quote each one in the question and ask about each separately:
-   - an existing `.githooks/commit-msg`: keep it, or replace it with the plugin's copy
-     (`--replace-githook`, a backup is kept)
+   - an existing `.githooks/commit-msg` that git does not track: keep it, or replace it with the
+     plugin's copy (`--replace-githook`, a backup is kept). A hooks folder git tracks belongs to
+     the repository; setup never changes it, so do not ask about it.
    - an existing `.mcp.json`: keep it unchanged, or add the Linear server to it (`--edit-mcp`)
 
    Keeping is the default. Never pass either flag without the user choosing it.
@@ -62,12 +63,12 @@ Install the environment. Show the user what will change before changing it.
    add to their shell startup file if they would rather type just `claude` in future. Show the
    command in full. Do not write their startup file yourself.
 
-6. The last step adds three lines to the repository's `.gitignore`: `.claude/`, so the rules,
-   memories and agents setup writes into the repository, and all skill output, are never
-   committed; `.githooks/`, so the hook setup installs is never
-   committed; and `.mcp.json`, so the Linear server setup adds is never committed. Name each line
-   in the report. When the step says a line was already there, say so
-   rather than implying it was written again.
+6. The last step adds up to three lines to the repository's `.gitignore`: `.claude/`, so the
+   rules, memories and agents setup writes into the repository, and all skill output, are never
+   committed; `.githooks/`, so the hook setup installs is never committed; and `.mcp.json`, so
+   the Linear server setup adds is never committed. `.githooks/` is left out when the repository
+   tracks its own hooks there. Name each line in the report. When the step says a line was
+   already there or not added, say so rather than implying it was written.
 
 ## Rules
 

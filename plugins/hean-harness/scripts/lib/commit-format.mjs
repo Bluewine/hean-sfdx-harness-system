@@ -15,7 +15,9 @@
  *        this plugin put it there
  *
  * A hook the repository had before is never removed or overwritten without
- * --replace-githook, because the repository may rely on it.
+ * --replace-githook, because the repository may rely on it. A repository that
+ * tracks its own hooks in git owns them outright: the plugin installs no hook
+ * there, leaves core.hooksPath to the repository, and ignores --replace-githook.
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, chmodSync, realpathSync } from 'node:fs';
@@ -24,6 +26,7 @@ import { fileURLToPath } from 'node:url';
 
 import { load, revert, category, init } from './manifest.mjs';
 import { installDir, installFile, installGitConfig, getGitConfig } from './install.mjs';
+import { repoTracksHooks } from './gitignore.mjs';
 
 const PLUGIN_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 export const HOOK_SOURCE = join(PLUGIN_ROOT, 'assets', 'githooks', 'commit-msg');
@@ -76,6 +79,20 @@ export function applyChoice(repo, choice, { replace = false, dryRun = false } = 
   const hooksPath = getGitConfig(repo, 'core.hooksPath');
 
   out.push(`Commit format  ${choice}  (${settingsFile(repo)})`);
+
+  if (choice === 'on' && repoTracksHooks(repo)) {
+    out.push(`Hook           ${HOOKS_DIR}/ is tracked by the repository, so its own hooks apply`);
+    out.push('               no plugin hook installed, core.hooksPath left to the repository');
+    if (replace) out.push('               --replace-githook ignored: a tracked hook belongs to the repository');
+    out.push('');
+    out.push(`!! KEPT — NOT CHANGED: ${join(repo, HOOKS_DIR)}`);
+    out.push('!! The repository commits its own hooks there. The plugin gate still checks commits');
+    out.push('!! made in Claude Code; commits typed in a terminal follow the repository\'s hook.');
+    if (dryRun) return out;
+    init('0.1.0');
+    writeChoice(repo, 'on');
+    return out;
+  }
 
   if (choice === 'on') {
     const write = !hookExists || (replace && !ours);

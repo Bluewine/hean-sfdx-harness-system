@@ -78,8 +78,11 @@ Run `/hean-harness:setup` again.
 - Its blocks in your shell startup file and `CLAUDE.md` are replaced where they sit. The rest of
   each file stays as it is.
 - An existing `.githooks/commit-msg` or `.mcp.json` in the repository is kept, and setup says so
-  in a `!! KEPT` line. Setup asks whether to replace the hook (`--replace-githook`) or add the
-  Linear server to `.mcp.json` (`--edit-mcp`).
+  in a `!! KEPT` line. Setup asks whether to replace an untracked hook (`--replace-githook`) or add
+  the Linear server to `.mcp.json` (`--edit-mcp`).
+- A repository that tracks its own hooks in `.githooks/` keeps them: setup installs no hook there,
+  leaves `core.hooksPath` alone, does not add `.githooks/` to `.gitignore`, and uninstall never
+  deletes a file git tracks.
 
 ## Uninstalling
 

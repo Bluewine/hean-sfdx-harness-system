@@ -9,7 +9,7 @@
 
 import { execFileSync } from 'node:child_process';
 
-import { repoRoot, ensureIgnored, missingLines, IGNORE_LINES } from './lib/gitignore.mjs';
+import { repoRoot, ensureIgnored, missingLines, repoTracksHooks } from './lib/gitignore.mjs';
 import { init } from './lib/manifest.mjs';
 import { recordExternal } from './lib/install.mjs';
 
@@ -25,10 +25,13 @@ function main() {
     catch { repo = repoRoot(); }
   }
 
-  const { file, missing } = missingLines(repo);
+  const { file, lines, missing } = missingLines(repo);
   log(`.gitignore      ${file}`);
-  for (const l of IGNORE_LINES) {
+  for (const l of lines) {
     log(`                ${missing.includes(l) ? 'to add ' : 'present'}  ${l}`);
+  }
+  if (repoTracksHooks(repo)) {
+    log('                not added  .githooks/  (the repository tracks its own hooks there)');
   }
   log('');
 
