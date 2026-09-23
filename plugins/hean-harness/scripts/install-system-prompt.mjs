@@ -60,7 +60,7 @@ function main() {
 
   if (dryRun) { log('Dry run. Nothing was changed.'); return; }
 
-  init('0.1.0');
+  init();
 
   // 1. rules file
   mkdirSync(STATE_DIR, { recursive: true });

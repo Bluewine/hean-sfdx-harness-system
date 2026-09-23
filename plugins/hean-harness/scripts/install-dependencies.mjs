@@ -56,7 +56,7 @@ function main() {
     process.exit(1);
   }
 
-  init('0.1.0');
+  init();
   // recorded before the run, so a failure halfway still leaves the hint behind
   recordExternal(`npm:${modules}`, `delete ${modules} if you no longer need the packages`);
 

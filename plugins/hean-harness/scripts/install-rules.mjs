@@ -89,7 +89,7 @@ function main() {
 
   if (dryRun) { log('Dry run. Nothing was changed.'); return; }
 
-  init('0.1.0');
+  init();
 
   installDir(USER_DEST);
   for (const f of userFiles) installFile(join(USER_SRC, f), join(USER_DEST, f));

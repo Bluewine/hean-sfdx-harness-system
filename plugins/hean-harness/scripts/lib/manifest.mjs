@@ -13,7 +13,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync,
          rmSync, readdirSync, rmdirSync, renameSync, statSync, lstatSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { basename, dirname, join, resolve } from 'node:path';
 import { claudeDir } from './paths.mjs';
@@ -108,7 +108,20 @@ export function backup(target) {
   return dest;
 }
 
-export function init(version) {
+// <plugin>/scripts/lib/manifest.mjs -> <plugin>
+const PLUGIN_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
+
+/**
+ * The version of the plugin running this script, read from its own plugin.json,
+ * so the manifest names the version that actually installed and cannot fall out
+ * of step with a literal kept in each installer.
+ */
+export function pluginVersion() {
+  try { return JSON.parse(readFileSync(join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'), 'utf8')).version ?? null; }
+  catch { return null; }
+}
+
+export function init(version = pluginVersion()) {
   const m = load();
   m.version = version || m.version;
   m.installedAt = m.installedAt || new Date().toISOString();

@@ -38,7 +38,7 @@ function main() {
 
   if (dryRun) { log('Dry run. Nothing was changed.'); return; }
 
-  init('0.1.0');
+  init();
   const r = ensureIgnored(repo);
   if (r.removed.length) log(`Removed the old ${r.removed.join(', ')} line, which hid .claude/manifest/`);
   if (r.added.length) {

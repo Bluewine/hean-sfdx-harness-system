@@ -53,6 +53,9 @@ try {
   check('a second setup keeps skill output in the repository .claude folder', existsSync(report));
 
   const manifest = JSON.parse(readFileSync(join(home, '.claude', 'hean-harness', 'install-manifest.json'), 'utf8'));
+  const shipped = JSON.parse(readFileSync(join(dirname(SCRIPTS), '.claude-plugin', 'plugin.json'), 'utf8')).version;
+  check('the manifest records the version that ran setup', manifest.version === shipped,
+        `${manifest.version} vs ${shipped}`);
   const jsonKey = manifest.changes.find(c => c.type === 'json-key');
   check('the manifest still holds the user\'s own status line after two runs',
         JSON.stringify(jsonKey?.previousValue) === JSON.stringify(MY_STATUSLINE),

@@ -39,7 +39,7 @@ function installSuperpowers(sp) {
     return false;
   }
 
-  init('0.1.0');
+  init();
 
   if (sp.state === 'disabled') {
     log(`Running: claude plugin enable ${SUPERPOWERS}`);
@@ -86,7 +86,7 @@ function installLinear(repo) {
   }
   if (mcpKept(repo)) { keptNotice(repo); return false; }
 
-  init('0.1.0');
+  init();
   log(`Running: claude mcp add --transport http --scope project ${LINEAR_NAME} ...`);
   const r = addLinear(repo);
   log(r.output);
@@ -138,7 +138,7 @@ function main() {
     return;
   }
 
-  if (repo) { init('0.1.0'); installRepoMcpFile(repo); }
+  if (repo) { init(); installRepoMcpFile(repo); }
 
   if (!sp.ok) {
     if (installSuperpowers(sp)) {

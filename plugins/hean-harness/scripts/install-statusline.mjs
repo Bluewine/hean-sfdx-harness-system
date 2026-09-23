@@ -42,7 +42,7 @@ function main() {
 
   if (dryRun) { log('Dry run. Nothing was changed.'); return; }
 
-  init('0.1.0');
+  init();
   installFile(SOURCE, DEST);
   chmodSync(DEST, 0o755);
 

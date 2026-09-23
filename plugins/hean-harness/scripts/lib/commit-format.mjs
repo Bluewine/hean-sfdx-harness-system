@@ -89,7 +89,7 @@ export function applyChoice(repo, choice, { replace = false, dryRun = false } = 
     out.push('!! The repository commits its own hooks there. The plugin gate still checks commits');
     out.push('!! made in Claude Code; commits typed in a terminal follow the repository\'s hook.');
     if (dryRun) return out;
-    init('0.1.0');
+    init();
     writeChoice(repo, 'on');
     return out;
   }
@@ -113,7 +113,7 @@ export function applyChoice(repo, choice, { replace = false, dryRun = false } = 
     }
     if (dryRun) return out;
 
-    init('0.1.0');
+    init();
     writeChoice(repo, 'on');
     if (write) {
       installDir(join(repo, HOOKS_DIR));
@@ -158,7 +158,7 @@ export function applyChoice(repo, choice, { replace = false, dryRun = false } = 
   }
   if (dryRun) return out;
 
-  init('0.1.0');
+  init();
   writeChoice(repo, 'off');
   if (recorded.length) {
     const results = revert({ only: mine });

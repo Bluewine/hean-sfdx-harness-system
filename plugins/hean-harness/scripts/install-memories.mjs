@@ -71,7 +71,7 @@ function main() {
 
   if (dryRun) { log('Dry run. Nothing was changed.'); return; }
 
-  init('0.1.0');
+  init();
 
   installDir(projectMemDir);
   for (const f of projectFiles) installFile(join(PROJECT_SRC, f), join(projectMemDir, f));
