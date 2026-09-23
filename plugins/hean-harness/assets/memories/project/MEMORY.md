@@ -22,7 +22,7 @@
 - [Verify the fix in Playwright before writing spec/plan](feedback_verify_fix_in_playwright_before_spec.md) — For CSS/layout bugs, DOM-inject the real candidate fix and prove it live before writing any spec or implementing
 - [LWR site needs sf community publish](reference_lwr_site_needs_community_publish.md) — deploying updates the org, but the live URL keeps serving the last published snapshot until the site is published
 - [No test classes for pre/post-deploy Apex](feedback_no_pre_post_apex_tests.md) — runbooks/pre-deploy and runbooks/post-deploy classes are transient (destructively removed after prod use); only force-app classes need tests
-- [Name the target org explicitly](feedback_explicit_target_org.md) — never let the CLI resolve a default; develop against a sandbox or scratch org and follow the team's promotion policy beyond it
+- [Say the target org before writing](feedback_explicit_target_org.md) — state the CLI default's alias, compare it with the saved deploy target, stop and tell the user when they differ; roles in .claude/rules/org-roles.md
 - [Deactivating an active Flow version](reference_flow_version_deactivation.md) — Bare Flow-type status edit no-ops (immutable version); deploy FlowDefinition with activeVersionNumber removed instead
 - [LDS 2 icon buttons collapse to 0 width](reference_lds2_icon_button_zero_width.md) — 16px inline padding vs constrained host hides the svg; zero it via --sds-c- SPACING hooks — padding resists ::part, but ::part does reach the same button for colour
 - [Platform event debug logging](feedback_platform_event_debug_logging.md) — Trace Automated Process and the workflow default user too, at Workflow=FINEST; subscribers run as Automated Process so otherwise the event looks like it never published

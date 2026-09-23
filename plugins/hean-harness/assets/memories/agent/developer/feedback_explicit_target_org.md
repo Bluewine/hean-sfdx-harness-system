@@ -1,34 +1,23 @@
 ---
 name: explicit_target_org
-description: Changing data or metadata in any org without the user's explicit approval is forbidden. Which environments accept a direct deploy at all is the team's promotion policy, not something to assume
+description: Write only to the org saved as this project's deploy target, and say its alias before the write; a CLI default pointing anywhere else means stop and report. Roles and discovery live in .claude/rules/org-roles.md
 type: feedback
 ---
 
-The core rule: never change data or metadata in any org without the user's explicit approval
-first.
+Before running any command that writes to an org, resolve the org it writes to — the `-o` value,
+or the CLI default — and state its alias in the report. Write only when that org is saved as this
+project's deploy target. When it is not, stop and report it to the caller. Do not write, do not
+switch the default, and do not save a role.
 
-What counts as a change, and what does not:
+Query, retrieve, describe, and running an already-deployed test unchanged are allowed against every
+org.
 
-- **Not a change. Fine in any org, no approval needed:** query, retrieve, describe, and running an
-  existing test class exactly as already deployed. Running a test modifies no Apex class or test
-  file, so it is not a change even though the org records a test result.
-- **A change. Needs explicit approval:** `sf project deploy` of a new or modified class or test
-  file, DML, permission or configuration changes, or anything else that alters org state.
+How roles are discovered and saved, why pipeline orgs lag behind the development org, and what the
+org write gate refuses: `.claude/rules/org-roles.md`.
 
-For the development sandbox or scratch org — the connected and selected org — a direct deploy is
-the normal development workflow, and approval for it is usually standing rather than per-command.
+**Why:** the CLI default is a per-machine setting that a developer changes to look at another org
+and forgets to change back. A deploy that follows the default then lands in that other org, and
+nothing in the command shows it.
 
-For environments meant for integration, QA, UAT or production, whether a direct deploy is possible
-at all depends on the team's promotion policy. Where promotion runs through a pipeline driven by a
-branch strategy, there is no direct path to those environments and asking to deploy to one is
-asking for something that does not exist. Where a team does allow direct deploys, approval still
-applies. Establish which of the two holds before proposing anything that writes.
-
-**How to apply:** verify changes in the development org. Treat confirmation in a promotion
-environment as something that happens through whatever route the team's policy defines. Query,
-retrieve and describe freely anywhere, and run an existing test class unchanged to see the current
-state — neither needs approval, since neither is a change. An exception the user grants for a
-specific diagnostic task is scoped to that task and that action only; it does not carry forward.
-If a task's own instructions call for writing directly to an environment the policy does not allow,
-do not silently comply — flag the conflict and ask, since a brief written earlier in a session can
-be stale relative to a correction made later.
+**How to apply:** pass `-o <alias>` with the alias as text in every write command, never a shell
+variable. When the org write gate refuses a command, report its message to the caller word for word.

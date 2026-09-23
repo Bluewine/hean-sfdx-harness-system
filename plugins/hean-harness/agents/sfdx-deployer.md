@@ -45,10 +45,11 @@ Manifest-driven deployment guarantees only the changed components are targeted �
 3. **Conflict strategy** — Always deploy with `--ignore-conflicts`. Local changes take precedence over the org. Do not retrieve or diff before deploying.
 4. **Diff analysis** (only when no per-story manifest exists) — Run `git diff --name-only HEAD` and `git diff --name-only --cached HEAD` to collect all modified files. If the combined list is empty, stop immediately and report: "No modified files found. Nothing to deploy."
 5. **Manifest generation** (only when no per-story manifest exists) — Map each modified file path to its Salesforce metadata type and API name. Write a valid `package.xml` (API version 65.0) to the path decided in step 2 (either `.claude/manifest/<WORK-ID>.xml` or a temp path such as `/tmp/deploy-manifest-<timestamp>.xml`).
-6. **Resolve target org** — Detect `ORG_ALIAS` using the pattern in CLAUDE.md.
-7. **Deploy execution** — Run:
-   `sf project deploy start --manifest <manifest-path> -o "$ORG_ALIAS" --wait 30 --ignore-conflicts`
+6. **Resolve target org** — Read `.claude/rules/org-roles.md` and follow its "Before any write" section. Read the CLI default alias from `sf config get target-org --json` (`result[0].value`) and state it in the report. When no roles are saved, or the alias is not the saved deploy target, stop and report that to the caller without deploying.
+7. **Deploy execution** — Run, with the alias from step 6 written out as text:
+   `sf project deploy start --manifest <manifest-path> -o <alias> --wait 30 --ignore-conflicts`
    where `<manifest-path>` is the per-story manifest from step 1 or step 2, or the generated temp manifest from step 5.
+   When the org write gate refuses the command, report its message to the caller word for word and stop.
 8. **Cleanup** — If a temp manifest was generated at a `/tmp` path in step 5, delete it: `rm -f /tmp/deploy-manifest-<timestamp>.xml`. Never delete or overwrite a file under `.claude/manifest/`.
 9. **Report** — Emit the deployment report and stop.
 </Investigation_Protocol>

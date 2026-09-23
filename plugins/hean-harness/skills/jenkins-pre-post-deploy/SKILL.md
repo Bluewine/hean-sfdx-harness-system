@@ -14,7 +14,7 @@ These are real, irreversible deploys. Components deleted by the destructive step
 
 ## Procedure
 
-1. Resolve the org. Run `sf config get target-org --json` and read `result[0].value`. If it is empty, stop and tell the user no default org is set.
+1. Resolve the org. Run `sf config get target-org --json` and read `result[0].value`. If it is empty, stop and tell the user no default org is set. Then read `.claude/rules/org-roles.md` and follow its "Before any write" section; when the org is not the saved deploy target, stop and tell the user.
 
 2. Run `sf org display --json -o <alias>`. Show the user the alias, username, instance URL, and org ID, verbatim.
 
@@ -38,6 +38,8 @@ These are real, irreversible deploys. Components deleted by the destructive step
 5. Invoke the script exactly once, in the foreground:
 
    `bash .claude/scripts/jenkins-pre-post-deploy.sh <answer> --org <alias>`
+
+   When the org write gate refuses it, relay the refusal word for word and stop.
 
 6. Relay the script's summary table and exit code. Report the "Components the org could not find" block verbatim if it appears.
 

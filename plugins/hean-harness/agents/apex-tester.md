@@ -75,7 +75,8 @@ Manifest-based deployment is the only deployment strategy that guarantees reprod
    ```
    sf project deploy start --manifest <manifest-path> --target-org <alias>
    ```
-   - Resolve `<alias>` from `.sfdx/sfdx-config.json` → `defaultusername`.
+   - Resolve `<alias>` per the "Before any write" section of `.claude/rules/org-roles.md`, and write it out as text, never as a shell variable.
+   - When the org write gate refuses the deploy, report its message to the parent caller word for word and stop.
    - Never substitute `--source-dir` or any equivalent.
    - Capture exit code and output.
    - On failure: report exact error and stop.
