@@ -30,7 +30,6 @@
 - [Never force-add ignored files](feedback_never_force_add_ignored.md) — Never force-add a gitignored path and never offer it; ignore entries are team consensus
 - [Avoid "deferred" wording for completed moves](feedback_avoid_deferred_wording_for_completed_moves.md) — Say "done in commit B instead of A", never "deferred" — reads as still-pending even when fully done
 - [No retrocompatibility — fully adapt](feedback_no_retrocompatibility_fully_adapt.md) — When a requirement changes, rewrite code AND tests to match it; never shim old behavior or leave old tests frozen
-- [Explicit labels, no backward-pointing pronouns](feedback_communication_style_explicit_labels_no_pronouns.md) — Restate the subject by name instead of "this/that/it"; label every statement as question/finding/status/decision/advice/bug so it parses in one pass
 - [ExternalString queries omit labels that exist](reference_externalstring_query_omits_labels.md) — Tooling API SOQL silently misses real custom labels; verify with sf org list metadata, never treat an empty query as proof a label is gone
 - [Skill load-time injection behaviors](reference_skill_load_time_injection.md) — a ```! block in SKILL.md runs on typed and model-invoked loads; $ARGUMENTS is not duplicated; allowed-tools grants without restricting
 - [Plugin component limits](reference_plugin_component_limits.md) — rules, memories, CLAUDE.md and statusLine cannot ship as native plugin components; carry as assets/ payload and install by script
