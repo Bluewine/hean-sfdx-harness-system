@@ -35,6 +35,22 @@ Setup asks once per repository whether to enforce the `@WORK-ID: Summary` commit
 - Switch it later with `/hean-harness:commit-format on` or `/hean-harness:commit-format off`. The
   next commit follows the new state, with no restart.
 
+## Org roles
+
+Every command in Claude Code that writes to a Salesforce org — deploy, delete, anonymous Apex, data
+changes, permission set assignment, package install, the project's pre and post deploy script — is
+checked against the role saved for the target org.
+
+- In an SFDX project with no saved roles, every org write is refused until they are saved.
+- `/hean-harness:org-roles` lists the logged-in orgs and saves each one's role (development,
+  pipeline, research, production) and whether agents may deploy to it. The roles are saved per
+  clone, by org ID, so an alias change keeps them.
+- A write to an org not saved as a deploy target is refused. When the CLI default org has moved
+  away from the saved deploy target, the refusal says so first.
+- Queries, retrieves, describes, test runs, validations and dry runs are never checked.
+- `.claude/rules/org-roles.md` tells agents how to find each org's role from the CI files, and that
+  pipeline orgs lagging behind the development org is expected.
+
 ## What setup leaves to you
 
 - **A JDK 11 or newer.** Installing one needs administrator rights. Setup reports whether a real one
