@@ -33,6 +33,10 @@ const repo = repoArg >= 0 ? argv[repoArg + 1] : null;
  * as missing on every run and never installed.
  */
 const STEPS = [
+  // First, so the revert sees only the previous install and never part of this one.
+  // A failure here stops the run: installing over a half-cleared state records the
+  // plugin's own files as though they were the reader's.
+  { name: 'Clear previous',  script: 'clear-previous-install.mjs' },
   { name: 'Environment',   script: 'check-environment.mjs',     noDryFlag: true, installsOnRealRun: true, wantsRepo: true },
   { name: 'Rules and alias', script: 'install-system-prompt.mjs', keepGoing: true },
   { name: 'Rule files',    script: 'install-rules.mjs',        wantsRepo: true },

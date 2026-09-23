@@ -25,6 +25,8 @@ Install the environment. Show the user what will change before changing it.
    ```
 
 4. Report, using the script's own summary:
+   - whether anything from a previous install was cleared, and how much. On a first install the step
+     says there was nothing to clear; say that rather than implying something was removed.
    - what each step did
    - the exact command the user has to run to reload their shell
    - anything the summary says needs doing by hand
