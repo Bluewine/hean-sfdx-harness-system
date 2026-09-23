@@ -18,8 +18,9 @@
 - [Skills must be atomic and isolated](feedback_skill_isolation.md) — Never cross-reference another skill inside SKILL.md unless the two are explicitly designed to be invoked together
 - [Use Bash heredoc for output file writes](feedback_pr_body_write_override.md) — Always write fully-regenerated output files via Bash heredoc, not the Write tool — no read-first required
 - [No duplicated code — hard team rule](feedback_no_duplicated_code.md) — Even small repeated logic is prohibited; discovery cost for new members is the reason; always extract to one source of truth
-- [Use Playwright MCP for browser testing](feedback_playwright_for_browser_testing.md) — Test/verify via Playwright MCP tools, not gstack /browse; instruct subagents the same
-- [Verify the fix in Playwright before writing spec/plan](feedback_verify_fix_in_playwright_before_spec.md) — For CSS/layout bugs, DOM-inject the real candidate fix and prove it live before writing any spec or implementing
+- [Browser tool for testing](feedback_playwright_for_browser_testing.md) — Test/verify via ego-browser when ego lite is installed, else Playwright MCP; never gstack /browse; instruct subagents the same
+- [ego-browser does not get Chrome cookies](reference_egobrowser_no_chrome_cookies.md) — a site signed in only in Chrome loads signed out in ego lite; hand off for login or copy the cookies
+- [Verify the fix in the browser before writing spec/plan](feedback_verify_fix_in_playwright_before_spec.md) — For CSS/layout bugs, DOM-inject the real candidate fix and prove it live before writing any spec or implementing
 - [LWR site needs sf community publish](reference_lwr_site_needs_community_publish.md) — deploying updates the org, but the live URL keeps serving the last published snapshot until the site is published
 - [No test classes for pre/post-deploy Apex](feedback_no_pre_post_apex_tests.md) — runbooks/pre-deploy and runbooks/post-deploy classes are transient (destructively removed after prod use); only force-app classes need tests
 - [Say the target org before writing](feedback_explicit_target_org.md) — state the CLI default's alias, compare it with the saved deploy target, stop and tell the user when they differ; roles in .claude/rules/org-roles.md
