@@ -56,6 +56,9 @@ try {
   const shipped = JSON.parse(readFileSync(join(dirname(SCRIPTS), '.claude-plugin', 'plugin.json'), 'utf8')).version;
   check('the manifest records the version that ran setup', manifest.version === shipped,
         `${manifest.version} vs ${shipped}`);
+  check('a completed setup records when it ran', Boolean(manifest.lastSetupAt), String(manifest.lastSetupAt));
+  const doctor = () => { try { return run('doctor.mjs'); } catch (e) { return String(e.stdout ?? ''); } };
+  check('doctor does not flag setup as out of date after a run', !doctor().includes('SETUP IS OUT OF DATE'));
   const jsonKey = manifest.changes.find(c => c.type === 'json-key');
   check('the manifest still holds the user\'s own status line after two runs',
         JSON.stringify(jsonKey?.previousValue) === JSON.stringify(MY_STATUSLINE),
@@ -89,6 +92,13 @@ try {
   run('commit-format.mjs', ['on', '--repo', repo]);
   check('switching on again puts both back',
         existsSync(hook) && hooksPath() === '.githooks', String(hooksPath()));
+  const manifestPath = join(home, '.claude', 'hean-harness', 'install-manifest.json');
+  const afterSwitch = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  check('the commit format switch is not recorded as a setup run',
+        afterSwitch.lastSetupAt === manifest.lastSetupAt && afterSwitch.version === manifest.version);
+  writeFileSync(manifestPath, JSON.stringify({ ...afterSwitch, version: '0.0.1' }, null, 2) + '\n');
+  check('doctor flags setup run by an older version', doctor().includes('SETUP IS OUT OF DATE'));
+  writeFileSync(manifestPath, JSON.stringify(afterSwitch, null, 2) + '\n');
 
   // the user moved the alias block between their own lines
   const zshrc = join(home, '.zshrc');

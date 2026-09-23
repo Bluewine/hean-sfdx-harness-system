@@ -25,6 +25,9 @@ Report the state of the installation. Change nothing.
    - **absent** — a block was added to a file and is no longer in it. Running setup again re-adds it.
    - **MISSING** under Environment — something that has to be installed separately. The report
      prints the command.
+   - **SETUP IS OUT OF DATE** under Installation — setup last ran with an older version than the
+     plugin installed now, so the rules and memories on disk are the older version's. Running
+     setup again refreshes them. Give the "last setup" date with it.
 
 3. When the report ends with a command to start Claude Code with, give the user that command in
    full. It means the alias is not in place, so typing plain `claude` starts a session with none

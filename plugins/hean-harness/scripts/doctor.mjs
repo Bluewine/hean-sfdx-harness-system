@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 
-import { load, MANIFEST, markers } from './lib/manifest.mjs';
+import { load, MANIFEST, markers, pluginVersion } from './lib/manifest.mjs';
 import { allChecks, reportChecks, currentRepo } from './lib/environment.mjs';
 import { claudeCommand } from './lib/shell.mjs';
 import { repoRoot, missingLines } from './lib/gitignore.mjs';
@@ -84,8 +84,14 @@ function main() {
     log(`  run the setup skill to install it`);
     log('');
   } else {
-    log(`  version       ${m.version ?? 'unknown'}`);
+    const running = pluginVersion();
+    log(`  version       ${m.version ?? 'unknown'}  (the version that last ran setup)`);
     log(`  installed     ${m.installedAt ? m.installedAt.slice(0, 10) : 'unknown'}`);
+    log(`  last setup    ${m.lastSetupAt ? m.lastSetupAt.slice(0, 16).replace('T', ' ') + ' UTC' : 'not recorded (setup ran before 0.1.14)'}`);
+    if (running && m.version !== running) {
+      log(`  !! SETUP IS OUT OF DATE: setup last ran with ${m.version ?? 'an unknown version'}; the installed plugin is ${running}.`);
+      log('  !! Run /hean-harness:setup to refresh the rules and memories.');
+    }
     log(`  record        ${short(MANIFEST)}`);
     log(`  changes       ${m.changes.length}`);
     log('');

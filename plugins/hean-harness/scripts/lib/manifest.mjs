@@ -121,12 +121,35 @@ export function pluginVersion() {
   catch { return null; }
 }
 
-export function init(version = pluginVersion()) {
+/**
+ * Create the manifest header when it is missing. The version is set here only
+ * for a new manifest: scripts outside setup, such as the commit format switch,
+ * also call this, and must not make the manifest claim a setup that never ran.
+ */
+export function init(version) {
   const m = load();
-  m.version = version || m.version;
+  if (version) m.version = version;
+  else if (!m.version) m.version = pluginVersion();
   m.installedAt = m.installedAt || new Date().toISOString();
   save(m);
   return m;
+}
+
+/**
+ * Record a completed setup run: the plugin version that ran it and when.
+ * installedAt keeps the first install; lastSetupAt moves with every run, so
+ * doctor can tell whether the rules and memories on disk came from the plugin
+ * installed now.
+ */
+export function markSetupRun() {
+  if (!existsSync(MANIFEST)) return null;
+  return withLock(() => {
+    const m = load();
+    m.version = pluginVersion() ?? m.version;
+    m.lastSetupAt = new Date().toISOString();
+    save(m);
+    return m;
+  });
 }
 
 /**

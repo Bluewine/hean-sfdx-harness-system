@@ -11,7 +11,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { STATE_DIR } from './lib/manifest.mjs';
+import { STATE_DIR, markSetupRun } from './lib/manifest.mjs';
 import { claudeCommand } from './lib/shell.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -74,6 +74,10 @@ for (const step of STEPS) {
     break;
   }
 }
+
+// Every step ran, so the rules and memories on disk now come from this version.
+// A run stopped partway is not recorded, and doctor keeps saying setup is due.
+if (!dryRun && results.length === STEPS.length) markSetupRun();
 
 console.log(`\n${line}\n  Summary\n${line}`);
 for (const r of results) {
