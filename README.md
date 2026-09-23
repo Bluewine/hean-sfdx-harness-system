@@ -93,7 +93,8 @@ Run `/hean-harness:setup` again.
 - It lists every change before reversing it.
 - It takes only its own lines out of files you also own, including the alias block in your shell
   startup file, wherever that block sits.
-- It deletes the repository's `.claude` folder and `.mcp.json`. A `.mcp.json` that git tracks is kept.
+- It empties the repository's `.claude` folder and deletes `.mcp.json`. `.claude/manifest/` and any
+  file git tracks are kept.
 - It uninstalls superpowers and its marketplace when setup added them, then hean-harness itself.
 - Copies of anything it replaced or edited stay in `~/.claude/hean-harness/backups/`.
 - Open a new terminal afterwards. The alias is still loaded in the current one.

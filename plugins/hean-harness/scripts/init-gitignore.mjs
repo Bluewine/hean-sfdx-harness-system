@@ -25,8 +25,9 @@ function main() {
     catch { repo = repoRoot(); }
   }
 
-  const { file, lines, missing } = missingLines(repo);
+  const { file, lines, missing, old } = missingLines(repo);
   log(`.gitignore      ${file}`);
+  if (old.length) log('                to replace  .claude/  (written by an earlier version; it hid .claude/manifest/)');
   for (const l of lines) {
     log(`                ${missing.includes(l) ? 'to add ' : 'present'}  ${l}`);
   }
@@ -39,6 +40,7 @@ function main() {
 
   init('0.1.0');
   const r = ensureIgnored(repo);
+  if (r.removed.length) log(`Removed the old ${r.removed.join(', ')} line, which hid .claude/manifest/`);
   if (r.added.length) {
     log(`Added ${r.added.length} line${r.added.length > 1 ? 's' : ''} so files written on each clone are never committed`);
     // ours to undo, and only the lines we actually wrote

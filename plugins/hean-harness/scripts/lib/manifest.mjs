@@ -11,7 +11,7 @@
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync,
-         rmSync, readdirSync, rmdirSync, renameSync, statSync } from 'node:fs';
+         rmSync, readdirSync, rmdirSync, renameSync, statSync, lstatSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -30,7 +30,7 @@ const REVERSIBLE = {
   'json-key':     'Restore the previous value, or remove the key if it was absent before.',
   'dir-create':   'Remove the directory, but only if it is still empty.',
   'git-config':   'Restore the previous value in the repository, or unset the key if it had none.',
-  'repo-folder':  'Delete the repository\'s .claude folder and everything in it. Uninstall only.',
+  'repo-folder':  'Empty the repository\'s .claude folder except .claude/manifest/ and files git tracks. Uninstall only.',
   'repo-file':    'Delete the repository\'s .mcp.json unless git tracks it. Uninstall only.',
   'external':     'Run the recorded plugin or marketplace removal on uninstall; anything else is reported.'
 };
@@ -381,8 +381,12 @@ export function revert({ dryRun = false, keep = [], only = null } = {}) {
           if (basename(c.target) !== '.claude' || resolve(c.target) === resolve(claudeDir())) {
             r.ok = false; r.note = 'refused: not a repository .claude folder'; break;
           }
-          r.action = 'delete folder and everything in it';
-          if (!dryRun && existsSync(c.target)) rmSync(c.target, { recursive: true, force: true });
+          r.action = 'delete everything in it except .claude/manifest/ and files git tracks';
+          if (!existsSync(c.target)) { r.note = 'already absent'; break; }
+          {
+            const kept = clearRepoClaude(c.target, dryRun);
+            if (kept) r.note = `kept ${kept} file${kept > 1 ? 's' : ''}: .claude/manifest/ and files git tracks`;
+          }
           break;
         case 'repo-file': {
           if (basename(c.target) !== '.mcp.json') {
@@ -438,6 +442,51 @@ export function revert({ dryRun = false, keep = [], only = null } = {}) {
            save(m); }
   }
   return results;
+}
+
+/**
+ * Empty a repository's .claude folder of everything this plugin and its skills
+ * wrote, keeping .claude/manifest/ — each story's deploy manifest, which the team
+ * commits — and every file git tracks. Folders left empty are removed, the
+ * .claude folder itself included. Returns how many files were kept.
+ */
+function clearRepoClaude(folder, dryRun) {
+  const repo = dirname(folder);
+  let trackedFiles = new Set();
+  try {
+    trackedFiles = new Set(execFileSync('git', ['-C', repo, 'ls-files', '-z', '--', '.claude'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\0').filter(Boolean)
+      .map(f => join(repo, f)));
+  } catch { /* not a git repository: nothing is tracked */ }
+  const manifestDir = join(folder, 'manifest');
+  let kept = 0;
+  const walk = dir => {
+    for (const name of readdirSync(dir)) {
+      const p = join(dir, name);
+      if (p === manifestDir) { kept += countFiles(p); continue; }
+      // lstat: a symlinked folder is removed as a link, never emptied through it
+      if (lstatSync(p).isDirectory()) {
+        walk(p);
+        if (!dryRun && readdirSync(p).length === 0) rmdirSync(p);
+      } else if (trackedFiles.has(p)) {
+        kept++;
+      } else if (!dryRun) {
+        rmSync(p, { force: true });
+      }
+    }
+  };
+  walk(folder);
+  if (!dryRun && readdirSync(folder).length === 0) rmdirSync(folder);
+  return kept;
+}
+
+function countFiles(dir) {
+  let n = 0;
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    n += lstatSync(p).isDirectory() ? countFiles(p) : 1;
+  }
+  return n;
 }
 
 /**

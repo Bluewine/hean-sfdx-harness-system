@@ -68,8 +68,12 @@ try {
   check('core.hooksPath points at the hook folder', hooksPath() === '.githooks', String(hooksPath()));
   check('the hook folder is ignored',
         readFileSync(join(repo, '.gitignore'), 'utf8').split('\n').includes('.githooks/'));
-  check('the .claude folder is ignored',
-        readFileSync(join(repo, '.gitignore'), 'utf8').split('\n').includes('.claude/'));
+  const giLines = readFileSync(join(repo, '.gitignore'), 'utf8').split('\n');
+  check('the .claude folder\'s contents are ignored, then its manifests brought back',
+        giLines.indexOf('.claude/*') >= 0 && giLines.indexOf('!.claude/manifest/') > giLines.indexOf('.claude/*'));
+  const ignored = f => { try { execFileSync('git', ['-C', repo, 'check-ignore', '-q', f]); return true; } catch { return false; } };
+  check('git ignores the rules but not a story manifest',
+        ignored('.claude/rules/x.md') && !ignored('.claude/manifest/ABC-1.xml'));
   check('the MCP server file is ignored',
         readFileSync(join(repo, '.gitignore'), 'utf8').split('\n').includes('.mcp.json'));
   check('no npm install without a package.json', !existsSync(join(repo, 'node_modules')));
@@ -88,6 +92,9 @@ try {
   const blockText = readFileSync(zshrc, 'utf8').slice(MY_ZSHRC.length + 1);
   writeFileSync(zshrc, 'export MY_OWN=1\n\n' + blockText + 'alias ll="ls -la"\n');
   writeFileSync(join(repo, '.mcp.json'), '{ "mcpServers": {} }\n');
+  const storyManifest = join(repo, '.claude', 'manifest', 'ABC-1.xml');
+  mkdirSync(dirname(storyManifest), { recursive: true });
+  writeFileSync(storyManifest, '<Package/>\n');
 
   const revert = JSON.parse(run('lib/manifest.mjs', ['revert']));
   check('every recorded change reverses', revert.every(c => c.ok),
@@ -102,7 +109,8 @@ try {
         readFileSync(join(home, '.zshrc'), 'utf8') === MY_ZSHRC);
   check('the hook folder is removed', !existsSync(join(repo, '.githooks')));
   check('core.hooksPath is unset again', hooksPath() === undefined, String(hooksPath()));
-  check('the repository .claude folder is deleted', !existsSync(join(repo, '.claude')));
+  check('uninstall empties the repository .claude folder', !existsSync(join(repo, '.claude', 'rules')));
+  check('uninstall keeps the story manifests', existsSync(storyManifest));
   check('the repository .mcp.json is deleted', !existsSync(join(repo, '.mcp.json')));
   check('no folder setup created is left in the home directory',
         !existsSync(join(home, '.claude', 'projects')) && !existsSync(join(home, '.claude', 'rules')));
@@ -118,6 +126,9 @@ try {
   const TEAM_HOOK = '#!/bin/sh\n# the team\'s own hook\nexit 0\n';
   writeFileSync(join(own, '.githooks', 'commit-msg'), TEAM_HOOK);
   execFileSync('git', ['-C', own, 'add', '.githooks/commit-msg']);
+  // an earlier version wrote a bare `.claude/`, which hides the manifests
+  writeFileSync(join(own, '.gitignore'),
+    'node_modules/\n\n# hean-harness: installed or written on each clone, not shared\n.claude/\n.mcp.json\n');
   const env2 = { ...env, HOME: home2 };
   execFileSync('node', [join(SCRIPTS, 'setup.mjs'), '--repo', own, '--commit-format', 'on', '--replace-githook'],
                { env: env2, encoding: 'utf8', stdio: 'pipe' });
@@ -125,8 +136,11 @@ try {
     try { return execFileSync('git', ['-C', own, 'config', '--get', 'core.hooksPath'], { encoding: 'utf8' }).trim(); }
     catch { return undefined; }
   };
-  check('a tracked hooks folder is not added to .gitignore',
-        !readFileSync(join(own, '.gitignore'), 'utf8').split('\n').includes('.githooks/'));
+  const ownGi = readFileSync(join(own, '.gitignore'), 'utf8').split('\n');
+  check('a tracked hooks folder is not added to .gitignore', !ownGi.includes('.githooks/'));
+  check('the old .claude/ line is replaced by the pair',
+        !ownGi.includes('.claude/') && ownGi.includes('.claude/*') && ownGi.includes('!.claude/manifest/'));
+  check('the owner\'s own lines stay', ownGi[0] === 'node_modules/');
   check('the tracked hook is left as it is, even with --replace-githook',
         readFileSync(join(own, '.githooks', 'commit-msg'), 'utf8') === TEAM_HOOK);
   check('core.hooksPath is left to the repository', ownHooksPath() === undefined, String(ownHooksPath()));

@@ -158,10 +158,11 @@ ways of carrying that across exist, and only two of them work.
 51. Scope a rule to the files it governs with a `paths:` list in its frontmatter, so it loads only
     when a matching file is opened. A rule that governs no file type — a commit convention, a
     research workflow — has no `paths:` and loads in every session, so keep it short.
-52. Ship one `.gitignore` line for the repository's whole `.claude/` folder, and let every skill
-    write under `.claude/skills/<skill-name>/output/`. Setup writes that folder on each clone, so
-    nothing in it is shared, and one pattern covers skills added later. Record the line as an
-    external change: uninstall reads it back for the user to remove, because they may
+52. Ship `.claude/*` followed by `!.claude/manifest/` in the repository's `.gitignore`, and let
+    every skill write under `.claude/skills/<skill-name>/output/`. Setup writes that folder on each
+    clone, so its contents are not shared, except the story manifests the team commits. Use
+    `.claude/*`, not `.claude/`: git never looks inside an ignored folder, so no negation can bring
+    a subfolder back after `.claude/`. Record the lines as an external change: uninstall reads it back for the user to remove, because they may
     have written their own lines around it.
 
 ## Phase 7 — Make install reversible and honest

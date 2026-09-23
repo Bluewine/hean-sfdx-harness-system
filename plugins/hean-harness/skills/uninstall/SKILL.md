@@ -1,6 +1,6 @@
 ---
 name: uninstall
-description: Reverse every change setup made — strips only the marked alias block from the shell startup file, removes copied rules and memories, deletes the repository's .claude folder and .mcp.json, uninstalls the plugins setup added and then hean-harness itself
+description: Reverse every change setup made — strips only the marked alias block from the shell startup file, removes copied rules and memories, empties the repository's .claude folder except its manifests and tracked files, deletes .mcp.json, uninstalls the plugins setup added and then hean-harness itself
 allowed-tools: ["Bash", "Read"]
 ---
 
@@ -22,8 +22,9 @@ left in place because it is theirs rather than ours.
      `.bash_profile`, `.profile`): the file, its `lines` value, and its `preview` text quoted in
      full. Say that only those lines and the one blank line above them are removed, and that the
      file is copied to `~/.claude/hean-harness/backups/` first.
-   - each `repo-folder` entry: the `.claude` folder is deleted with everything in it, including
-     skill output such as rendered pull request bodies and reports
+   - each `repo-folder` entry: everything in the `.claude` folder is deleted, including skill
+     output such as rendered pull request bodies and reports, except `.claude/manifest/` and any
+     file git tracks
    - each `repo-file` entry: the repository's `.mcp.json` is deleted
    - each entry whose `action` starts with `run:`: the plugin or marketplace it removes
    - that hean-harness itself is uninstalled last, which removes its skills, agents and hooks
@@ -66,8 +67,8 @@ left in place because it is theirs rather than ours.
    - each entry and whether it succeeded; an entry marked `"ok": false` needs the user to act, so
      say what it was and why it failed
    - each shell startup file edited, the result of the step 4 check, and its backup path
-   - each `repo-folder` and `repo-file` entry, naming what was deleted; a `.mcp.json` that git
-     tracks is kept, so say so and name it
+   - each `repo-folder` and `repo-file` entry, naming what was deleted and what its `note` says
+     was kept; a `.mcp.json` that git tracks is kept, so say so and name it
    - each `run:` entry and whether the plugin or marketplace was removed
    - each remaining `external` entry with action `manual`, giving its `note`, which is the exact
      command that undoes it
@@ -86,6 +87,7 @@ left in place because it is theirs rather than ours.
   editor tool, or a rewrite of the whole file.
 - Lines a user added to a startup file after setup ran are left alone — only the marked block is
   removed, wherever it sits in the file.
-- The repository's `.claude` folder is deleted whole. Git ignores it and setup writes all of it
-  on each clone, so nothing in it is shared with the team.
+- The repository's `.claude` folder is emptied except `.claude/manifest/`, where each story's
+  deploy manifest is committed for the team, and any file git tracks. Everything else in it is
+  written by setup or the skills on each clone.
 - Never delete the backups folder. It holds copies of their own files.

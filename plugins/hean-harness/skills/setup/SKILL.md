@@ -63,11 +63,14 @@ Install the environment. Show the user what will change before changing it.
    add to their shell startup file if they would rather type just `claude` in future. Show the
    command in full. Do not write their startup file yourself.
 
-6. The last step adds up to three lines to the repository's `.gitignore`: `.claude/`, so the
-   rules, memories and agents setup writes into the repository, and all skill output, are never
-   committed; `.githooks/`, so the hook setup installs is never committed; and `.mcp.json`, so
+6. The last step adds up to four lines to the repository's `.gitignore`: `.claude/*` and
+   `!.claude/manifest/`, so the rules, memories and agents setup writes into the repository, and
+   all skill output, are never committed, while each story's manifest in `.claude/manifest/` is;
+   `.githooks/`, so the hook setup installs is never committed; and `.mcp.json`, so
    the Linear server setup adds is never committed. `.githooks/` is left out when the repository
-   tracks its own hooks there. Name each line in the report. When the step says a line was
+   tracks its own hooks there. A bare `.claude/` line an earlier version wrote is replaced,
+   because it hid `.claude/manifest/`; say so when the step reports it. Name each line in the
+   report. When the step says a line was
    already there or not added, say so rather than implying it was written.
 
 ## Rules
