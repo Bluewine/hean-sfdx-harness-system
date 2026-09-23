@@ -226,7 +226,8 @@ Derive the repo root and write the rendered body there (never a bare relative pa
 ```bash
 REPO_ROOT=$(git rev-parse --show-toplevel)
 mkdir -p "$REPO_ROOT/.claude/skills/create-pr/output"
-cat > "$REPO_ROOT/.claude/skills/create-pr/output/{ROOT_WORK_ID}.md" << 'EOF'
+BODY_FILE="$REPO_ROOT/.claude/skills/create-pr/output/{ROOT_WORK_ID}.md"
+cat > "$BODY_FILE" << 'EOF'
 ...
 EOF
 ```
@@ -246,7 +247,9 @@ Write the PR title as the first line as a comment so the user sees it:
 **Verify the rendered body before handing it over.** Read the file back and confirm no Claude attribution reached it:
 
 ```bash
-grep -nEi 'co-authored-by|generated with \[?claude|claude-session|claude\.(ai|com)/(code/session|claude-code)' "$REPO_ROOT/.claude/skills/create-pr/output/{ROOT_WORK_ID}.md"
+BODY_FILE="$(git rev-parse --show-toplevel)/.claude/skills/create-pr/output/{ROOT_WORK_ID}.md"
+grep -nEi 'co-authored-by|generated with \[?claude|claude-session|claude\.(ai|com)/(code/session|claude-code)' "$BODY_FILE"
+echo "$BODY_FILE:1"
 ```
 
 Expect no output. The templates carry none of these, so any hit was introduced while rendering — strip the offending lines, including the blank line and any `---` separator that preceded them, rewrite the file, and re-run the check. Never submit a body containing a `Co-Authored-By` trailer, a "Generated with Claude Code" line, or a session URL.
@@ -254,9 +257,20 @@ Expect no output. The templates carry none of these, so any hit was introduced w
 Tell the user:
 
 ```
-PR body written to .claude/skills/create-pr/output/{ROOT_WORK_ID}.md
+PR body written to {ABSOLUTE_PATH}:1
 Review or edit the file, then type `yes` to submit.
 ```
+
+**Give the path as an absolute path ending in `:1`.** Claude Code turns a `path:line` reference into
+something the reader can click straight from the terminal; a bare path is plain text they have to copy
+out and open by hand. A relative path resolves against the session's working directory, which is not
+always the repository root, so give it in full. `{ABSOLUTE_PATH}` is what a command's closing `echo`
+printed. Print exactly one form of the path.
+
+**`BODY_FILE` is set in every command that uses it.** A shell variable does not survive from one
+command to the next, so a later command that leans on an earlier one's variable gets an empty string —
+and `--body-file ""` publishes an empty body, which reads like the render failed rather than like a
+variable was lost.
 
 Wait for the user to type `yes` before proceeding.
 
@@ -302,14 +316,23 @@ No confirmation needed — this is a non-force push of the user's own feature br
 **Step 2 — Create the PR.**
 
 ```bash
+BODY_FILE="$(git rev-parse --show-toplevel)/.claude/skills/create-pr/output/{ROOT_WORK_ID}.md"
 gh pr create \
   --base integration \
   --title "@{ROOT_WORK_ID}: {ROOT_TITLE}" \
-  --body-file "$REPO_ROOT/.claude/skills/create-pr/output/{ROOT_WORK_ID}.md" \
+  --body-file "$BODY_FILE" \
   --assignee @me
 ```
 
-After the command completes, report the PR URL returned by `gh pr create` to the user.
+After the command completes, close with both links, in this order:
+
+```
+PR: {PR_URL}
+Body: {ABSOLUTE_PATH}:1
+```
+
+The PR URL is what was published. The body file is what it was published from, and it stays on disk
+after the run — so name it here too rather than leaving the reader to scroll back for it.
 
 ## Phase 10 — Wipe local screenshots
 
