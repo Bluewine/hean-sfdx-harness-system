@@ -33,7 +33,7 @@ import { claudeDir } from './lib/paths.mjs';
 
 const argv = process.argv.slice(2);
 const dryRun = argv.includes('--dry-run');
-// kept for the install ahead, which replaces blocks in place and the hook only when asked
+// kept for the install ahead, which replaces blocks and index lines in place and the hook only when asked
 const keep = ['uninstall-only', 'blocks', ...(argv.includes('--replace-githook') ? [] : ['githooks'])];
 const log = (...a) => console.log(...a);
 
@@ -41,6 +41,7 @@ const log = (...a) => console.log(...a);
 const KINDS = {
   'file-copy':    'file this plugin copied',
   'marker-block': 'marked block added to a file you also own',
+  'index-lines':  'memory index whose lines for this plugin\'s memories it keeps',
   'json-key':     'setting this plugin changed',
   'dir-create':   'folder this plugin created',
   'repo-folder':  'repository .claude folder, kept until uninstall',
@@ -100,7 +101,8 @@ function main() {
   log('Only these are removed. Files you wrote yourself are left alone, and a file');
   log('this plugin replaced is restored from its backup.');
   log('');
-  log('Kept for the install ahead: marked blocks, which it replaces where they sit;');
+  log('Kept for the install ahead: marked blocks and memory index lines, which it');
+  log('replaces where they sit;');
   log(keep.includes('githooks')
     ? 'the git hook, which it replaces only with --replace-githook; and'
     : 'and');

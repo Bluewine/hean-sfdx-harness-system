@@ -18,6 +18,7 @@ import { createHash } from 'node:crypto';
 import { basename, dirname, join, resolve } from 'node:path';
 import { claudeDir } from './paths.mjs';
 import { trackedUnder } from './gitignore.mjs';
+import { stripIndex, onlyHeading } from './memory-index.mjs';
 
 export const STATE_DIR = join(claudeDir(), 'hean-harness');
 export const MANIFEST = join(STATE_DIR, 'install-manifest.json');
@@ -28,6 +29,7 @@ const BACKUP_DIR = join(STATE_DIR, 'backups');
 const REVERSIBLE = {
   'file-copy':    'Restore the backup, or delete the file if it did not exist before.',
   'marker-block': 'Strip the marked block out of the file, leaving the rest untouched.',
+  'index-lines':  'Remove the index lines linking to the recorded memories; delete the file only if we created it and just the heading is left.',
   'json-key':     'Restore the previous value, or remove the key if it was absent before.',
   'dir-create':   'Remove the directory, but only if it is still empty.',
   'git-config':   'Restore the previous value in the repository, or unset the key if it had none.',
@@ -165,13 +167,22 @@ export function markSetupRun() {
 // on uninstall, because the second run read our value as though it were theirs.
 const RESTORE_FIELDS = ['backup', 'existedBefore', 'previousValue', 'fileExisted'];
 
+// A change type that took over a file from an older one. Memory indexes were a
+// marked block until Claude Code's memory writer was found dropping the markers.
+// Recording the new type replaces the old entry for the same file and inherits
+// what it remembered, so whether the plugin created the file carries over, and
+// no stale marked-block entry is left for a later revert to act on.
+const SUPERSEDES = { 'index-lines': 'marker-block' };
+
 export function record(change) {
   if (!REVERSIBLE[change.type]) {
     throw new Error(`Unknown change type: ${change.type}`);
   }
   return withLock(() => {
     const m = load();
-    const i = m.changes.findIndex(c => c.type === change.type && c.target === change.target);
+    const same = c => c.target === change.target &&
+      (c.type === change.type || c.type === SUPERSEDES[change.type]);
+    const i = m.changes.findIndex(same);
     if (i >= 0) {
       const first = m.changes[i];
       // `in` rather than a truthiness test: a previous value of null, false, 0
@@ -180,6 +191,7 @@ export function record(change) {
       change.recordedAt = first.recordedAt;
       change.updatedAt = new Date().toISOString();
       m.changes[i] = change;
+      m.changes = m.changes.filter((c, j) => j === i || !same(c));
     } else {
       change.recordedAt = new Date().toISOString();
       m.changes.push(change);
@@ -210,10 +222,14 @@ export function markers(marker, style = 'hash') {
  */
 export function block(marker, body, style = 'hash') {
   const { open, close } = markers(marker, style);
-  const note = style === 'html'
+  return `\n${open}\n${note(marker, style)}\n${body}\n${close}\n`;
+}
+
+/** The line under the opening marker that tells the reader the block is managed. */
+export function note(marker, style = 'hash') {
+  return style === 'html'
     ? `<!-- Added by the ${marker} plugin. Anything written inside this block is replaced when setup runs. -->`
     : `# Added by the ${marker} plugin. Anything written inside this block is replaced when setup runs.`;
-  return `\n${open}\n${note}\n${body}\n${close}\n`;
 }
 
 /**
@@ -300,7 +316,7 @@ export function getJsonKey(obj, path) {
 export function category(c) {
   if (c.type === 'repo-folder' || c.type === 'repo-file') return 'uninstall-only';
   if (c.type === 'external' && runnableUndo(c.undoHint)) return 'uninstall-only';
-  if (c.type === 'marker-block') return 'blocks';
+  if (c.type === 'marker-block' || c.type === 'index-lines') return 'blocks';
   if (c.type === 'git-config' && c.key === 'core.hooksPath') return 'githooks';
   if (/[\\/]\.githooks([\\/]|$)/.test(String(c.target))) return 'githooks';
   return null;
@@ -319,8 +335,9 @@ export function category(c) {
  *                   removals. Deleting the folder would take the skill output a
  *                   clone has built up; removing superpowers would only have it
  *                   installed again.
- *   blocks          marked blocks. Setup replaces each one where it sits, so the
- *                   alias stays where the user put it in their startup file.
+ *   blocks          marked blocks and memory index lines. Setup replaces each
+ *                   one where it sits, so the alias stays where the user put it
+ *                   in their startup file and an index keeps its order.
  *   githooks        the commit-msg hook and core.hooksPath. The repository may
  *                   have come to rely on the hook, so a reinstall replaces it
  *                   only when asked.
@@ -376,6 +393,26 @@ export function revert({ dryRun = false, keep = [], only = null } = {}) {
             }
           }
           break;
+        case 'index-lines': {
+          const files = c.files ?? [];
+          r.action = c.existedBefore === false
+            ? `remove ${files.length} index lines, then the file if we created it and only the heading is left`
+            : `remove ${files.length} index lines`;
+          if (!existsSync(c.target)) { r.note = 'file already absent'; break; }
+          const before = readFileSync(c.target, 'utf8');
+          const after = stripIndex(before, files);
+          if (after === before) r.note = 'no index lines of this plugin left in the file';
+          if (dryRun) break;
+          if (c.existedBefore === false && onlyHeading(after)) { rmSync(c.target); break; }
+          if (after === before) break;
+          r.backup = backup(c.target);
+          writeFileSync(c.target, after);
+          if (readFileSync(c.target, 'utf8') !== after) {
+            writeFileSync(c.target, before);
+            throw new Error(`${c.target} did not read back as written. The original content was put back.`);
+          }
+          break;
+        }
         case 'json-key':
           r.action = c.existedBefore ? 'restore previous value' : 'remove key';
           if (!dryRun && existsSync(c.target)) {

@@ -8,18 +8,19 @@
  * Claude Code names the project folder after the repository's absolute path,
  * with every "/" and "." turned into "-". Verified against existing folders.
  *
- * MEMORY.md is an index the developer may already have, so it gets a managed
- * block rather than being replaced.
+ * MEMORY.md is an index the developer may already have, so it is never
+ * replaced: setup adds or updates one line per shipped memory, generated from
+ * that memory's frontmatter, and leaves every other line alone.
  */
 
-import { readFileSync, readdirSync, existsSync, mkdirSync, statSync } from 'node:fs';
+import { readdirSync, existsSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import { init } from './lib/manifest.mjs';
-import { installFile, installBlock, installDir } from './lib/install.mjs';
-import { MARKER } from './lib/shell.mjs';
+import { installFile, installIndexLines, installDir } from './lib/install.mjs';
+import { INDEX } from './lib/memory-index.mjs';
 import { claudeDir } from './lib/paths.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -46,8 +47,9 @@ function findRepo() {
   }
 }
 
+// every shipped file in a folder is a memory; the index is built from them
 function mdFiles(dir) {
-  return existsSync(dir) ? readdirSync(dir).filter(f => f.endsWith('.md')).sort() : [];
+  return existsSync(dir) ? readdirSync(dir).filter(f => f.endsWith('.md') && f !== INDEX).sort() : [];
 }
 
 function main() {
@@ -55,16 +57,16 @@ function main() {
   const projectMemDir = join(claudeDir(), 'projects', encodeProjectPath(repo), 'memory');
   const agentMemDir = join(repo, '.claude', 'agent-memory');
 
-  const projectFiles = mdFiles(PROJECT_SRC).filter(f => f !== 'MEMORY.md');
+  const projectFiles = mdFiles(PROJECT_SRC);
   const agents = existsSync(AGENT_SRC)
     ? readdirSync(AGENT_SRC).filter(a => statSync(join(AGENT_SRC, a)).isDirectory()).sort()
     : [];
   const agentCount = agents.reduce(
-    (n, a) => n + mdFiles(join(AGENT_SRC, a)).filter(f => f !== 'MEMORY.md').length, 0);
+    (n, a) => n + mdFiles(join(AGENT_SRC, a)).length, 0);
 
   log(`Repository         ${repo}`);
   log(`Project memories   ${projectFiles.length} files -> ${projectMemDir}`);
-  log(`Memory index       block added to ${join(projectMemDir, 'MEMORY.md')}`);
+  log(`Memory index       ${projectFiles.length} lines in ${join(projectMemDir, INDEX)}`);
   log(`Agent memories     ${agentCount} files across ${agents.length} agents -> ${agentMemDir}`);
   for (const a of agents) log(`                     ${a}: ${mdFiles(join(AGENT_SRC, a)).length} files`);
   log('');
@@ -77,27 +79,17 @@ function main() {
   for (const f of projectFiles) installFile(join(PROJECT_SRC, f), join(projectMemDir, f));
   log(`Installed ${projectFiles.length} project memories`);
 
-  const indexSrc = join(PROJECT_SRC, 'MEMORY.md');
-  if (existsSync(indexSrc)) {
-    const lines = readFileSync(indexSrc, 'utf8').split('\n').filter(l => l.startsWith('- '));
-    installBlock(join(projectMemDir, 'MEMORY.md'), MARKER, lines.join('\n'), 'html');
-    log(`Added ${lines.length} entries to the memory index`);
-  }
+  installIndexLines(join(projectMemDir, INDEX), projectFiles.map(f => join(PROJECT_SRC, f)));
+  log(`Indexed ${projectFiles.length} project memories`);
 
   for (const a of agents) {
     const dest = join(agentMemDir, a);
     installDir(agentMemDir);
     installDir(dest);
-    for (const f of mdFiles(join(AGENT_SRC, a))) {
-      // the index gets a block, as the project one does, so a team's own
-      // entries are not replaced by ours
-      if (f === 'MEMORY.md') {
-        const lines = readFileSync(join(AGENT_SRC, a, f), 'utf8').split('\n').filter(l => l.startsWith('- '));
-        installBlock(join(dest, f), MARKER, lines.join('\n'), 'html');
-      } else {
-        installFile(join(AGENT_SRC, a, f), join(dest, f));
-      }
-    }
+    const files = mdFiles(join(AGENT_SRC, a));
+    for (const f of files) installFile(join(AGENT_SRC, a, f), join(dest, f));
+    // the same lines as the project index, so a team's own entries stay
+    installIndexLines(join(dest, INDEX), files.map(f => join(AGENT_SRC, a, f)));
   }
   log(`Installed ${agentCount} agent memories into the repository`);
   log('');

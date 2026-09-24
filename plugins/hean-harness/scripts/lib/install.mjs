@@ -8,11 +8,13 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { dirname, relative, join, resolve } from 'node:path';
+import { basename, dirname, relative, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { record, backup, findBlock, block, setJsonKey, getJsonKey } from './manifest.mjs';
+import { record, backup, findBlock, block, setJsonKey, getJsonKey, load, markers, note } from './manifest.mjs';
 import { claudeDir } from './paths.mjs';
+import { MARKER } from './shell.mjs';
+import { indexLine, mergeIndex } from './memory-index.mjs';
 
 // <plugin>/scripts/lib/install.mjs -> <plugin>
 const PLUGIN_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
@@ -105,6 +107,43 @@ export function installBlock(file, marker, body, style = 'hash') {
     throw new Error(`${file} did not read back as written.${saved ? ' The backup was put back.' : ''}`);
   }
   return { existed, replaced: Boolean(found) };
+}
+
+/**
+ * Put one index line per shipped memory into a MEMORY.md, owned by the file
+ * each line links to rather than by a marked block. memory-index.mjs says why.
+ *
+ * sources are the shipped memory files for this folder, in the order a missing
+ * line is appended. The markers an earlier version wrote are removed wherever
+ * they are, keeping the lines between them. Lines for memories an earlier
+ * install owned and this version no longer ships are removed too, because the
+ * revert before this install keeps the entry and so never reaches them.
+ *
+ * Every line is generated before anything is recorded, so a memory with broken
+ * frontmatter throws with the file untouched. The result is read back; on a
+ * mismatch the backup is put back.
+ */
+export function installIndexLines(file, sources) {
+  const entries = sources.map(s => ({ file: basename(s), line: indexLine(s) }));
+  const existed = existsSync(file);
+  const previous = load().changes.find(c => c.type === 'index-lines' && c.target === file);
+  const saved = existed ? backup(file) : null;
+
+  // Recorded before the edit, as installBlock does. An entry for the same file
+  // left by the marked-block version is replaced by this one; see SUPERSEDES.
+  record({ type: 'index-lines', target: file, files: entries.map(e => e.file),
+           backup: saved, existedBefore: existed });
+
+  const { open, close } = markers(MARKER, 'html');
+  const next = mergeIndex(existed ? readFileSync(file, 'utf8') : null, entries,
+                          { drop: [open, close, note(MARKER, 'html')], retired: previous?.files ?? [] });
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, next);
+  if (readFileSync(file, 'utf8') !== next) {
+    if (saved) copyFileSync(saved, file);
+    throw new Error(`${file} did not read back as written.${saved ? ' The backup was put back.' : ''}`);
+  }
+  return { existed, lines: entries.length };
 }
 
 /**

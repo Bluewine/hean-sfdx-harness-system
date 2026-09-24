@@ -5,10 +5,14 @@
  * Three kinds of problem are worth telling apart:
  *   missing   recorded as installed, but the file is not there any more
  *   changed   the file is there but differs from the copy this plugin ships
- *   absent    a managed block was recorded but is no longer in the file
+ *   absent    a managed block or index line was recorded but is no longer in the file
  *
  * "changed" is not always a fault. Someone may have edited a rule on purpose.
  * The report says what differs and lets the reader decide.
+ *
+ * Memory files no index line links to are counted separately. Claude Code loads
+ * a memory only through its index line, so such a file is never read, and setup
+ * adds lines for its own memories only.
  */
 
 import { readFileSync, existsSync } from 'node:fs';
@@ -24,6 +28,7 @@ import { repoRoot, missingLines } from './lib/gitignore.mjs';
 import { STATE_DIR } from './lib/manifest.mjs';
 import { getGitConfig } from './lib/install.mjs';
 import { readPreference, preferenceText } from './lib/commit-lifecycle.mjs';
+import { indexedFiles, unindexed } from './lib/memory-index.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN_ROOT = dirname(HERE);
@@ -52,6 +57,13 @@ function checkChange(c) {
       return readFileSync(c.target, 'utf8').includes(open)
         ? { state: 'ok' }
         : { state: 'absent', note: 'the block was removed from this file' };
+    }
+    case 'index-lines': {
+      if (!existsSync(c.target)) return { state: 'missing', note: 'the index is gone' };
+      const linked = indexedFiles(dirname(c.target));
+      const lost = (c.files ?? []).filter(f => !linked.has(f)).length;
+      return lost ? { state: 'absent', note: `${lost} of this plugin's index lines are no longer in the file` }
+                  : { state: 'ok' };
     }
     case 'json-key': {
       if (!existsSync(c.target)) return { state: 'missing', note: 'the JSON file it was written to is gone' };
@@ -121,6 +133,22 @@ function main() {
       if (problems.length > 20) log(`  ... and ${problems.length - 20} more`);
     }
     log('');
+
+    const folders = m.changes.filter(c => c.type === 'index-lines').map(c => dirname(c.target));
+    if (folders.length) {
+      log('Memory indexes');
+      for (const dir of folders) {
+        const loose = unindexed(dir);
+        log(`  ${String(loose.length).padStart(4)}  not in the index  ${short(dir)}`);
+        for (const f of loose.slice(0, 10)) log(`        ${f}`);
+        if (loose.length > 10) log(`        ... and ${loose.length - 10} more`);
+      }
+      if (folders.some(d => unindexed(d).length)) {
+        log('  A memory with no index line is never loaded. Setup adds lines only for its own');
+        log('  memories, so add a line for each of these to that folder\'s MEMORY.md or delete it.');
+      }
+      log('');
+    }
   }
 
   log('Implementation preference');
