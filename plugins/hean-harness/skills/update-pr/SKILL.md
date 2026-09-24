@@ -5,6 +5,8 @@ description: Update an existing open PR body — detects root and merged child-b
 
 You are executing the `/update-pr` skill. Work through the phases below in order.
 
+Every request to update or refresh an open pull request's body runs this skill, whatever the PR's base branch. A PR body not rendered from this skill's template is wrong; never write one by hand and call `gh pr edit` directly.
+
 ## Phase 1 — Extract branch work ID
 
 Run:
@@ -42,7 +44,7 @@ No confirmation needed — this is a non-force push of the user's own feature br
 
 Run:
 ```bash
-gh pr list --head {branch} --state open --json number,body,title,assignees
+gh pr list --head {branch} --state open --json number,body,title,assignees,baseRefName
 ```
 
 If the result is an empty array, stop and tell the user: "No open PR found for this branch. Use `/create-pr` to create one."
@@ -51,6 +53,18 @@ Extract:
 - `PR_NUMBER` — the PR number.
 - `EXISTING_BODY` — the full current PR body.
 - `HAS_ASSIGNEES` — true if the `assignees` array is non-empty, false otherwise.
+- `BASE` — the PR's base branch, from `baseRefName`.
+
+Fetch the base and confirm the remote-tracking ref resolves:
+
+```bash
+git fetch origin {BASE}
+git rev-parse --verify --quiet "origin/{BASE}^{commit}"
+```
+
+If the fetch fails or `git rev-parse` prints nothing, stop and tell the user: "Base branch `{BASE}` of PR #{PR_NUMBER} does not exist on origin. Nothing to update."
+
+Every later `{BASE}` in this skill is this value: merge-bases, diffs and commit ranges compare against `origin/{BASE}`.
 
 **Parse existing bullets keyed by work ID → `EXISTING_BULLETS_BY_ID`.** The existing body may be in the old single-story format (one `### Story` block) or the new multi-story format (multiple `## Story {N}` blocks). Unify both by keying on the link line, which precedes the `### What was Done?` section in **both** formats:
 
@@ -79,35 +93,31 @@ If a `### What was Done?` section has no resolvable work ID from a preceding lin
 
 A branch may contain a root story plus one or more merged child branches, each a distinct Linear work ID. Group the branch's commits by their `@WORK-ID:` subject prefix.
 
-**Refresh the remote base first.** Every merge-base in this skill is computed against `origin/integration`, never the local `integration` branch, and the remote-tracking ref must be current before the first one runs:
+**Compare against the remote base.** Every merge-base in this skill is computed against `origin/{BASE}`, never the local `{BASE}` branch, and the Phase 3 fetch makes that remote-tracking ref current before the first one runs.
 
-```bash
-git fetch origin integration
-```
+The Phase 3 fetch is a fetch, not a pull. It updates only the remote-tracking ref `origin/{BASE}` — it does not touch the working tree, the local `{BASE}` branch, or the work branch, and it never requires rebasing the work branch onto a newer `{BASE}`.
 
-This is a fetch, not a pull. It updates only the remote-tracking ref `origin/integration` — it does not touch the working tree, the local `integration` branch, or the work branch, and it never requires rebasing the work branch onto a newer `integration`.
-
-It matters when work has been merged into **both** `integration` and this branch — a merged child branch, for example. A stale local ref then places the merge-base before those merge commits, so already-merged stories look unmerged and get rendered as extra stories. The PR body would describe work that GitHub's own diff does not show, because GitHub compares against the remote base. When `integration` has simply advanced with commits absent from this branch, fetching changes nothing: the merge-base stays at the fork point either way.
+It matters when work has been merged into **both** `{BASE}` and this branch — a merged child branch, for example. A stale local ref then places the merge-base before those merge commits, so already-merged stories look unmerged and get rendered as extra stories. The PR body would describe work that GitHub's own diff does not show, because GitHub compares against the remote base. When `{BASE}` has simply advanced with commits absent from this branch, fetching changes nothing: the merge-base stays at the fork point either way.
 
 Run:
 ```bash
-MB=$(git merge-base origin/integration HEAD)
+MB=$(git merge-base origin/{BASE} HEAD)
 git diff --name-status "$MB" HEAD
 ```
 
-`git merge-base origin/integration HEAD` finds the exact commit where this branch diverged from `integration`, regardless of how far `integration` has moved forward since. Using `$MB` instead of the three-dot shorthand ensures that new commits merged into `integration` after this branch was created do not affect the `A`/`M`/`D` status of files on this branch.
+`git merge-base origin/{BASE} HEAD` finds the exact commit where this branch diverged from `{BASE}`, regardless of how far `{BASE}` has moved forward since. Using `$MB` instead of the three-dot shorthand ensures that new commits merged into `{BASE}` after this branch was created do not affect the `A`/`M`/`D` status of files on this branch.
 
-If the diff is empty, stop and tell the user: "No changes between this branch and `integration`. Nothing to update."
+If the diff is empty, stop and tell the user: "No changes between this branch and `{BASE}`. Nothing to update."
 
 Compute the ordered, de-duplicated list of work-ID groups (first appearance first):
 ```bash
-MB=$(git merge-base origin/integration HEAD)
+MB=$(git merge-base origin/{BASE} HEAD)
 git log --no-merges --reverse --topo-order --format='%s' "$MB"..HEAD \
   | sed -nE 's/^@([A-Z]+-[0-9]+):.*/\1/p' | awk '!seen[$0]++'
 ```
 
 - `--no-merges` excludes merge commits, including back-merges of `integration` (`@XXX: Merge integration`), so they never form a story.
-- `merge-base` moves forward past any back-merged `integration` commits, so upstream commits do not leak into a group.
+- `merge-base` moves forward past any back-merged `{BASE}` commits, so upstream commits do not leak into a group.
 - The first line is `ROOT_WORK_ID` — the root branch, rendered as **Story 1**. Each subsequent line is the next story in order.
 - `STORY_COUNT` is the number of lines.
 
@@ -145,14 +155,14 @@ Build one authoritative net-status map for the whole branch, then merge bullets 
 
 Net-status map (clean net status per file):
 ```bash
-MB=$(git merge-base origin/integration HEAD)
+MB=$(git merge-base origin/{BASE} HEAD)
 git diff --name-status "$MB" HEAD
 ```
 Read this into a `{ file → A|M|D|R }` map.
 
 Per-group membership (which files each story touched):
 ```bash
-MB=$(git merge-base origin/integration HEAD)
+MB=$(git merge-base origin/{BASE} HEAD)
 # the group's commits:
 git log --no-merges --reverse --topo-order --format='%H %s' "$MB"..HEAD
 # files for one commit (no commit header, status + path only):
@@ -190,7 +200,7 @@ For **each** work-ID group from Phase 4 (root first), rebuild that group's deplo
 
 **Step 1 — Re-derive the automatic rows.**
 
-Discard `EXISTING_AUTOMATIC_STEPS_BY_ID` for the group and regenerate from the branch — these rows are derived from the runbook, so a stale one means the runbook moved on and the row is simply wrong. Take the group's own file set (the union of its `git diff-tree` paths across every bucket), reading each file's status from the net-status map, and derive one row per item found by the Automatic rows table in `.claude/rules/runbook-deployment-steps.md`. That rule is the single source of truth for which paths produce which rows, how to describe a runbook script, and how to diff the destructive manifests against the merge base — follow it rather than restating it here.
+Discard `EXISTING_AUTOMATIC_STEPS_BY_ID` for the group and regenerate from the branch — these rows are derived from the runbook, so a stale one means the runbook moved on and the row is simply wrong. Take the group's own file set (the union of its `git diff-tree` paths across every bucket), reading each file's status from the net-status map, and derive one row per item found by the Automatic rows table in `.claude/rules/runbook-deployment-steps.md`. That rule is the single source of truth for which paths produce which rows, how to describe a runbook script, and how to diff the destructive manifests against the merge base — follow it rather than restating it here. Compute that merge base against `origin/{BASE}` wherever the rule's command names `origin/integration`.
 
 **Step 2 — Ask whether the manual rows changed.**
 
@@ -324,7 +334,7 @@ Expect no output. The templates carry none of these, so any hit was introduced w
 
 Tell the user:
 ```
-PR body updated at {ABSOLUTE_PATH}:1 (PR #{PR_NUMBER}).
+PR body updated at {ABSOLUTE_PATH}:1 (PR #{PR_NUMBER}, base: {BASE}).
 Review or edit the file, then type `yes` to submit.
 ```
 
@@ -343,7 +353,7 @@ Wait for the user to type `yes` before proceeding.
 
 ## Phase 10 — Submit
 
-Use the repo-root path for `--body-file` and never pass `--title` (the live PR title is preserved).
+Use the repo-root path for `--body-file` and never pass `--title` or `--base`. `gh pr edit` changes only the body and, when the PR has none, the assignee; the live PR title and base stay as they are.
 
 If `HAS_ASSIGNEES` is false (no existing assignees), include `--add-assignee @me`:
 ```bash

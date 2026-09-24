@@ -1,9 +1,31 @@
 ---
 name: create-pr
-description: Assemble and submit a GitHub PR — extracts work ID, resolves the Linear story, generates bullets from the diff, splits out Sonar-fix and Framework-change bullets, detects runbook deployment steps and asks for manual ones, optionally captures screenshots, writes the body for review, then calls gh pr create
+description: GitHub PR assembler for every request to open, create or raise a PR on any base branch — resolves the base, extracts work ID and Linear stories, generates diff bullets, splits Sonar-fix and Framework-change bullets, detects runbook steps, asks for manual ones, writes the review body, then calls gh pr create
+argument-hint: "[--base <branch>]"
 ---
 
 You are executing the `/create-pr` skill. Work through the phases below in order.
+
+Every request to open, create or raise a pull request runs this skill, whatever the target branch. A PR body not rendered from this skill's template is wrong; never write one by hand and call `gh pr create` directly.
+
+## Phase 0 — Base branch
+
+Resolve `BASE`, the branch this PR merges into, before any other work:
+
+- `--base <branch>` in the skill arguments sets `BASE`.
+- Otherwise a branch the user named in their request as the PR target or merge base sets `BASE`.
+- Otherwise `BASE` is `integration`.
+
+Fetch it and confirm the remote-tracking ref resolves:
+
+```bash
+git fetch origin {BASE}
+git rev-parse --verify --quiet "origin/{BASE}^{commit}"
+```
+
+If the fetch fails or `git rev-parse` prints nothing, stop and tell the user: "Base branch `{BASE}` does not exist on origin. Name an existing branch with `--base <branch>`."
+
+Every later `{BASE}` in this skill is this value: merge-bases, diffs and commit ranges compare against `origin/{BASE}`, and Phase 9 submits with `--base {BASE}`.
 
 ## Phase 1 — Extract branch work ID
 
@@ -16,39 +38,35 @@ Apply regex `^work-([A-Z]+-\d+)` to the output. The captured group is the branch
 
 If the branch name does not match the pattern, stop and tell the user: "Branch name does not follow the `work-{WORK-ID}_...` pattern. Rename the branch or create a PR manually."
 
-This `BRANCH_WORK_ID` is used only as the branch-name validation gate. PR identity (title, filename, base) is set later from the root story group, not from this value.
+This `BRANCH_WORK_ID` is used only as the branch-name validation gate. PR identity (title, filename) is set later from the root story group, not from this value; the base is `BASE` from Phase 0.
 
 ## Phase 2 — Detect story groups
 
 A branch may contain a root story plus one or more merged child branches, each a distinct Linear work ID. Group the branch's commits by their `@WORK-ID:` subject prefix.
 
-**Refresh the remote base first.** Every merge-base in this skill is computed against `origin/integration`, never the local `integration` branch, and the remote-tracking ref must be current before the first one runs:
+**Compare against the remote base.** Every merge-base in this skill is computed against `origin/{BASE}`, never the local `{BASE}` branch, and the Phase 0 fetch makes that remote-tracking ref current before the first one runs.
 
-```bash
-git fetch origin integration
-```
+The Phase 0 fetch is a fetch, not a pull. It updates only the remote-tracking ref `origin/{BASE}` — it does not touch the working tree, the local `{BASE}` branch, or the work branch, and it never requires rebasing the work branch onto a newer `{BASE}`.
 
-This is a fetch, not a pull. It updates only the remote-tracking ref `origin/integration` — it does not touch the working tree, the local `integration` branch, or the work branch, and it never requires rebasing the work branch onto a newer `integration`.
-
-It matters when work has been merged into **both** `integration` and this branch — a merged child branch, for example. A stale local ref then places the merge-base before those merge commits, so already-merged stories look unmerged and get rendered as extra stories. The PR body would describe work that GitHub's own diff does not show, because GitHub compares against the remote base. When `integration` has simply advanced with commits absent from this branch, fetching changes nothing: the merge-base stays at the fork point either way.
+It matters when work has been merged into **both** `{BASE}` and this branch — a merged child branch, for example. A stale local ref then places the merge-base before those merge commits, so already-merged stories look unmerged and get rendered as extra stories. The PR body would describe work that GitHub's own diff does not show, because GitHub compares against the remote base. When `{BASE}` has simply advanced with commits absent from this branch, fetching changes nothing: the merge-base stays at the fork point either way.
 
 Run:
 ```bash
-MB=$(git merge-base origin/integration HEAD)
+MB=$(git merge-base origin/{BASE} HEAD)
 git diff --name-status "$MB" HEAD
 ```
 
-If the diff is empty, stop and tell the user: "No changes found between this branch and `integration`. Nothing to PR."
+If the diff is empty, stop and tell the user: "No changes found between this branch and `{BASE}`. Nothing to PR."
 
 Compute the ordered, de-duplicated list of work-ID groups (first appearance first):
 ```bash
-MB=$(git merge-base origin/integration HEAD)
+MB=$(git merge-base origin/{BASE} HEAD)
 git log --no-merges --reverse --topo-order --format='%s' "$MB"..HEAD \
   | sed -nE 's/^@([A-Z]+-[0-9]+):.*/\1/p' | awk '!seen[$0]++'
 ```
 
 - `--no-merges` excludes merge commits, including back-merges of `integration` (`@XXX: Merge integration`), so they never form a story.
-- `merge-base` moves forward past any back-merged `integration` commits, so upstream commits do not leak into a group.
+- `merge-base` moves forward past any back-merged `{BASE}` commits, so upstream commits do not leak into a group.
 - The first line is `ROOT_WORK_ID` — the root branch, rendered as **Story 1**. Each subsequent line is the next story in order.
 - `STORY_COUNT` is the number of lines.
 
@@ -86,14 +104,14 @@ Build one authoritative net-status map for the whole branch, then generate inten
 
 Net-status map (clean net status per file, the same source the single-story path uses):
 ```bash
-MB=$(git merge-base origin/integration HEAD)
+MB=$(git merge-base origin/{BASE} HEAD)
 git diff --name-status "$MB" HEAD
 ```
 Read this into a `{ file → A|M|D|R }` map.
 
 Per-group membership (which files each story touched):
 ```bash
-MB=$(git merge-base origin/integration HEAD)
+MB=$(git merge-base origin/{BASE} HEAD)
 # the group's commits:
 git log --no-merges --reverse --topo-order --format='%H %s' "$MB"..HEAD
 # files for one commit (no commit header, status + path only):
@@ -126,7 +144,7 @@ For **each** work-ID group from Phase 2 (root first), assemble that group's depl
 
 **Step 1 — Detect the automatic steps.**
 
-Take the group's own file set (the union of its `git diff-tree` paths across every bucket), reading each file's status from the net-status map, and derive one row per item found by the Automatic rows table in `.claude/rules/runbook-deployment-steps.md`. That rule is the single source of truth for which paths produce which rows, how to describe a runbook script, and how to diff the destructive manifests against the merge base — follow it rather than restating it here.
+Take the group's own file set (the union of its `git diff-tree` paths across every bucket), reading each file's status from the net-status map, and derive one row per item found by the Automatic rows table in `.claude/rules/runbook-deployment-steps.md`. That rule is the single source of truth for which paths produce which rows, how to describe a runbook script, and how to diff the destructive manifests against the merge base — follow it rather than restating it here. Compute that merge base against `origin/{BASE}` wherever the rule's command names `origin/integration`.
 
 **Step 2 — Ask for the manual steps.**
 
@@ -257,7 +275,7 @@ Expect no output. The templates carry none of these, so any hit was introduced w
 Tell the user:
 
 ```
-PR body written to {ABSOLUTE_PATH}:1
+PR body written to {ABSOLUTE_PATH}:1 (base: {BASE})
 Review or edit the file, then type `yes` to submit.
 ```
 
@@ -318,7 +336,7 @@ No confirmation needed — this is a non-force push of the user's own feature br
 ```bash
 BODY_FILE="$(git rev-parse --show-toplevel)/.claude/skills/create-pr/output/{ROOT_WORK_ID}.md"
 gh pr create \
-  --base integration \
+  --base {BASE} \
   --title "@{ROOT_WORK_ID}: {ROOT_TITLE}" \
   --body-file "$BODY_FILE" \
   --assignee @me
