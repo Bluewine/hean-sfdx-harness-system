@@ -39,6 +39,20 @@ function unquote(s) {
 }
 
 /**
+ * The title an index line shows for a memory's name.
+ *
+ * Claude Code's memory format defines name as a short slug, so most names read
+ * "feedback-no-duplicated-code". A name with a space is already a title and is
+ * used as it is. A slug loses one leading type word, has its dashes and
+ * underscores turned into spaces, and gets a capital first letter.
+ */
+export function titleFrom(name) {
+  if (name.includes(' ')) return name;
+  const words = name.replace(/^(feedback|reference|project|user)[-_]/, '').replace(/[-_]/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/**
  * The index line for one memory, built from its frontmatter. The frontmatter is
  * the one source for the title and hook, so a hand-kept index cannot fall out
  * of step with the memories it lists. Throws when either field is missing,
@@ -52,7 +66,7 @@ export function indexLine(path) {
   if (!name || !description) {
     throw new Error(`${path} has no name or description in its frontmatter, so its index line cannot be written.`);
   }
-  return `- [${name}](${basename(path)}) — ${description}`;
+  return `- [${titleFrom(name)}](${basename(path)}) — ${description}`;
 }
 
 // Split into lines without the final newline, and say whether there was one,

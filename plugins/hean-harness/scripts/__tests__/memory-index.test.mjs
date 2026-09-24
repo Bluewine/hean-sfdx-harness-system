@@ -19,7 +19,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 
-import { mergeIndex, stripIndex, linkTarget, indexLine } from '../lib/memory-index.mjs';
+import { mergeIndex, stripIndex, linkTarget, indexLine, titleFrom } from '../lib/memory-index.mjs';
 import { markers, note } from '../lib/manifest.mjs';
 
 // <plugin>/scripts/__tests__/ -> <plugin>/scripts
@@ -89,6 +89,14 @@ const targets = text => text.split('\n').map(linkTarget).filter(Boolean);
   check('a quoted description is unquoted, with its escaped quotes kept',
         indexLine(src).includes('as "deferred" when'), indexLine(src));
 }
+check('a dashed slug becomes a title without its type word', titleFrom('feedback-no-duplicated-code') === 'No duplicated code',
+      titleFrom('feedback-no-duplicated-code'));
+check('an underscored slug becomes a title', titleFrom('explicit_target_org') === 'Explicit target org',
+      titleFrom('explicit_target_org'));
+check('a slug keeps a type word that is not the first word',
+      titleFrom('reference_workstep_object_perms_unsettable') === 'Workstep object perms unsettable');
+check('a name that is already readable is used as it is',
+      titleFrom('Always merge with --no-ff') === 'Always merge with --no-ff');
 
 // ---- setup, doctor and uninstall in a sandbox ------------------------------
 
@@ -164,6 +172,41 @@ try {
   check('an index setup created is kept when it holds someone else\'s line',
         readFileSync(devIndex, 'utf8') === '# Memory Index\n\n- [Team note](team_note.md) — the team\'s\n',
         JSON.stringify(existsSync(devIndex) && readFileSync(devIndex, 'utf8')));
+
+  // A MEMORY.md that still has the earlier version's markers around its lines.
+  const home2 = join(root, 'home2');
+  const repo2 = join(root, 'repo2');
+  mkdirSync(join(home2, '.claude'), { recursive: true });
+  mkdirSync(repo2, { recursive: true });
+  execFileSync('git', ['-C', repo2, 'init', '-q', '-b', 'main']);
+  const env2 = { ...env, HOME: home2, CLAUDE_CONFIG_DIR: join(home2, '.claude') };
+  const memDir2 = join(home2, '.claude', 'projects', repo2.replace(/[/.]/g, '-'), 'memory');
+  const index2 = join(memDir2, 'MEMORY.md');
+  const MINE = '# Memory Index\n\n- [My own note](my_note.md) — mine\n## Notes\nprose of my own\n';
+  mkdirSync(memDir2, { recursive: true });
+  writeFileSync(index2, MINE);
+  const oldBody = projectShipped.map(f => `- [Old title](${f}) — old hook`).join('\n');
+  execFileSync('node', ['--input-type=module', '-e',
+    `import { installBlock } from ${JSON.stringify(join(SCRIPTS, 'lib', 'install.mjs'))};
+     installBlock(process.argv[1], 'hean-harness', process.argv[2], 'html');`, index2, oldBody],
+    { env: env2, stdio: 'pipe' });
+  const manifest2 = () => JSON.parse(readFileSync(join(home2, '.claude', 'hean-harness', 'install-manifest.json'), 'utf8'))
+    .changes.filter(c => c.target === index2);
+  check('the old block format is in place before the new install',
+        readFileSync(index2, 'utf8').includes(open) && manifest2().map(c => c.type).join() === 'marker-block');
+
+  execFileSync('node', [join(SCRIPTS, 'install-memories.mjs'), '--repo', repo2], { env: env2, stdio: 'pipe' });
+  const migrated = readFileSync(index2, 'utf8');
+  const links2 = targets(migrated);
+  check('the markers and their note are removed',
+        ![open, close, NOTE].some(l => migrated.includes(l)), JSON.stringify(migrated.slice(0, 300)));
+  check('a marked file has no duplicate lines after the new install',
+        links2.length === new Set(links2).size && projectShipped.every(f => links2.includes(f)),
+        `${links2.length} lines, ${new Set(links2).size} targets`);
+  check('the person\'s lines in a marked file are unchanged', migrated.startsWith(MINE), JSON.stringify(migrated.slice(0, 200)));
+  const kinds = manifest2().map(c => c.type);
+  check('the manifest holds one index-lines entry and no marker-block entry for the file',
+        kinds.join() === 'index-lines', JSON.stringify(kinds));
 } finally {
   rmSync(root, { recursive: true, force: true });
 }

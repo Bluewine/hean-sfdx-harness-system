@@ -137,13 +137,15 @@ function main() {
     const folders = m.changes.filter(c => c.type === 'index-lines').map(c => dirname(c.target));
     if (folders.length) {
       log('Memory indexes');
+      let anyLoose = false;
       for (const dir of folders) {
         const loose = unindexed(dir);
+        anyLoose ||= loose.length > 0;
         log(`  ${String(loose.length).padStart(4)}  not in the index  ${short(dir)}`);
         for (const f of loose.slice(0, 10)) log(`        ${f}`);
         if (loose.length > 10) log(`        ... and ${loose.length - 10} more`);
       }
-      if (folders.some(d => unindexed(d).length)) {
+      if (anyLoose) {
         log('  A memory with no index line is never loaded. Setup adds lines only for its own');
         log('  memories, so add a line for each of these to that folder\'s MEMORY.md or delete it.');
       }
