@@ -5,7 +5,7 @@ description: Update an existing open PR body — detects root and merged child-b
 
 You are executing the `/update-pr` skill. Work through the phases below in order.
 
-Every request to update or refresh an open pull request's body runs this skill, whatever the PR's base branch. A PR body not rendered from this skill's template is wrong; never write one by hand and call `gh pr edit` directly.
+Every request to update or refresh an open pull request's body runs this skill, whatever the PR's base branch, except a PR that release-pr, uat-hotfix or version-bump opens or edits as one of its own steps. A PR body not rendered from this skill's template is wrong; never write one by hand and call `gh pr edit` directly.
 
 ## Phase 1 — Extract branch work ID
 
@@ -58,8 +58,8 @@ Extract:
 Fetch the base and confirm the remote-tracking ref resolves:
 
 ```bash
-git fetch origin {BASE}
-git rev-parse --verify --quiet "origin/{BASE}^{commit}"
+git fetch origin "+refs/heads/{BASE}:refs/remotes/origin/{BASE}"
+git rev-parse --verify --quiet "refs/remotes/origin/{BASE}"
 ```
 
 If the fetch fails or `git rev-parse` prints nothing, stop and tell the user: "Base branch `{BASE}` of PR #{PR_NUMBER} does not exist on origin. Nothing to update."
@@ -200,7 +200,7 @@ For **each** work-ID group from Phase 4 (root first), rebuild that group's deplo
 
 **Step 1 — Re-derive the automatic rows.**
 
-Discard `EXISTING_AUTOMATIC_STEPS_BY_ID` for the group and regenerate from the branch — these rows are derived from the runbook, so a stale one means the runbook moved on and the row is simply wrong. Take the group's own file set (the union of its `git diff-tree` paths across every bucket), reading each file's status from the net-status map, and derive one row per item found by the Automatic rows table in `.claude/rules/runbook-deployment-steps.md`. That rule is the single source of truth for which paths produce which rows, how to describe a runbook script, and how to diff the destructive manifests against the merge base — follow it rather than restating it here. Compute that merge base against `origin/{BASE}` wherever the rule's command names `origin/integration`.
+Discard `EXISTING_AUTOMATIC_STEPS_BY_ID` for the group and regenerate from the branch — these rows are derived from the runbook, so a stale one means the runbook moved on and the row is simply wrong. Take the group's own file set (the union of its `git diff-tree` paths across every bucket), reading each file's status from the net-status map, and derive one row per item found by the Automatic rows table in `.claude/rules/runbook-deployment-steps.md`. That rule is the single source of truth for which paths produce which rows, how to describe a runbook script, and how to diff the destructive manifests against the merge base — follow it rather than restating it here.
 
 **Step 2 — Ask whether the manual rows changed.**
 

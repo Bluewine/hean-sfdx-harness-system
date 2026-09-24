@@ -42,10 +42,10 @@ Derive one row per item the change touches. Every row's Mode is **Automatic**.
 
 Read a runbook script and the class it calls before describing it. State what it does to the org and whether re-running it is safe — never that a file exists.
 
-Diff the destructive manifests against the merge base, so only entries the change itself adds are listed rather than entries an earlier release left in place:
+Diff the destructive manifests against the merge base with the PR's base branch, so only entries the change itself adds are listed rather than entries an earlier release left in place. `{BASE}` is the base branch the running PR skill resolved; outside a PR skill it is `integration`:
 
 ```bash
-MB=$(git merge-base origin/integration HEAD)
+MB=$(git merge-base origin/{BASE} HEAD)
 git diff "$MB" HEAD -- deletePackage/
 ```
 

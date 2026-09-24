@@ -1,12 +1,12 @@
 ---
 name: create-pr
-description: GitHub PR assembler for every request to open, create or raise a PR on any base branch — resolves the base, extracts work ID and Linear stories, generates diff bullets, splits Sonar-fix and Framework-change bullets, detects runbook steps, asks for manual ones, writes the review body, then calls gh pr create
+description: GitHub PR assembler for every PR request on any base branch, except PRs release-pr, uat-hotfix or version-bump open — resolves the base branch and Linear stories, generates diff bullets, splits Sonar-fix and Framework-change bullets, detects runbook steps, asks for manual ones, writes the review body, then calls gh pr create
 argument-hint: "[--base <branch>]"
 ---
 
 You are executing the `/create-pr` skill. Work through the phases below in order.
 
-Every request to open, create or raise a pull request runs this skill, whatever the target branch. A PR body not rendered from this skill's template is wrong; never write one by hand and call `gh pr create` directly.
+Every request to open, create or raise a pull request runs this skill, whatever the target branch, except a PR that release-pr, uat-hotfix or version-bump opens or edits as one of its own steps. A PR body not rendered from this skill's template is wrong; never write one by hand and call `gh pr create` directly.
 
 ## Phase 0 — Base branch
 
@@ -15,12 +15,13 @@ Resolve `BASE`, the branch this PR merges into, before any other work:
 - `--base <branch>` in the skill arguments sets `BASE`.
 - Otherwise a branch the user named in their request as the PR target or merge base sets `BASE`.
 - Otherwise `BASE` is `integration`.
+- Strip a leading `origin/` from a user-given branch name: `origin/work-ABC-20-HF` becomes `work-ABC-20-HF`.
 
 Fetch it and confirm the remote-tracking ref resolves:
 
 ```bash
-git fetch origin {BASE}
-git rev-parse --verify --quiet "origin/{BASE}^{commit}"
+git fetch origin "+refs/heads/{BASE}:refs/remotes/origin/{BASE}"
+git rev-parse --verify --quiet "refs/remotes/origin/{BASE}"
 ```
 
 If the fetch fails or `git rev-parse` prints nothing, stop and tell the user: "Base branch `{BASE}` does not exist on origin. Name an existing branch with `--base <branch>`."
@@ -144,7 +145,7 @@ For **each** work-ID group from Phase 2 (root first), assemble that group's depl
 
 **Step 1 — Detect the automatic steps.**
 
-Take the group's own file set (the union of its `git diff-tree` paths across every bucket), reading each file's status from the net-status map, and derive one row per item found by the Automatic rows table in `.claude/rules/runbook-deployment-steps.md`. That rule is the single source of truth for which paths produce which rows, how to describe a runbook script, and how to diff the destructive manifests against the merge base — follow it rather than restating it here. Compute that merge base against `origin/{BASE}` wherever the rule's command names `origin/integration`.
+Take the group's own file set (the union of its `git diff-tree` paths across every bucket), reading each file's status from the net-status map, and derive one row per item found by the Automatic rows table in `.claude/rules/runbook-deployment-steps.md`. That rule is the single source of truth for which paths produce which rows, how to describe a runbook script, and how to diff the destructive manifests against the merge base — follow it rather than restating it here.
 
 **Step 2 — Ask for the manual steps.**
 
