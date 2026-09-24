@@ -103,6 +103,8 @@ git add package.json
 git commit -m "@{WORK_ID}: Update Release Version to v{NEW_VERSION}"
 ```
 
+Commits follow `~/.claude/rules/implementation-commits.md`; when the commit approval gate refuses, list the changes, stop, and continue after the user asks for the commit.
+
 **On the commit message prefix.** Historic commits read `Update Release Version` with no prefix. That form no longer passes: a work item reference is required, as `.claude/rules/commit-message-format.md` sets out and a hook enforces before every commit. A repository may also run its own `commit-msg` hook with a stricter pattern of its own:
 
 ```bash

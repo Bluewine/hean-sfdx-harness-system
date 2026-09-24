@@ -22,7 +22,7 @@ after any final whole-branch review, because those reviews read the run's commit
    - whether commits were undone, and the list of undone commits;
    - every line starting with `!!`, under its own heading;
    - every file created, changed or deleted, with one line on why.
-4. Stop. The user reviews the changes and types `/hean-harness:commit` to commit them.
+4. Stop. The user reviews the changes and asks for a commit in their own message.
 
 ## Rules
 

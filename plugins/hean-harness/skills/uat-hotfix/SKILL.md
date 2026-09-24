@@ -154,6 +154,8 @@ On `work-{ID}-HF`:
 git commit -m "@{ID}: Point QA swimlane at hotfix branch" deploy-config.yml
 ```
 
+Commits follow `~/.claude/rules/implementation-commits.md`; when the commit approval gate refuses, list the changes, stop, and continue after the user asks for the commit.
+
 **4. Push both branches** — `hotfix-{ID}` must exist remotely before PR 1 can target it:
 
 ```bash
