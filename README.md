@@ -126,22 +126,26 @@ Setup asks once per repository whether commit subjects must read `@WORK-ID: Summ
 
 ## Commit approval
 
-Agents do not commit on their own. A commit is allowed only:
+Agents do not commit on their own. The two implementation questions — subagent-driven or main
+session, and commit per task or not — are asked once per machine and saved. `/hean-harness:start-implementation`
+runs the saved preference before the first change, with or without a plan, and asks the questions
+only when none is saved.
 
-- in the turn where you type `/hean-harness:commit`, after reviewing the changes;
-- inside `/hean-harness:uat-hotfix` or `/hean-harness:version-bump`;
-- inside an implementation run whose answers allow it.
-
-Before implementation, the agent asks two questions: subagent-driven or main session, and commit per
-task or not.
-
-| Answer | Result |
+| Saved preference | Result |
 |---|---|
 | Commit per task | Each task is committed, and the commits stay |
 | No commits, main session | Every commit is refused |
 | No commits, subagent-driven | Tasks commit for their reviews, then `/hean-harness:finish-implementation` undoes the commits and leaves the changes for you. Push is refused until then |
 
-Applies in every repository. Commits you type in a terminal are not checked.
+To switch commits or dev mode, ask in chat or type `/hean-harness:implementation-defaults`; the
+answer replaces the saved preference on this machine.
+
+Under `No commits`, a commit is also allowed in the turn where your own message contains "commit",
+"commits", "committed" or "committing" — for example, asking for one after reviewing the changes —
+unless the word is negated ("don't commit") or part of another word (`/hean-harness:commit-format`).
+
+Applies in every repository, including inside `/hean-harness:uat-hotfix` and
+`/hean-harness:version-bump`. Commits you type in a terminal are not checked.
 
 ## Org roles
 
