@@ -127,16 +127,75 @@ Print the phase map, marking each phase from the probe results — `[x]` complet
 
 ## Phase 1 — Setup and branching
 
-Cut from `release` at its latest:
+**1. Inspect the working tree before any git command that moves HEAD:**
 
 ```bash
-git checkout release
-git pull origin release
-git checkout -b hotfix-{ID}
+git status --porcelain
+```
+
+Anything outside `.claude/` is the user's fix, or other work. Show it, then stash it — including untracked files, excluding `.claude/` — with a message naming `{ID}`:
+
+```bash
+git stash push -u -m "{ID}: pre-hotfix work" -- . ':!.claude'
+```
+
+Nothing under `.claude/` goes into the stash. When `git status --porcelain` shows nothing outside `.claude/`, skip the stash.
+
+**2. Fetch:**
+
+```bash
+git fetch origin
+```
+
+**3. Move aside anything `origin/release` tracks that collides with the working tree.** Find every path `origin/release` tracks that exists on disk and is not tracked by the current branch — untracked or ignored. Move each into `.git/hean-hotfix-aside/{ID}/`, keeping its relative path. `.git/` is never tracked, so the files are safe there:
+
+```bash
+comm -23 <(git ls-tree -r --name-only origin/release | sort) <(git ls-files | sort) > /tmp/hean-hotfix-aside-{ID}.txt
+count=0
+while IFS= read -r f; do
+  [ -e "$f" ] || continue
+  mkdir -p ".git/hean-hotfix-aside/{ID}/$(dirname "$f")"
+  mv "$f" ".git/hean-hotfix-aside/{ID}/$f"
+  count=$((count + 1))
+done < /tmp/hean-hotfix-aside-{ID}.txt
+```
+
+Report the count.
+
+**4. Cut both branches directly from the origin ref.** Never from the local `release`, and never with a pull. Run each command separately and stop at the first failure, reporting its output:
+
+```bash
+git checkout -b hotfix-{ID} origin/release
+```
+
+```bash
 git checkout -b work-{ID}-HF
 ```
 
-At Phase 1b, `hotfix-{ID}` already exists — check it out and cut only the working branch from it. Never re-cut `hotfix-{ID}`; it may already carry merged work.
+Verify `hotfix-{ID}` resolves to the same commit as `origin/release`:
+
+```bash
+git rev-parse hotfix-{ID}
+git rev-parse origin/release
+```
+
+**5. Apply the stash, if one was made, on `work-{ID}-HF`:**
+
+```bash
+git stash pop
+```
+
+On conflict, stop and report. The stash entry stays.
+
+**6. Report:** the stash, if any; the set-aside count and folder; and that switching back to `integration` later deletes the `.claude/` files `release` tracks — the user restores the set-aside copies from `.git/hean-hotfix-aside/{ID}/` or reruns `/hean-harness:setup`.
+
+At Phase 1b, `hotfix-{ID}` already exists. Steps 1-3 and 5-6 are the same, except step 3 targets `origin/hotfix-{ID}` instead of `origin/release`. Step 4 cuts only `work-{ID}-HF`, from `origin/hotfix-{ID}`:
+
+```bash
+git checkout -b work-{ID}-HF origin/hotfix-{ID}
+```
+
+Never re-cut `hotfix-{ID}`; it may already carry merged work.
 
 ## Phase 2 — Implementation and QA routing
 
@@ -273,6 +332,7 @@ Report the hotfix complete only when `PR3_MERGED` holds and `origin/integration`
 - Probing a bare local branch name when an `origin/` ref resolves
 - Trusting a checklist or tracker file over a fresh probe
 - About to run Phase 1 commands when `hotfix-{ID}` already exists on origin
+- Chaining `git checkout release && git pull` into the branch cuts, or continuing past a failed pull — cut both branches from `origin/release` directly, never from a pulled local `release`
 - About to merge PR 2 without confirming the off-cycle window is open
 - About to call the hotfix done at PR 2 merge — it is done at PR 3 merge
 - Reaching for `gh pr list` to work out which phase you are in
@@ -286,6 +346,7 @@ Report the hotfix complete only when `PR3_MERGED` holds and `origin/integration`
 | Skipping the back-merge | Next release overwrites the fix; QA swimlane drifts to a deleted branch |
 | Cutting `work-{ID}-BM` from `release` | Back-merge PR carries no delta against `integration` |
 | Cutting `hotfix-{ID}` from `integration` | Hotfix ships untested `integration` work into UAT |
+| Pulling local `release` before cutting, or continuing after the pull fails | Both branches get cut from a stale `release`, commits behind `origin/release` |
 | Resetting the config on the HF branch | The swap is reverted before QA ever deploys from it |
 | Rewording the `Back-merge and config reset` commit | Resumed runs miss `RESET_READY` and re-enter Phase 4b |
 | Squash-merging any of the three PRs | Destroys the `@{ID}: ` subjects Phase 0 detects from |
