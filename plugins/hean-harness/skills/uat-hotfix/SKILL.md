@@ -127,7 +127,7 @@ Print the phase map, marking each phase from the probe results — `[x]` complet
 
 ## Phase 1 — Setup and branching
 
-Run every command in this phase separately, and stop at the first failure — including `git fetch origin`, since a stale `origin/release` still passes later checks, and the move loop in step 2. Report the failing command's output. Whenever this phase stops, report the same content as the closing report in step 6: the stash, if one was made, and the set-aside count and folder, if used. Never run the next command after a failed one.
+Run each fenced block below as one Bash call. Stop the phase when any block exits non-zero — including `git fetch origin`, since a stale `origin/release` still passes later checks — and report the failing block's output. Whenever this phase stops, report the same content as the closing report in step 6: the stash, if one was made, and the set-aside count and folder, if used.
 
 **1. Move to the repository root and fetch:**
 
@@ -136,37 +136,13 @@ cd "$(git rev-parse --show-toplevel)"
 git fetch origin
 ```
 
-**2. Resolve the ref this phase cuts from, move aside anything it tracks that collides with the working tree — anywhere in the repository, not only `.claude/` — and report any tracked `.claude/` file both sides touch.** A path counts as a collision when the ref tracks it, it exists on disk (a regular file or a dangling symlink), and the current index does not track it under any case — an APFS case-only match still counts as tracked, so it is never moved. Build the aside folder from the git dir, not a literal `.git/`: in a linked worktree, `.git` is a file, so a literal path fails there while an unguarded loop keeps counting and exits 0.
-
-At Phase 1a:
+**2. Resolve the ref this phase cuts from, move aside anything it tracks that collides with the working tree — anywhere in the repository, not only `.claude/` — and report any tracked `.claude/` file both sides touch.** A path counts as a collision when the ref tracks it, it exists on disk (a regular file or a dangling symlink), and the current index does not track it under any case — an APFS case-only match still counts as tracked, so it is never moved. Build the aside folder from the git **common** dir, not a literal `.git/` and not the per-worktree git dir: in a linked worktree, `.git` is a file, so a literal path fails there; the per-worktree git dir is deleted by `git worktree remove`, taking the aside folder with it, while the common dir survives every worktree's lifecycle. Set `PHASE` to `1a` or `1b` on the first line and run the block as one Bash call. At Phase 1b, `hotfix-{ID}` may exist only locally — Phase 2 is what pushes it — so it resolves `origin/` first and stops if neither resolves:
 
 ```bash
-REF=origin/release
-GIT_DIR=$(git rev-parse --git-dir)
-ASIDE="$GIT_DIR/hean-hotfix-aside/{ID}"
-RELEASE_LIST=$(mktemp); TRACKED_LIST=$(mktemp); CANDIDATES=$(mktemp)
-git ls-tree -r -z --name-only "$REF" | while IFS= read -r -d '' f; do printf '%s\n' "$f"; done > "$RELEASE_LIST"
-git ls-files -z | while IFS= read -r -d '' f; do printf '%s\n' "$f"; done > "$TRACKED_LIST"
-grep -Fxvif "$TRACKED_LIST" "$RELEASE_LIST" > "$CANDIDATES"
-
-count=0
-while IFS= read -r f; do
-  [ -e "$f" ] || [ -L "$f" ] || continue
-  mkdir -p "$ASIDE/$(dirname "$f")" && mv "$f" "$ASIDE/$f" && count=$((count + 1)) \
-    || { echo "failed to move $f aside" >&2; exit 1; }
-done < "$CANDIDATES"
-echo "moved aside: $count"
-
-LOCAL_MOD=$(mktemp); REF_DIFF=$(mktemp)
-git diff --name-only -z -- .claude | while IFS= read -r -d '' f; do printf '%s\n' "$f"; done > "$LOCAL_MOD"
-git diff --name-only -z HEAD "$REF" -- .claude | while IFS= read -r -d '' f; do printf '%s\n' "$f"; done > "$REF_DIFF"
-grep -Fxf "$REF_DIFF" "$LOCAL_MOD" || true
-```
-
-At Phase 1b, `hotfix-{ID}` may exist only locally — Phase 2 is what pushes it — so resolve it the way Phase 0 does, `origin/` first, and stop if neither resolves. The rest of the block is identical to Phase 1a's:
-
-```bash
-if git rev-parse --verify --quiet origin/hotfix-{ID} >/dev/null; then
+PHASE=1a
+if [ "$PHASE" = 1a ]; then
+  REF=origin/release
+elif git rev-parse --verify --quiet origin/hotfix-{ID} >/dev/null; then
   REF=origin/hotfix-{ID}
 elif git rev-parse --verify --quiet hotfix-{ID} >/dev/null; then
   REF=hotfix-{ID}
@@ -174,8 +150,9 @@ else
   echo "hotfix-{ID} does not resolve on origin or locally" >&2
   exit 1
 fi
-GIT_DIR=$(git rev-parse --git-dir)
-ASIDE="$GIT_DIR/hean-hotfix-aside/{ID}"
+echo "cut ref: $REF"
+GIT_COMMON_DIR=$(git rev-parse --git-common-dir)
+ASIDE="$GIT_COMMON_DIR/hean-hotfix-aside/{ID}"
 RELEASE_LIST=$(mktemp); TRACKED_LIST=$(mktemp); CANDIDATES=$(mktemp)
 git ls-tree -r -z --name-only "$REF" | while IFS= read -r -d '' f; do printf '%s\n' "$f"; done > "$RELEASE_LIST"
 git ls-files -z | while IFS= read -r -d '' f; do printf '%s\n' "$f"; done > "$TRACKED_LIST"
@@ -190,12 +167,12 @@ done < "$CANDIDATES"
 echo "moved aside: $count"
 
 LOCAL_MOD=$(mktemp); REF_DIFF=$(mktemp)
-git diff --name-only -z -- .claude | while IFS= read -r -d '' f; do printf '%s\n' "$f"; done > "$LOCAL_MOD"
+git diff HEAD --name-only -z -- .claude | while IFS= read -r -d '' f; do printf '%s\n' "$f"; done > "$LOCAL_MOD"
 git diff --name-only -z HEAD "$REF" -- .claude | while IFS= read -r -d '' f; do printf '%s\n' "$f"; done > "$REF_DIFF"
 grep -Fxf "$REF_DIFF" "$LOCAL_MOD" || true
 ```
 
-Report the set-aside count, and report any path the overlap check prints — a **modified tracked** file under `.claude/` is never stashed in step 3, so if `$REF` also changed it, the cut in step 4 fails on it.
+Report the set-aside count and the resolved `cut ref:`, and report any path the overlap check prints — a **modified tracked** file under `.claude/` (staged or not) is never stashed in step 3, so if `$REF` also changed it, the cut in step 4 fails on it. Any later step that needs the ref resolves it the same way, reusing this block rather than new logic.
 
 **3. Inspect what's left, then stash it.** Moving collisions aside runs first, so a file the ref tracks and `.claude/` excludes from the stash never enters it, and never gets caught mid-apply between a checkout and a pop:
 
@@ -230,26 +207,22 @@ git rev-parse hotfix-{ID}
 git rev-parse origin/release
 ```
 
-At Phase 1b, `hotfix-{ID}` already exists — never re-cut it, it may already carry merged work. Cut only the working branch, from whichever ref resolved in step 2 — `origin/hotfix-{ID}` if it resolved, `hotfix-{ID}` only if it did not:
+At Phase 1b, `hotfix-{ID}` already exists — never re-cut it, it may already carry merged work. Cut only the working branch, from `{REF}` — the ref step 2 printed after `cut ref:`:
 
 ```bash
-git checkout -b work-{ID}-HF --no-track origin/hotfix-{ID}
+git checkout -b work-{ID}-HF --no-track {REF}
 ```
 
-**5. Apply the stash, if one was made, on `work-{ID}-HF`.** Find it by its `{ID}` message rather than assuming it is `stash@{0}` — a resumed run has no memory of which entry it created:
+**5. Apply the stash, if one was made, on `work-{ID}-HF`, and drop it only after a clean apply — in one block, so a no-stash run does not exit non-zero on an empty reference.** Find it by its `{ID}` message rather than assuming it is `stash@{0}` — a resumed run has no memory of which entry it created:
 
 ```bash
 STASH_REF=$(git stash list --format='%gd %s' | grep -F "{ID}: pre-hotfix work" | head -1 | cut -d' ' -f1)
-[ -n "$STASH_REF" ] && git stash apply "$STASH_REF"
+[ -z "$STASH_REF" ] || { git stash apply "$STASH_REF" && git stash drop "$STASH_REF"; }
 ```
 
-On conflict, stop and report; do not drop the entry, and never re-apply it on a later run. On a clean apply, drop it:
+On conflict, the block exits non-zero and the drop never runs; stop and report, and never re-apply the entry on a later run.
 
-```bash
-git stash drop "$STASH_REF"
-```
-
-**6. Report:** the stash, if any; the set-aside count and folder; and that switching back to `integration` later deletes every path `release` tracks that `integration` does not — root `CLAUDE.md` included, not only `.claude/` — so the user restores the set-aside copies from the folder reported in step 2, or reruns `/hean-harness:setup`.
+**6. Report:** the stash, if any; the set-aside count and folder; and that switching back to `integration` later deletes every path `release` tracks that `integration` does not — root `CLAUDE.md` included, not only `.claude/` — so the user restores the set-aside copies from the common-dir folder reported in step 2, or reruns `/hean-harness:setup`.
 
 ## Phase 2 — Implementation and QA routing
 
