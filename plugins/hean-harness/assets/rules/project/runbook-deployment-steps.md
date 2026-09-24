@@ -58,6 +58,40 @@ Manual steps a project needs repeatedly, to offer as candidates:
 - **Cross-repo deploy order** — when several repositories deploy to one org, any repository owning record types or metadata that another references has to deploy first, or the dependent deploy fails on a reference it cannot resolve.
 - **Publishing the Experience Cloud site** — the pipeline has no automatic publish step, so an unpublished site keeps serving the previous snapshot.
 
+### Story reminder
+
+Print this reminder as plain text immediately before the first question about manual steps, one block per story the question covers. When the same `AskUserQuestion` call also asks the screenshots question, print the reminder once for both.
+
+```
+{ID} — {Linear title}
+Story:   {first sentence of the Linear description}
+Done on this branch ({N} commits, {M} files):
+  - {up to 5 "What was Done" bullets}
+Found automatically:
+  - Pre or post runbook script:   {names, or none}
+  - Delete package entries:       {count and manifest, or none}
+  - Experience Cloud site files:  {changed, or none}
+Same story in other repositories: {repo (branch, N commits), or none — checked {list}}
+```
+
+- **Line sources**: the title and first sentence come from the Linear story lookup, the counts from the story's commits and file set, the bullets from the "What was Done" step, and the runbook, delete package and site lines from the Automatic rows step. Only the other-repositories line needs a new lookup.
+- **Experience Cloud site files**: any changed path under an `experiences/`, `digitalExperiences/`, `digitalExperienceConfigs/`, `sites/` or `networks/` metadata folder.
+- **Other repositories**: check every sibling folder of the main repository that is a git repository. Resolve the main repository through the common git directory, so a worktree under `.claude/worktrees/` looks beside the main repository, not inside it. A branch matches `work-{ID}` with any suffix that does not extend the ID's number, local or remote:
+
+  ```bash
+  MAIN=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+  for REPO in "$(dirname "$MAIN")"/*/; do
+    REPO=${REPO%/}
+    { [ -e "$REPO/.git" ] && [ "$REPO" != "$MAIN" ]; } || continue
+    echo "== $REPO"
+    git -C "$REPO" for-each-ref --format='%(refname:short)' refs/heads refs/remotes | grep -E '(^|/)work-{ID}($|[^0-9])'
+    git -C "$REPO" log --all --format=%s | grep -c '^@{ID}:' || true
+  done
+  ```
+
+  Report a repository when it has a matching branch or a commit count above zero, with its branch names and the count of `@{ID}:` commits. When none match, write `none` and list the repositories checked.
+- **Option order**: when another repository has work on the story, `Cross-repo deploy order` comes first and its description names that repository and branch. When site files changed, `Publish Experience Cloud site` comes first and its description names the changed site folder. When both apply, `Cross-repo deploy order` comes first and `Publish Experience Cloud site` second. Otherwise `None` stays first. No candidate is preselected.
+
 ## Table shape
 
 Render one table per stage that has rows, `Pre` before `Post`. A stage with no rows gets no table, no label, and no mention.

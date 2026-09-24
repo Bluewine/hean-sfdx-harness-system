@@ -149,7 +149,7 @@ Take the group's own file set (the union of its `git diff-tree` paths across eve
 
 **Step 2 — Ask for the manual steps.**
 
-Ask once per group, in a single `AskUserQuestion` call with `multiSelect` enabled, following the Manual rows policy in `.claude/rules/runbook-deployment-steps.md` — that rule states when to ask, when to skip because the user already named the steps, which recurring candidates to offer, and what must never be rendered.
+Ask once per group, in a single `AskUserQuestion` call with `multiSelect` enabled, following the Manual rows policy in `.claude/rules/runbook-deployment-steps.md` — that rule states when to ask, when to skip because the user already named the steps, which recurring candidates to offer, and what must never be rendered. Print the Story reminder that rule defines immediately before the call.
 
 **Step 3 — Build the group's rows.**
 

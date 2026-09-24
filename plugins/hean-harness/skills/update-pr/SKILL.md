@@ -204,7 +204,7 @@ Discard `EXISTING_AUTOMATIC_STEPS_BY_ID` for the group and regenerate from the b
 
 **Step 2 — Ask whether the manual rows changed.**
 
-Manual rows are never re-derived. Ask once per group:
+Manual rows are never re-derived. Print the Story reminder defined in `.claude/rules/runbook-deployment-steps.md` immediately before this question. Ask once per group:
 ```
 Add or update manual deployment steps for Story {N} ({WORK-ID}: {TITLE})? (yes/no)
 ```
