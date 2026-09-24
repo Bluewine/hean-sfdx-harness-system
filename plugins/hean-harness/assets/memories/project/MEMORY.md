@@ -3,13 +3,13 @@
 - [Confirm precise cause before proposing a fix](feedback_confirm_precise_cause_before_fix.md) — For org/schema-drift-shaped failures, run the specific comparison check before proposing any fix, not after the user asks
 - [lightning-input datetime-local uses browser timezone](reference_datetime_local_browser_timezone.md) — Renders wall-clock in browser TZ not Salesforce org TZ (verified); don't "fix" the ETA split to @salesforce/i18n/timeZone — it's a regression
 - [WorkStep object permissions are unsettable](reference_workstep_object_perms_unsettable.md) — Platform strips WorkStep objectPermissions on deploy; 0 rows org-wide; access is via field FLS + parent WorkPlan, not an object grant
-- [Always use developer agent for any Salesforce metadata change](feedback_always_use_developer_agent.md) — Never edit files under force-app/ directly — always delegate to the developer agent, no exceptions
+- [Always use developer agent for any Salesforce metadata change](feedback_always_use_developer_agent.md) — Route every force-app change to hean-harness:developer and coverage work to the tester agents, including the implementer in subagent-driven runs
 - [Always use npx jest for all LWC test commands in CLAUDE.md files](feedback_jest_run_command.md) — Never use npm run test:unit in CLAUDE.md; use npx jest for all run/watch/coverage/scoped commands
 - [Commit message style](feedback_commit_message_length.md) — Subject lines ≤10 words and ≤77 chars total, first word after work ID capitalized
 - [Always merge with --no-ff](feedback_merge_no_ff.md) — Every git merge must use --no-ff to preserve branch topology
 - [Never run agents in the background](feedback_no_background_agents.md) — Always run agents in the foreground; never use run_in_background
 - [Manifest output location](feedback_manifest_location.md) — Per-story manifests go to .claude/manifest/{WORK-ID}.xml; audit manifest is manifest/last-deployed.xml; never inside force-app/
-- [Agent routing — structural test fixes](feedback_agent_routing_test_fixes.md) — use developer not lwc-tester when fixing structurally broken tests
+- [Agent routing — structural test fixes](feedback_agent_routing_test_fixes.md) — use hean-harness:developer not hean-harness:lwc-tester when fixing structurally broken tests
 - [No attribution trailers in commits](feedback_no_coauthored_by.md) — Never add Co-Authored-By, Claude-Session or any generated trailer naming the assistant, model, session or tool
 - [SFCORE_Query collection operators](reference_sfcore_query_collection_operators.md) — equals/notEquals with Set/List → IN/NOT IN via queryWithBinds; confirmed from SFCORE_QueryTest
 - [SFCORE classes must never be edited](feedback_sfcore_never_edit.md) — SFCORE_* are a third-party framework; treat as read-only like a managed package, always

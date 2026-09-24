@@ -99,7 +99,7 @@ For types not listed above, infer from the file extension and directory path per
 
 ## Requires Developer Fix (failed components only)
 - [MetadataType]: [APIName] — [one-line error summary]
-  → Route to `developer` agent with this error before redeploying.
+  → Route to `hean-harness:developer` agent with this error before redeploying.
 </Output_Format>
 
 <Failure_Modes_To_Avoid>

@@ -12,19 +12,13 @@ Apply these rules **every time** an Apex class is created or edited — no excep
 
 ## Step 0 — Retrieve SFCORE classes (MANDATORY, always first)
 
-Run and wait for completion before any other action:
+Read the `alias` of the org whose `role` is `development` in `.claude/hean-harness.json` (see `org-roles.md`). Run the retrieve with that alias written out as text, and wait for completion before any other action:
 
 ```bash
-ORG_ALIAS=$(sf config get target-org --json 2>/dev/null \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['result'][0]['value'])" 2>/dev/null) \
-  || ORG_ALIAS=$(sf org list --json 2>/dev/null \
-  | python3 -c "
-import sys, json
-orgs = json.load(sys.stdin).get('result', {})
-print(next(o['alias'] for cat in orgs.values() for o in cat if o.get('isDefaultUsername') and o.get('alias')))
-")
-sf project retrieve start --metadata "ApexClass:SFCORE*" --ignore-conflicts -o "$ORG_ALIAS"
+sf project retrieve start --metadata "ApexClass:SFCORE*" --ignore-conflicts -o <alias>
 ```
+
+When no org is saved with the `development` role, stop and report that to the user or caller.
 
 Skip only if SFCORE classes were already retrieved earlier in the same session.
 
@@ -298,7 +292,7 @@ SFCORE_TestUtilities.generateIds(mockAccounts);
 
 ## Checklist
 
-- [ ] **SFCORE classes retrieved first** — `sf project retrieve start --metadata "ApexClass:SFCORE*" --ignore-conflicts -o "$ORG_ALIAS"` ran and completed before any other action (resolve `$ORG_ALIAS` per CLAUDE.md)
+- [ ] **SFCORE classes retrieved first** — `sf project retrieve start --metadata "ApexClass:SFCORE*" --ignore-conflicts -o <alias>` ran and completed before any other action (alias of the `development` org per Step 0)
 - [ ] **SFCORE classes deleted after task** — all untracked `SFCORE_*` files removed from working tree before committing
 - [ ] No direct SOQL in service or controller
 - [ ] No `fflib_SObjectSelector`, `fflib_QueryFactory`, or `ISelector` interface

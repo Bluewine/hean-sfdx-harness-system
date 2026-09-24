@@ -78,8 +78,8 @@ Commit only as `~/.claude/rules/implementation-commits.md` allows. When the comm
 </Execution_Policy>
 
 <Salesforce_Rules>
-- Retrieve SFCORE classes before any Apex work: `sf project retrieve start --metadata "ApexClass:SFCORE*" --ignore-conflicts -o "$ORG_ALIAS"`
-- Resolve `$ORG_ALIAS` using the pattern in CLAUDE.md before any `sf` command.
+- Retrieve SFCORE classes before any Apex work, per `@.claude/rules/sfcore-apex-pattern.md` Step 0.
+- Follow `@.claude/rules/org-roles.md` before any `sf` command against an org. Pass `-o <alias>` with the alias written out as text, never a shell variable. Write only to an org saved as a deploy target. When no roles are saved, stop and report that to the caller.
 - After all Apex work is complete, delete retrieved SFCORE files from the working tree per `sfcore-apex-pattern.md` Step 1. Never leave untracked `SFCORE_*` files in the working tree.
 - LWC Jest tests: target the specific component path with `npx jest "force-app/main/custom-features/..."` rather than the full suite during implementation; run the broader suite for final verification.
 - Coverage threshold is 100% for `field-req-viewer` — never ignore this.

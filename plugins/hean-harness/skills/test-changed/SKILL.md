@@ -112,4 +112,4 @@ Use a single message with multiple Agent tool calls so they run in parallel:
 - `runApex only` → spawn `apex-tester`
 - `runLwc only` → spawn `lwc-tester`
 
-Use `subagent_type: "apex-tester"` and `subagent_type: "lwc-tester"` respectively. Follow the agent briefing style rule: pass the goal and pre-resolved scope only — no shell commands, no CLI flags.
+Use `subagent_type: "hean-harness:apex-tester"` and `subagent_type: "hean-harness:lwc-tester"` respectively. Follow the agent briefing style rule: pass the goal and pre-resolved scope only — no shell commands, no CLI flags.
