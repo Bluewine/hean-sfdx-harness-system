@@ -48,7 +48,9 @@ function unquote(s) {
  */
 export function titleFrom(name) {
   if (name.includes(' ')) return name;
-  const words = name.replace(/^(feedback|reference|project|user)[-_]/, '').replace(/[-_]/g, ' ');
+  const words = name.replace(/^(feedback|reference|project|user)[-_]/, '').replace(/[-_]/g, ' ').trim();
+  // a name that is only a type word would leave "- [](file.md)"
+  if (!words) return name;
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 

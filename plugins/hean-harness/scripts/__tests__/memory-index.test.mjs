@@ -95,6 +95,9 @@ check('an underscored slug becomes a title', titleFrom('explicit_target_org') ==
       titleFrom('explicit_target_org'));
 check('a slug keeps a type word that is not the first word',
       titleFrom('reference_workstep_object_perms_unsettable') === 'Workstep object perms unsettable');
+check('a name that is only a type word is kept as it is',
+      titleFrom('feedback-') === 'feedback-' && titleFrom('project_') === 'project_',
+      `${titleFrom('feedback-')} ${titleFrom('project_')}`);
 check('a name that is already readable is used as it is',
       titleFrom('Always merge with --no-ff') === 'Always merge with --no-ff');
 
