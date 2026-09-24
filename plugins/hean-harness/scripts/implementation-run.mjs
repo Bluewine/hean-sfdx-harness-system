@@ -17,7 +17,7 @@
 
 import { rmSync } from 'node:fs';
 
-import { readState, writeState, readPreference, savePreference, startRun, finishRun, PREFERENCE_FILE }
+import { readState, writeState, readPreference, savePreference, startRun, finishRun, describePreference, PREFERENCE_FILE }
   from './lib/commit-lifecycle.mjs';
 
 const argv = process.argv.slice(2);
@@ -37,16 +37,13 @@ function sessionArg() {
 }
 
 const devMode = preference => preference.mode === 'subagent' ? 'Subagent-driven' : 'Main session';
-const describe = preference =>
-  `${preference.mode === 'subagent' ? 'subagent-driven' : 'main session'}, ` +
-  `${preference.commits === 'yes' ? 'commit per task' : 'no commits'}`;
 
 function preferenceCommand() {
   const sub = argv[1];
 
   if (sub === 'show') {
     const preference = readPreference();
-    console.log(preference ? `Saved preference: ${describe(preference)}.` : 'No implementation preference is saved on this machine.');
+    console.log(preference ? `Saved preference: ${describePreference(preference)}.` : 'No implementation preference is saved on this machine.');
     process.exit(0);
     return;
   }
@@ -69,7 +66,7 @@ function preferenceCommand() {
     const filled = !existing ? (field === 'commits' ? { mode: 'subagent' } : { commits: 'no' }) : {};
     const preference = { mode: 'subagent', commits: 'no', ...existing, ...change, ...filled };
     savePreference(preference);
-    console.log(`Saved preference: ${describe(preference)}.`);
+    console.log(`Saved preference: ${describePreference(preference)}.`);
     if (!existing) {
       console.log(`No preference was saved yet, so the other field was filled with its default ` +
                   `(${field === 'commits' ? 'mode subagent' : 'commits no'}).`);
@@ -91,7 +88,12 @@ function startCommand() {
     return;
   }
   const state = readState(session);
-  const { state: next, note } = startRun(state, preference, process.cwd());
+  const { state: next, note, started } = startRun(state, preference, process.cwd());
+  if (!started) {
+    console.log(note);
+    process.exit(3);
+    return;
+  }
   writeState(session, next);
   console.log(note);
   console.log(`Dev mode: ${devMode(preference)}`);

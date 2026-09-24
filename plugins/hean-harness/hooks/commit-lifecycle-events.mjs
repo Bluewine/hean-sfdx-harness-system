@@ -17,17 +17,13 @@
 
 import { readFileSync } from 'node:fs';
 
-import { readState, writeState, onPrompt, readPreference, savePreference, implementationAnswers, startRun }
+import { readState, writeState, onPrompt, readPreference, savePreference, implementationAnswers, startRun, describePreference }
   from '../scripts/lib/commit-lifecycle.mjs';
 
 let input = {};
 try { input = JSON.parse(readFileSync(0, 'utf8')); } catch { process.exit(0); }
 const session = input?.session_id;
 const state = readState(session);
-
-const describe = preference =>
-  `${preference.mode === 'subagent' ? 'subagent-driven' : 'main session'}, ` +
-  `${preference.commits === 'yes' ? 'commit per task' : 'no commits'}`;
 
 switch (input?.hook_event_name) {
   case 'UserPromptSubmit':
@@ -40,16 +36,18 @@ switch (input?.hook_event_name) {
 
     let note;
     if (answers.mode && answers.commits) {
-      savePreference(answers);
-      const { state: next, note: runNote } = startRun(state, answers, input.cwd || process.cwd());
-      writeState(session, next);
+      const { state: next, note: runNote, started } = startRun(state, answers, input.cwd || process.cwd());
+      if (started) {
+        savePreference(answers);
+        writeState(session, next);
+      }
       note = runNote;
     } else {
       const existing = readPreference();
       if (!existing) break;
       const preference = { ...existing, ...answers };
       savePreference(preference);
-      note = `Saved preference: ${describe(preference)}.`;
+      note = `Saved preference: ${describePreference(preference)}.`;
     }
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: note } }));
     break;

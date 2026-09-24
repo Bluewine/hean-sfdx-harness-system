@@ -109,12 +109,21 @@ console.log('No commits refuses, and the approval word test');
 s = newSession();
 answer(s, 'Main session', 'No commits', A);
 refused('no commits refuses by default', s, COMMIT, A, 'No commits');
+refused('no commits refuses in another repository too, no new question', s, COMMIT, B, 'No commits');
 prompt(s, "let's commit this now");
 allowed('a message asking for a commit approves it this turn', s, COMMIT);
 prompt(s, 'thanks, now look at the next thing');
 refused('the next user message ends the approval', s, COMMIT);
 prompt(s, 'please keep this uncommitted for now');
 refused('"uncommitted" does not approve', s, COMMIT);
+prompt(s, "don't commit yet, let me look");
+refused('"don\'t commit" does not approve', s, COMMIT);
+prompt(s, '/hean-harness:commit-format off');
+refused('a command mentioning commit-format does not approve', s, COMMIT);
+prompt(s, 'please commit this');
+allowed('"please commit this" approves', s, COMMIT);
+prompt(s, 'ok commit it');
+allowed('"ok commit it" approves', s, COMMIT);
 
 console.log('Task notifications and peer messages keep approval');
 prompt(s, 'please commit that');
@@ -171,6 +180,26 @@ expect('preference show reports it', shown.stdout.includes('subagent-driven, com
 run(['preference', 'clear']);
 const clearedShown = run(['preference', 'show']);
 expect('preference clear removes it', clearedShown.stdout.includes('No implementation preference is saved'), clearedShown.stdout);
+
+console.log('start, and re-answering, while an earlier run still needs finishing');
+clearPreference();
+s = newSession();
+answer(s, 'Subagent-driven', 'No commits', A);
+const blocked = run(['start', '--session', s], A);
+expect('start exits 3 when an earlier run still needs finishing', blocked.status === 3 && blocked.stdout.includes('finish-implementation'), blocked.stdout);
+
+const beforePref = run(['preference', 'show']).stdout;
+const reAnswerNote = answer(s, 'Main session', 'Commit per task', A);
+expect('answering again while a run needs finishing starts no run', !reAnswerNote.includes('Implementation run recorded'), reAnswerNote);
+expect('the note says to finish first and answer again', reAnswerNote.includes('finish-implementation') && reAnswerNote.toLowerCase().includes('answer'), reAnswerNote);
+const afterPref = run(['preference', 'show']).stdout;
+expect('the saved preference was not touched', afterPref === beforePref, `before: ${beforePref}\nafter: ${afterPref}`);
+
+const cleanup = spawnSync('node', [RUN_SCRIPT, 'finish', '--session', s], { encoding: 'utf8', env });
+expect('finish clears the pending run', cleanup.status === 0, cleanup.stdout);
+
+const notGitRepo = run(['start', '--session', newSession()], sandbox);
+expect('start exits 3 outside a git repository', notGitRepo.status === 3 && notGitRepo.stdout.includes('Not in a git repository'), notGitRepo.stdout);
 
 console.log('Subagent-driven, no commits');
 s = newSession();

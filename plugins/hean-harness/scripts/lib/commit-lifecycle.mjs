@@ -5,10 +5,12 @@
  * The preference is one file per machine (PREFERENCE_FILE): { mode, commits }.
  * It applies in every repository and folder, with no per-repository override,
  * so the two implementation questions are asked once per machine rather than
- * once per session. Only the user's own action writes it: clicking the
- * AskUserQuestion answers, or typing the implementation-defaults skill. An
- * agent that wrote it itself could set "commits: yes" without the user ever
- * seeing the question, which is the approval this file exists to require.
+ * once per session. The implementation-commits rule forbids the model from
+ * writing this file itself; the two intended writers are the PostToolUse
+ * AskUserQuestion hook (the user's click) and the typed-only
+ * implementation-defaults skill (a command the user typed). Nothing here
+ * stops a model that ignores the rule from writing the file directly — the
+ * constraint is instructional, not enforced by this module.
  *
  * A commit is allowed only when one of these holds:
  *
@@ -41,7 +43,32 @@ export const MODE_HEADER = 'Dev mode';
 export const COMMITS_HEADER = 'Commits';
 export const PREFERENCE_FILE = join(STATE_DIR, 'implementation.json');
 
-const APPROVAL_WORD = /\bcommit(s|ted|ting)?\b/i;
+const COMMIT_WORD = /\bcommit(s|ted|ting)?\b/gi;
+const NEGATIONS = new Set(['dont', 'not', 'never', 'no', 'without']);
+
+/** The word immediately before index in text, apostrophes stripped and lower-cased, or '' when there is none. */
+function wordBefore(text, index) {
+  const m = text.slice(0, index).match(/([A-Za-z'’]+)\s*$/);
+  return m ? m[1].toLowerCase().replace(/['’]/g, '') : '';
+}
+
+/**
+ * Does this prompt ask for a commit? True when it contains commit, commits,
+ * committed or committing as a word, unless that match is directly preceded
+ * by a negation word (don't, dont, do not, not, never, no, without) or
+ * directly followed by a hyphen, as in /hean-harness:commit-format.
+ */
+function approvesCommit(prompt) {
+  COMMIT_WORD.lastIndex = 0;
+  let m;
+  while ((m = COMMIT_WORD.exec(prompt))) {
+    const end = m.index + m[0].length;
+    if (prompt[end] === '-') continue;
+    if (NEGATIONS.has(wordBefore(prompt, m.index))) continue;
+    return true;
+  }
+  return false;
+}
 
 const git = (repo, ...args) =>
   execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
@@ -86,7 +113,7 @@ export const fromUser = prompt =>
 /** A new user message: the previous turn's approval ends, and this one may grant its own. */
 export function onPrompt(state, prompt) {
   if (!fromUser(prompt)) return state;
-  return { ...state, turn: { approved: APPROVAL_WORD.test(prompt) } };
+  return { ...state, turn: { approved: approvesCommit(prompt) } };
 }
 
 /**
@@ -122,16 +149,25 @@ export function implementationAnswers(response) {
 
 const pendingUndo = run => run?.mode === 'subagent' && run?.commits === 'no';
 
+/** Human-readable description of a preference or a run's own {mode, commits}, e.g. "subagent-driven, commit per task". */
+export function describePreference(preference) {
+  return `${preference.mode === 'subagent' ? 'subagent-driven' : 'main session'}, ` +
+         `${preference.commits === 'yes' ? 'commit per task' : 'no commits'}`;
+}
+
 /**
  * Start an implementation run in the repository at cwd, fed from the saved
- * preference. Returns { state, note }, where note is text for the model.
+ * preference. Returns { state, started, note }: started is false when no run
+ * was recorded (not a git repository, or an earlier run still needs
+ * finishing), and note is text for the model either way.
  */
 export function startRun(state, preference, cwd) {
   const repo = tryGit(cwd, 'rev-parse', '--show-toplevel');
-  if (!repo) return { state, note: 'Not in a git repository, so no implementation run was recorded.' };
+  if (!repo) return { state, started: false, note: 'Not in a git repository, so no implementation run was recorded.' };
   if (pendingUndo(state.run) && state.run.repo === repo) {
-    return { state, note: `An earlier subagent-driven run in ${repo} still has commits to undo. ` +
-                          `Run ${FINISH_SKILL} before starting another run.` };
+    return { state, started: false,
+             note: `An earlier subagent-driven run in ${repo} still has commits to undo. ` +
+                   `Run ${FINISH_SKILL} first, then answer the two implementation questions again.` };
   }
   const run = {
     ...preference,
@@ -143,10 +179,10 @@ export function startRun(state, preference, cwd) {
   const how = run.commits === 'yes' ? 'Commit each task; the commits stay.'
     : run.mode === 'main' ? 'Do not commit. The gate refuses commits during this run.'
     : 'Commit each task so its review can read the diff. The commits are undone when the run finishes.';
-  return { state: { ...state, run },
-           note: `Implementation run recorded: ${run.mode === 'subagent' ? 'subagent-driven' : 'main session'}, ` +
-                 `${run.commits === 'yes' ? 'commit per task' : 'no commits'}, starting at ${run.base?.slice(0, 7) ?? 'an empty branch'} ` +
-                 `on ${run.branch ?? 'a detached HEAD'}. ${how} Finish with ${FINISH_SKILL}.` };
+  return { state: { ...state, run }, started: true,
+           note: `Implementation run recorded: ${describePreference(run)}, ` +
+                 `starting at ${run.base?.slice(0, 7) ?? 'an empty branch'} on ${run.branch ?? 'a detached HEAD'}. ` +
+                 `${how} Finish with ${FINISH_SKILL}.` };
 }
 
 /**
@@ -223,8 +259,7 @@ export function finishRun(session) {
       out.push('!! The working tree already had uncommitted changes when the run started. They are mixed in with the run\'s changes.');
     }
   } else {
-    out.push(`Closed the implementation run (${run.mode === 'subagent' ? 'subagent-driven' : 'main session'}, ` +
-             `${run.commits === 'yes' ? 'commit per task' : 'no commits'}).`);
+    out.push(`Closed the implementation run (${describePreference(run)}).`);
   }
   writeState(session, { ...state, run: null });
   out.push('');
