@@ -10,7 +10,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, statSync, readFileSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { dirname, join } from 'node:path';
 import { claudeDir } from './paths.mjs';
@@ -123,6 +123,23 @@ export const checkSuperpowers = () => checkPlugin(SUPERPOWERS_PLUGIN);
 
 /** Where ego lite's own onboarding writes the ego-browser skill. */
 export const egoOnboardingSkill = () => join(claudeDir(), 'skills', 'ego-browser', 'SKILL.md');
+
+/**
+ * Was the onboarding copy of the ego-browser skill put there by the `skills`
+ * command-line tool (npm package `skills`, vercel-labs) rather than ego lite's
+ * own onboarding? Both write the same path, so `checkEgoSkills()` cannot tell
+ * them apart on its own. The `skills` tool's lock file can: a `citrolabs/ego-lite`
+ * source there is what `skills update` keeps current, which `claude plugin
+ * update` knows nothing about.
+ */
+export function egoBrowserFromSkillsTool() {
+  try {
+    const lock = JSON.parse(readFileSync(join(homedir(), '.agents', '.skill-lock.json'), 'utf8'));
+    return (lock.skills?.['ego-browser']?.source || '').includes('citrolabs/ego-lite');
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Is the ego-browser skill available? ego lite's onboarding writes its own copy

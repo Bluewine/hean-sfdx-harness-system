@@ -16,7 +16,7 @@ import { join } from 'node:path';
 import { init } from './lib/manifest.mjs';
 import { recordExternal, installRepoMcpFile } from './lib/install.mjs';
 import { allChecks, reportChecks, checkSuperpowers, checkEgoSkills, checkEgoLite, currentRepo,
-         present, run, marketplacePresent,
+         present, run, marketplacePresent, egoBrowserFromSkillsTool,
          SUPERPOWERS_PLUGIN, EGO_PLUGIN, EGO_LITE_URL } from './lib/environment.mjs';
 import { findLinear, addLinear, removeCommand, LINEAR_NAME } from './lib/mcp.mjs';
 
@@ -81,6 +81,23 @@ function updatePlugin(p) {
 
   log(`Running: claude plugin update ${p.id}`);
   log(run('claude', ['plugin', 'update', p.id]).trim());
+}
+
+/**
+ * Bring the `skills` command-line tool's copy of the ego-browser skill up to date.
+ *
+ * `claude plugin update` has nothing to do here — the `skills` tool, not a
+ * plugin, put this copy in place — so `skills update` is what keeps it current.
+ */
+function updateEgoBrowserSkillsTool() {
+  if (!present('npx')) {
+    log('The npx command is not on PATH, so the ego-browser skill cannot be updated from here.');
+    log('Update it yourself with: npx -y skills update ego-browser -g -y');
+    return;
+  }
+
+  log('Running: npx -y skills update ego-browser -g -y');
+  log(run('npx', ['-y', 'skills', 'update', 'ego-browser', '-g', '-y']).trim());
 }
 
 /** The ego lite browser is each user's own install; say where to get it when it is missing. */
@@ -166,7 +183,7 @@ function main() {
     }
     const updating = [];
     if (sp.ok) updating.push('the superpowers plugin');
-    if (ego.ok && !ego.onboarding) updating.push('the ego-browser skill');
+    if (ego.ok && (!ego.onboarding || egoBrowserFromSkillsTool())) updating.push('the ego-browser skill');
     if (updating.length) {
       const list = updating.length > 1 ? `${updating.slice(0, -1).join(', ')} and ${updating.at(-1)}` : updating[0];
       log(`Setup updates ${list} when it runs for real.`);
@@ -181,11 +198,24 @@ function main() {
 
   if (repo) { init(); installRepoMcpFile(repo); }
 
+  const restartForUpdate = label =>
+    log(`${label} loads at the start of a session, so restart Claude Code for the update to take effect.`);
+
   for (const [p, r, label] of [[SUPERPOWERS_PLUGIN, sp, 'Superpowers'], [EGO_PLUGIN, ego, 'The ego-browser skill']]) {
     if (r.ok) {
-      if (r.onboarding) continue; // ego lite's own onboarding copy, not a plugin — left alone
+      if (r.onboarding) {
+        if (egoBrowserFromSkillsTool()) {
+          updateEgoBrowserSkillsTool();
+          restartForUpdate(label);
+        } else {
+          // ego lite's own onboarding copy, not a plugin or the skills tool — left alone
+          log(`${label} was not installed by a plugin or the skills tool, so setup does not update it.`);
+        }
+        log('');
+        continue;
+      }
       updatePlugin(p);
-      log(`${label} loads at the start of a session, so restart Claude Code for the update to take effect.`);
+      restartForUpdate(label);
       log('');
       continue;
     }

@@ -167,7 +167,9 @@ Setup installs the `ego-browser` skill, unless ego lite already put it in
 `~/.claude/skills/ego-browser`. Agents test in the browser with ego-browser when ego lite is
 installed, and with Playwright MCP when it is not.
 
-When superpowers or the ego-browser skill is already installed, setup updates it instead.
+When superpowers or the ego-browser skill is already installed, setup updates it instead. A copy
+of `ego-browser` installed by the `skills` command-line tool is updated with `skills update`
+rather than left alone.
 
 ## What setup leaves to you
 
