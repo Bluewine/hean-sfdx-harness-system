@@ -36,11 +36,9 @@ switch (input?.hook_event_name) {
 
     let note;
     if (answers.mode && answers.commits) {
-      const { state: next, note: runNote, started } = startRun(state, answers, input.cwd || process.cwd());
-      if (started) {
-        savePreference(answers);
-        writeState(session, next);
-      }
+      const { state: next, note: runNote, started, reason } = startRun(state, answers, input.cwd || process.cwd());
+      if (reason !== 'pending-undo') savePreference(answers);
+      if (started) writeState(session, next);
       note = runNote;
     } else {
       const existing = readPreference();

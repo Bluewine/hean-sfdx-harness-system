@@ -23,7 +23,7 @@ import { claudeCommand } from './lib/shell.mjs';
 import { repoRoot, missingLines } from './lib/gitignore.mjs';
 import { STATE_DIR } from './lib/manifest.mjs';
 import { getGitConfig } from './lib/install.mjs';
-import { readPreference, describePreference } from './lib/commit-lifecycle.mjs';
+import { readPreference, preferenceText } from './lib/commit-lifecycle.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN_ROOT = dirname(HERE);
@@ -126,7 +126,7 @@ function main() {
   log('Implementation preference');
   const preference = readPreference();
   if (preference) {
-    const [mode, commits] = describePreference(preference).split(', ');
+    const { mode, commits } = preferenceText(preference);
     log(`  Commits: ${commits}, Dev mode: ${mode}`);
   } else {
     log('  not saved — asked at the next implementation');

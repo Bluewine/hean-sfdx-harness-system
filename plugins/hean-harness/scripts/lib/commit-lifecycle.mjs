@@ -35,13 +35,14 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 
-import { STATE_DIR } from './manifest.mjs';
+import { STATE_DIR, PREFERENCE_FILE } from './manifest.mjs';
 
+export { PREFERENCE_FILE };
 export const FINISH_SKILL = 'hean-harness:finish-implementation';
 export const RULE = '~/.claude/rules/implementation-commits.md';
 export const MODE_HEADER = 'Dev mode';
 export const COMMITS_HEADER = 'Commits';
-export const PREFERENCE_FILE = join(STATE_DIR, 'implementation.json');
+export const NO_PREFERENCE = 'No implementation preference is saved on this machine.';
 
 const COMMIT_WORD = /\bcommit(s|ted|ting)?\b/gi;
 const NEGATIONS = new Set(['dont', 'not', 'never', 'no', 'without']);
@@ -149,25 +150,36 @@ export function implementationAnswers(response) {
 
 const pendingUndo = run => run?.mode === 'subagent' && run?.commits === 'no';
 
+/** A preference or a run's own {mode, commits} as the two phrases a reader sees, e.g. { mode: 'subagent-driven', commits: 'commit per task' }. */
+export function preferenceText(preference) {
+  return {
+    mode: preference.mode === 'subagent' ? 'subagent-driven' : 'main session',
+    commits: preference.commits === 'yes' ? 'commit per task' : 'no commits'
+  };
+}
+
 /** Human-readable description of a preference or a run's own {mode, commits}, e.g. "subagent-driven, commit per task". */
 export function describePreference(preference) {
-  return `${preference.mode === 'subagent' ? 'subagent-driven' : 'main session'}, ` +
-         `${preference.commits === 'yes' ? 'commit per task' : 'no commits'}`;
+  const { mode, commits } = preferenceText(preference);
+  return `${mode}, ${commits}`;
 }
 
 /**
  * Start an implementation run in the repository at cwd, fed from the saved
- * preference. Returns { state, started, note }: started is false when no run
- * was recorded (not a git repository, or an earlier run still needs
- * finishing), and note is text for the model either way.
+ * preference. Returns { state, started, reason, note }: started is false when
+ * no run was recorded, and note is text for the model either way. reason is
+ * set only when started is false: 'not-git' (no repository here, so there is
+ * nothing for the commit gate to apply to) or 'pending-undo' (an earlier run
+ * in this repository still needs finishing).
  */
 export function startRun(state, preference, cwd) {
   const repo = tryGit(cwd, 'rev-parse', '--show-toplevel');
-  if (!repo) return { state, started: false, note: 'Not in a git repository, so no implementation run was recorded.' };
+  if (!repo) return { state, started: false, reason: 'not-git',
+                       note: 'Not in a git repository, so no implementation run was recorded. There is nothing here for the commit gate to apply to.' };
   if (pendingUndo(state.run) && state.run.repo === repo) {
-    return { state, started: false,
+    return { state, started: false, reason: 'pending-undo',
              note: `An earlier subagent-driven run in ${repo} still has commits to undo. ` +
-                   `Run ${FINISH_SKILL} first, then answer the two implementation questions again.` };
+                   `Run ${FINISH_SKILL} first, then start the implementation again.` };
   }
   const run = {
     ...preference,
@@ -195,7 +207,7 @@ export function refusal(state, preference, c, repo) {
 
   if (c.sub === 'commit') {
     if (!preference) {
-      return `No implementation preference is saved on this machine.\n\n` +
+      return `${NO_PREFERENCE}\n\n` +
              `Ask the two implementation questions (headers "${MODE_HEADER}" and "${COMMITS_HEADER}") in one ` +
              `AskUserQuestion call before committing. Rules: ${RULE}`;
     }

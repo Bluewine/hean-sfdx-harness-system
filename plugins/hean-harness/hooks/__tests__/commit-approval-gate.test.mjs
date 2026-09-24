@@ -191,7 +191,7 @@ expect('start exits 3 when an earlier run still needs finishing', blocked.status
 const beforePref = run(['preference', 'show']).stdout;
 const reAnswerNote = answer(s, 'Main session', 'Commit per task', A);
 expect('answering again while a run needs finishing starts no run', !reAnswerNote.includes('Implementation run recorded'), reAnswerNote);
-expect('the note says to finish first and answer again', reAnswerNote.includes('finish-implementation') && reAnswerNote.toLowerCase().includes('answer'), reAnswerNote);
+expect('the note says to finish first and start again', reAnswerNote.includes('finish-implementation') && reAnswerNote.toLowerCase().includes('start the implementation again'), reAnswerNote);
 const afterPref = run(['preference', 'show']).stdout;
 expect('the saved preference was not touched', afterPref === beforePref, `before: ${beforePref}\nafter: ${afterPref}`);
 
@@ -199,7 +199,18 @@ const cleanup = spawnSync('node', [RUN_SCRIPT, 'finish', '--session', s], { enco
 expect('finish clears the pending run', cleanup.status === 0, cleanup.stdout);
 
 const notGitRepo = run(['start', '--session', newSession()], sandbox);
-expect('start exits 3 outside a git repository', notGitRepo.status === 3 && notGitRepo.stdout.includes('Not in a git repository'), notGitRepo.stdout);
+expect('start outside a git repository exits 0 when a preference is saved',
+       notGitRepo.status === 0 && notGitRepo.stdout.includes('Not in a git repository'), notGitRepo.stdout);
+expect('start outside a git repository still prints the dev mode', notGitRepo.stdout.includes('Dev mode:'), notGitRepo.stdout);
+
+console.log('Answering outside a git repository still saves the preference');
+clearPreference();
+s = newSession();
+const outsideNote = answer(s, 'Main session', 'Commit per task', sandbox);
+expect('the model is told no run was recorded outside a repository',
+       outsideNote.includes('Not in a git repository'), outsideNote);
+const savedOutside = run(['preference', 'show']).stdout;
+expect('the preference was saved anyway', savedOutside.includes('main session, commit per task'), savedOutside);
 
 console.log('Subagent-driven, no commits');
 s = newSession();

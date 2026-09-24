@@ -17,7 +17,7 @@
 
 import { rmSync } from 'node:fs';
 
-import { readState, writeState, readPreference, savePreference, startRun, finishRun, describePreference, PREFERENCE_FILE }
+import { readState, writeState, readPreference, savePreference, startRun, finishRun, describePreference, PREFERENCE_FILE, NO_PREFERENCE }
   from './lib/commit-lifecycle.mjs';
 
 const argv = process.argv.slice(2);
@@ -43,7 +43,7 @@ function preferenceCommand() {
 
   if (sub === 'show') {
     const preference = readPreference();
-    console.log(preference ? `Saved preference: ${describePreference(preference)}.` : 'No implementation preference is saved on this machine.');
+    console.log(preference ? `Saved preference: ${describePreference(preference)}.` : NO_PREFERENCE);
     process.exit(0);
     return;
   }
@@ -83,18 +83,18 @@ function startCommand() {
   if (!session) { usage(); return; }
   const preference = readPreference();
   if (!preference) {
-    console.log('No implementation preference is saved on this machine. Ask the two implementation questions.');
+    console.log(`${NO_PREFERENCE} Ask the two implementation questions.`);
     process.exit(2);
     return;
   }
   const state = readState(session);
-  const { state: next, note, started } = startRun(state, preference, process.cwd());
-  if (!started) {
+  const { state: next, note, started, reason } = startRun(state, preference, process.cwd());
+  if (reason === 'pending-undo') {
     console.log(note);
     process.exit(3);
     return;
   }
-  writeState(session, next);
+  if (started) writeState(session, next);
   console.log(note);
   console.log(`Dev mode: ${devMode(preference)}`);
   process.exit(0);

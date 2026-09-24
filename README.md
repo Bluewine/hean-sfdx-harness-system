@@ -127,9 +127,9 @@ Setup asks once per repository whether commit subjects must read `@WORK-ID: Summ
 ## Commit approval
 
 Agents do not commit on their own. The two implementation questions — subagent-driven or main
-session, and commit per task or not — are asked once per machine and saved. `/hean-harness:start-implementation`
-runs the saved preference before the first change, with or without a plan, and asks the questions
-only when none is saved.
+session, and commit per task or not — are asked once per machine and saved.
+`/hean-harness:start-implementation` runs the saved preference before the first change, with or
+without a plan, and asks the questions only when none is saved.
 
 | Saved preference | Result |
 |---|---|
@@ -142,7 +142,8 @@ answer replaces the saved preference on this machine.
 
 Under `No commits`, a commit is also allowed in the turn where your own message contains "commit",
 "commits", "committed" or "committing" — for example, asking for one after reviewing the changes —
-unless the word is negated ("don't commit") or part of another word (`/hean-harness:commit-format`).
+unless the word is negated ("don't commit") or "commit" is directly followed by a hyphen, as in
+`/hean-harness:commit-format`.
 
 Applies in every repository, including inside `/hean-harness:uat-hotfix` and
 `/hean-harness:version-bump`. Commits you type in a terminal are not checked.

@@ -21,6 +21,7 @@ import { trackedUnder } from './gitignore.mjs';
 
 export const STATE_DIR = join(claudeDir(), 'hean-harness');
 export const MANIFEST = join(STATE_DIR, 'install-manifest.json');
+export const PREFERENCE_FILE = join(STATE_DIR, 'implementation.json');
 const BACKUP_DIR = join(STATE_DIR, 'backups');
 
 /** Change types and how each one is reversed. */
@@ -470,7 +471,7 @@ export function revert({ dryRun = false, keep = [], only = null } = {}) {
       rmSync(MANIFEST, { force: true });
       // the saved implementation preference is machine-wide, not a recorded
       // change, so it must go before the emptiness check below can succeed
-      rmSync(join(STATE_DIR, 'implementation.json'), { force: true });
+      rmSync(PREFERENCE_FILE, { force: true });
       // our own folder goes too, but only once it is empty — backups are kept
       for (const d of [BACKUP_DIR, STATE_DIR]) {
         try { if (existsSync(d) && readdirSync(d).length === 0) rmdirSync(d); } catch { /* keep going */ }

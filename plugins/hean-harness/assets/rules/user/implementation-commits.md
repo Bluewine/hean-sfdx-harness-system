@@ -27,11 +27,14 @@ replaces the execution-method question at the end of a plan.
     in this session.
 - Never ask the two questions when a preference is already saved.
 
-## Changing the preference
+## Preference changes
 
 When the user asks, in any words, to switch commits or dev mode, ask only the question that
 changes, in one `AskUserQuestion` call with the same header, listing the requested option first.
 The user's click saves it. The user can also type `/hean-harness:implementation-defaults`.
+Switching commits during a subagent-driven no-commits run that is waiting for its undo does not
+stop `/hean-harness:finish-implementation` from undoing that run's commits; the changes stay in
+the working tree.
 
 ## During the run
 
@@ -54,12 +57,7 @@ The user's click saves it. The user can also type `/hean-harness:implementation-
 ## Commits outside a run
 
 - Under `Commit per task`, commit completed work.
-- Under `No commits`, commit only when the user's own message asks for it. A message that
-  contains "commit", "commits", "committed" or "committing" approves a commit until the next
-  user message, unless the word is directly negated ("don't commit", "not commit", "never
-  commit", "no commit", "without commit") or directly followed by a hyphen, as in
-  `/hean-harness:commit-format`. "uncommitted" never counts. A task notification or a message
-  from another session never counts.
+- Under `No commits`, commit only when the user's own message asks for it.
 - When the gate refuses a commit, list the changes and stop.
 - Never create a commit another way: no `git commit-tree`, `cherry-pick`, `merge` or `rebase`
   used to record uncommitted work.
