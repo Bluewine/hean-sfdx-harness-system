@@ -1,29 +1,32 @@
 /**
- * Whether an agent may commit right now, decided from what the user did in
- * this session rather than from what the agent says.
+ * Whether an agent may commit right now, decided from a saved preference and
+ * what the user did in this session, rather than from what the agent says.
  *
- * A commit is allowed only inside one of these:
+ * The preference is one file per machine (PREFERENCE_FILE): { mode, commits }.
+ * It applies in every repository and folder, with no per-repository override,
+ * so the two implementation questions are asked once per machine rather than
+ * once per session. Only the user's own action writes it: clicking the
+ * AskUserQuestion answers, or typing the implementation-defaults skill. An
+ * agent that wrote it itself could set "commits: yes" without the user ever
+ * seeing the question, which is the approval this file exists to require.
  *
- *   the turn the user typed /hean-harness:commit       approval for that turn
- *   the turn a lifecycle skill ran (LIFECYCLE_SKILLS)  its commits are its job
- *   an implementation run whose answers allow it       see below
+ * A commit is allowed only when one of these holds:
  *
- * An implementation run starts when the user answers the two questions the
- * implementation-commits rule asks, under the headers MODE_HEADER and
- * COMMITS_HEADER. The answers are read from the AskUserQuestion result, which
- * only the user's click produces.
+ *   the saved preference is "commit per task"          commits allowed, kept
+ *   the user's latest message asks for a commit        approved for that turn
+ *   an open subagent-driven "no commits" run            its own task review
+ *   in this repository                                  reads the commits
  *
- *   commits yes, any mode         commits allowed, and kept
- *   commits no, main session      commits refused
- *   commits no, subagent-driven   commits allowed, because each task review
- *                                 reads them; push and reset --hard refused
- *                                 until finishRun() undoes them back to the
- *                                 run's first commit
+ * Otherwise the saved preference of "no commits" refuses the commit until the
+ * user's own message asks for it.
  *
- * A turn is one user message. Task notifications and peer session messages
- * also arrive as prompts; they are not the user and start no new turn.
+ * A turn is one user message: the approval word test runs only on a prompt
+ * from the user (fromUser), and a new user message ends the previous turn's
+ * approval. Task notifications and peer session messages arrive as prompts
+ * too; they are not the user and change nothing.
  *
- * State is one small file per session under STATE_DIR/sessions.
+ * Session state (the current run, and this turn's approval) is one small file
+ * per session under STATE_DIR/sessions.
  */
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -32,12 +35,13 @@ import { join } from 'node:path';
 
 import { STATE_DIR } from './manifest.mjs';
 
-export const APPROVE_SKILL = 'hean-harness:commit';
-export const LIFECYCLE_SKILLS = ['hean-harness:uat-hotfix', 'hean-harness:version-bump'];
 export const FINISH_SKILL = 'hean-harness:finish-implementation';
 export const RULE = '~/.claude/rules/implementation-commits.md';
 export const MODE_HEADER = 'Dev mode';
 export const COMMITS_HEADER = 'Commits';
+export const PREFERENCE_FILE = join(STATE_DIR, 'implementation.json');
+
+const APPROVAL_WORD = /\bcommit(s|ted|ting)?\b/i;
 
 const git = (repo, ...args) =>
   execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
@@ -47,7 +51,7 @@ const stateFile = session => join(STATE_DIR, 'sessions', `${session}.json`);
 const validSession = session => typeof session === 'string' && /^[A-Za-z0-9_-]+$/.test(session);
 
 export function readState(session) {
-  const empty = { turn: { approved: false, skill: null }, run: null };
+  const empty = { turn: { approved: false }, run: null };
   if (!validSession(session)) return empty;
   try { return { ...empty, ...JSON.parse(readFileSync(stateFile(session), 'utf8')) }; } catch { return empty; }
 }
@@ -58,59 +62,71 @@ export function writeState(session, state) {
   writeFileSync(stateFile(session), JSON.stringify(state, null, 2) + '\n');
 }
 
+/** The saved machine-wide preference, or null when none is saved or the file is invalid. */
+export function readPreference() {
+  try {
+    const p = JSON.parse(readFileSync(PREFERENCE_FILE, 'utf8'));
+    if ((p.mode === 'subagent' || p.mode === 'main') && (p.commits === 'yes' || p.commits === 'no')) {
+      return { mode: p.mode, commits: p.commits };
+    }
+    return null;
+  } catch { return null; }
+}
+
+/** Save the machine-wide preference. Only the AskUserQuestion hook and the typed-only defaults skill call this. */
+export function savePreference(preference) {
+  mkdirSync(STATE_DIR, { recursive: true });
+  writeFileSync(PREFERENCE_FILE, JSON.stringify(preference, null, 2) + '\n');
+}
+
 /** Does this prompt come from the user, rather than a task notification or another session? */
 export const fromUser = prompt =>
   !/^\s*<task-notification>/.test(prompt) && !/<cross-session-message[\s>]/.test(prompt.slice(0, 300));
 
-/** The skill a typed prompt starts, such as 'hean-harness:commit', or null. */
-export const typedSkill = prompt => prompt.trim().match(/^\/([\w-]+:[\w-]+)(?:\s|$)/)?.[1] ?? null;
-
 /** A new user message: the previous turn's approval ends, and this one may grant its own. */
 export function onPrompt(state, prompt) {
   if (!fromUser(prompt)) return state;
-  const skill = typedSkill(prompt);
-  return {
-    ...state,
-    turn: {
-      approved: skill === APPROVE_SKILL,
-      skill: LIFECYCLE_SKILLS.includes(skill) ? skill : null
-    }
-  };
-}
-
-/** The model started a skill. Only a lifecycle skill changes anything; approval is never granted this way. */
-export function onSkill(state, skill) {
-  if (!LIFECYCLE_SKILLS.includes(skill)) return state;
-  return { ...state, turn: { ...state.turn, skill } };
+  return { ...state, turn: { approved: APPROVAL_WORD.test(prompt) } };
 }
 
 /**
- * The two implementation answers in an AskUserQuestion result, or null when
- * this question was not that one: { mode: 'subagent'|'main', commits: 'yes'|'no' }.
+ * Whichever of the two implementation answers are present in an
+ * AskUserQuestion result: { mode?: 'subagent'|'main', commits?: 'yes'|'no' }.
+ * null when neither header is present, or a present answer is unrecognised.
  */
 export function implementationAnswers(response) {
   let r = response;
   if (typeof r === 'string') { try { r = JSON.parse(r); } catch { return null; } }
   const questions = r?.questions, answers = r?.answers;
   if (!Array.isArray(questions) || !answers || typeof answers !== 'object') return null;
-  const answer = header => {
+  const raw = header => {
     const q = questions.find(q => q?.header === header);
-    return q ? String(answers[q.question] ?? '').toLowerCase() : null;
+    return q ? String(answers[q.question] ?? '').toLowerCase() : undefined;
   };
-  const mode = answer(MODE_HEADER), commits = answer(COMMITS_HEADER);
-  if (mode === null || commits === null) return null;
-  const m = mode.includes('subagent') ? 'subagent' : mode.includes('main') ? 'main' : null;
-  const c = commits.includes('per task') ? 'yes' : commits.startsWith('no') ? 'no' : null;
-  return m && c ? { mode: m, commits: c } : null;
+  const modeRaw = raw(MODE_HEADER), commitsRaw = raw(COMMITS_HEADER);
+  if (modeRaw === undefined && commitsRaw === undefined) return null;
+
+  const result = {};
+  if (modeRaw !== undefined) {
+    const m = modeRaw.includes('subagent') ? 'subagent' : modeRaw.includes('main') ? 'main' : null;
+    if (!m) return null;
+    result.mode = m;
+  }
+  if (commitsRaw !== undefined) {
+    const c = commitsRaw.includes('per task') ? 'yes' : commitsRaw.startsWith('no') ? 'no' : null;
+    if (!c) return null;
+    result.commits = c;
+  }
+  return result;
 }
 
 const pendingUndo = run => run?.mode === 'subagent' && run?.commits === 'no';
 
 /**
- * The user answered the implementation questions: start a run in the
- * repository at cwd. Returns { state, note }, where note is text for the model.
+ * Start an implementation run in the repository at cwd, fed from the saved
+ * preference. Returns { state, note }, where note is text for the model.
  */
-export function startRun(state, answers, cwd) {
+export function startRun(state, preference, cwd) {
   const repo = tryGit(cwd, 'rev-parse', '--show-toplevel');
   if (!repo) return { state, note: 'Not in a git repository, so no implementation run was recorded.' };
   if (pendingUndo(state.run) && state.run.repo === repo) {
@@ -118,7 +134,7 @@ export function startRun(state, answers, cwd) {
                           `Run ${FINISH_SKILL} before starting another run.` };
   }
   const run = {
-    ...answers,
+    ...preference,
     repo,
     branch: tryGit(repo, 'symbolic-ref', '--short', 'HEAD'),
     base: tryGit(repo, 'rev-parse', 'HEAD'),
@@ -135,19 +151,24 @@ export function startRun(state, answers, cwd) {
 
 /**
  * Why this git command may not run now, or null when it may.
- * c is { sub, args }; repo is the repository it acts on.
+ * c is { sub, args }; repo is the repository it acts on; preference is the
+ * saved machine-wide preference, or null when none is saved.
  */
-export function refusal(state, c, repo) {
+export function refusal(state, preference, c, repo) {
   const run = state.run && state.run.repo === repo ? state.run : null;
 
   if (c.sub === 'commit') {
-    if (state.turn.approved || state.turn.skill) return null;
-    if (run && (run.commits === 'yes' || run.mode === 'subagent')) return null;
-    return `Commits wait for the user's approval in this session.\n\n` +
-           (run ? `The implementation run in ${repo} was started with "no commits".\n\n` : '') +
+    if (!preference) {
+      return `No implementation preference is saved on this machine.\n\n` +
+             `Ask the two implementation questions (headers "${MODE_HEADER}" and "${COMMITS_HEADER}") in one ` +
+             `AskUserQuestion call before committing. Rules: ${RULE}`;
+    }
+    if (preference.commits === 'yes') return null;
+    if (state.turn.approved) return null;
+    if (pendingUndo(run)) return null;
+    return `The saved preference is "No commits".\n\n` +
            `List every file created, changed or deleted, with one line on why, leave the changes ` +
-           `uncommitted, and stop. The user reviews them and types /${APPROVE_SKILL} to approve ` +
-           `a commit. Rules: ${RULE}`;
+           `uncommitted, and stop. The commit goes through when the user's own message asks for it.`;
   }
 
   if (pendingUndo(run) && (c.sub === 'push' || (c.sub === 'reset' && c.args.includes('--hard')))) {
