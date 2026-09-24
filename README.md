@@ -167,6 +167,8 @@ Setup installs the `ego-browser` skill, unless ego lite already put it in
 `~/.claude/skills/ego-browser`. Agents test in the browser with ego-browser when ego lite is
 installed, and with Playwright MCP when it is not.
 
+When superpowers or the ego-browser skill is already installed, setup updates it instead.
+
 ## What setup leaves to you
 
 - **A JDK 11 or newer.** Needs administrator rights. Setup prints the command for your system.

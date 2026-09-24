@@ -44,10 +44,10 @@ Install the environment. Show the user what will change before changing it.
    - the exact command the user has to run to reload their shell
    - anything the summary says needs doing by hand
    - whether the superpowers plugin and the ego-browser skill (`browser-skills@ego-agent-skills`)
-     were installed. When either was, say that a restart of Claude Code is needed before it can be
-     used, because a plugin's skills and hooks are read when a session starts. Nothing in the
-     running session picks it up. When the ego-browser skill was skipped because ego lite's
-     onboarding already wrote it to the user's skills folder, say so.
+     were installed or, when already installed, updated. Either way, say that a restart of Claude
+     Code is needed before it can be used, because a plugin's skills and hooks are read when a
+     session starts. Nothing in the running session picks it up. When the ego-browser skill was
+     skipped because ego lite's onboarding already wrote it to the user's skills folder, say so.
    - when the output has a line starting `Recommended: install the ego lite browser`, repeat it
      with its link. The user installs ego lite themselves; setup never downloads it.
    - whether the commit format is on or off, and whether the commit format step added, replaced

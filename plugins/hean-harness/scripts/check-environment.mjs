@@ -63,6 +63,26 @@ function installPlugin(p, r) {
   return true;
 }
 
+/**
+ * Bring an installed plugin up to date.
+ *
+ * Setup is rerun after a plugin release, and without this the plugins it
+ * installed would otherwise stay at the version first installed.
+ */
+function updatePlugin(p) {
+  if (!present('claude')) {
+    log(`The claude command is not on PATH, so ${p.id} cannot be updated from here.`);
+    log(`Update it yourself with: claude plugin update ${p.id}`);
+    return;
+  }
+
+  log(`Running: claude plugin marketplace update ${p.marketplace}`);
+  log(run('claude', ['plugin', 'marketplace', 'update', p.marketplace]).trim());
+
+  log(`Running: claude plugin update ${p.id}`);
+  log(run('claude', ['plugin', 'update', p.id]).trim());
+}
+
 /** The ego lite browser is each user's own install; say where to get it when it is missing. */
 function recommendEgoLite() {
   if (!checkEgoLite().recommend) return;
@@ -144,6 +164,14 @@ function main() {
       log(`Setup installs ${list} when it runs for real.`);
       log('');
     }
+    const updating = [];
+    if (sp.ok) updating.push('the superpowers plugin');
+    if (ego.ok && !ego.onboarding) updating.push('the ego-browser skill');
+    if (updating.length) {
+      const list = updating.length > 1 ? `${updating.slice(0, -1).join(', ')} and ${updating.at(-1)}` : updating[0];
+      log(`Setup updates ${list} when it runs for real.`);
+      log('');
+    }
     recommendEgoLite();
     log(missing === 0
       ? 'Everything needed is in place.'
@@ -154,7 +182,13 @@ function main() {
   if (repo) { init(); installRepoMcpFile(repo); }
 
   for (const [p, r, label] of [[SUPERPOWERS_PLUGIN, sp, 'Superpowers'], [EGO_PLUGIN, ego, 'The ego-browser skill']]) {
-    if (r.ok) continue;
+    if (r.ok) {
+      if (r.onboarding) continue; // ego lite's own onboarding copy, not a plugin — left alone
+      updatePlugin(p);
+      log(`${label} loads at the start of a session, so restart Claude Code for the update to take effect.`);
+      log('');
+      continue;
+    }
     if (installPlugin(p, r)) {
       log('Recorded, so uninstall will tell you how to undo it.');
       // the plugin's own skills and hooks are read when a session starts, so
