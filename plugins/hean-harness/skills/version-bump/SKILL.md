@@ -53,12 +53,12 @@ git merge origin/{INTEGRATION}
 
 ```bash
 git fetch origin
-gh pr list --base {RELEASE} --state merged --limit 5 --json number,title,mergedAt
+gh pr list --base {RELEASE} --state merged --limit 5 --json number,title,mergedAt,url
 ```
 
 Take from the most recent merged deployment PR:
 
-- `UAT_PR_NUMBER` and `UAT_PR_TITLE` — quoted in the PR body so a reader can trace which deployment triggered this.
+- `UAT_PR_NUMBER` identifies which deployment PR this is; `UAT_PR_TITLE` and `UAT_PR_URL` are quoted in the PR body so a reader can trace which deployment triggered this. Use the fetched `UAT_PR_URL` verbatim as the link target; never build it from `UAT_PR_NUMBER` by hand, because a bare `#{number}` markdown link resolves as an anchor on whatever PR renders it, not as a link to that numbered PR.
 - `MERGE_DATE` as `YYYY-MM-DD`.
 - `DEPLOY_DATE` as `YYYY.MM.DD`, taken from the deployment PR's title, not from today's clock. The two differ whenever a deployment is scheduled ahead.
 
@@ -245,7 +245,43 @@ gh pr create \
 
 The title form `Update Release Version to v{NEW_VERSION}` has held for every cycle on record. Keep it.
 
-Open as a draft unless the request says otherwise. Report the returned URL. Do not merge — this skill prepares the PR and stops.
+Open as a draft unless the request says otherwise. Report the returned URL, then the version table below. Do not merge — this skill prepares the PR and stops.
+
+**Report a version table every cycle, unasked.** Read the three pipeline versions from the fetched remote refs, and the working-branch version from the local `package.json` on `work-updateVersion`, which already carries `{NEW_VERSION}` from Phase 3:
+
+```bash
+git fetch origin
+git show origin/{MASTER}:package.json | grep '"version"'
+```
+
+`MASTER_VERSION` is that value.
+
+```bash
+git show origin/{RELEASE}:package.json | grep '"version"'
+```
+
+`RELEASE_VERSION` is that value.
+
+```bash
+git show origin/{INTEGRATION}:package.json | grep '"version"'
+```
+
+`INTEGRATION_VERSION` is that value.
+
+```bash
+grep '"version"' package.json
+```
+
+That value must equal `{NEW_VERSION}`. A mismatch means the Phase 3 version edit did not land — stop and report it rather than filling the table.
+
+| Branch | Environment | package.json version |
+|---|---|---|
+| `{MASTER}` | Production | {MASTER_VERSION} |
+| `{RELEASE}` | UAT | {RELEASE_VERSION} |
+| `{INTEGRATION}` | QA | {INTEGRATION_VERSION} |
+| `work-updateVersion` | — | {NEW_VERSION} |
+
+Rows stay in this order top to bottom. The first three rows show what each branch currently holds; the last row shows the new version after the bump.
 
 ## Verification
 

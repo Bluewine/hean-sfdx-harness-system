@@ -2,7 +2,7 @@
 
 `{OLD_VERSION}` → `{NEW_VERSION}`
 
-Follows [{UAT_PR_TITLE}](#{UAT_PR_NUMBER}), merged {MERGE_DATE}.
+Follows [{UAT_PR_TITLE}]({UAT_PR_URL}), merged {MERGE_DATE}.
 
 ---
 
