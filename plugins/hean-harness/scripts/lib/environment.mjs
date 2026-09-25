@@ -70,8 +70,10 @@ export function runOut(cmd, args, env = {}) {
   return (r.stdout || '').replace(/\u001b\[[0-9;]*m/g, '');
 }
 
-export function run(cmd, args, env = {}) {
-  const r = spawnSync(cmd, args, { encoding: 'utf8', env: { ...process.env, ...env } });
+export function run(cmd, args, env = {}, { timeout } = {}) {
+  const opts = { encoding: 'utf8', env: { ...process.env, ...env } };
+  if (timeout) opts.timeout = timeout;
+  const r = spawnSync(cmd, args, opts);
   // strip terminal colour codes: sf wraps versions in them, which corrupts any
   // value parsed out of the output
   return `${r.stdout || ''}${r.stderr || ''}`.replace(/\u001b\[[0-9;]*m/g, '');
@@ -161,11 +163,19 @@ export function checkEgoSkills() {
  * error, not standard output, so both streams are read. Returns false only
  * for a definite `undefined`; an error, a timeout or any other answer is not
  * a finding.
+ *
+ * `checkEgoLite()` runs more than once in a single setup run — once from
+ * `allChecks()`, once from `recommendEgoLite()` — and this probe can launch
+ * ego lite and wait up to 20 seconds, so its result is cached the first time
+ * it is computed rather than run again.
  */
+let taskSpaceProbe = null;
 function egoLiteHasTaskSpace() {
-  const r = spawnSync('ego-browser', ['nodejs', '-e', 'console.log(typeof taskSpace)'],
-                      { encoding: 'utf8', timeout: 20000 });
-  return `${r.stdout || ''}${r.stderr || ''}`.trim() !== 'undefined';
+  if (taskSpaceProbe === null) {
+    taskSpaceProbe = run('ego-browser', ['nodejs', '-e', 'console.log(typeof taskSpace)'], {}, { timeout: 20000 })
+      .trim() !== 'undefined';
+  }
+  return taskSpaceProbe;
 }
 
 /**

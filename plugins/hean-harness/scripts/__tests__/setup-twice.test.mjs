@@ -95,6 +95,17 @@ try {
     fakeEgo('');
     check('doctor does not flag an ego lite app whose probe prints nothing',
           !doctorWithEgo().includes('older than the ego-browser skill'));
+
+    // The probe's answer can arrive wrapped in a terminal colour code; that must
+    // not hide a real "undefined" behind characters the exact-match misses.
+    const colouredFile = join(fakeBin, 'ego-browser');
+    writeFileSync(colouredFile,
+      `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "ego-browser 0.4.7.4" >&2; else printf '\\033[32mundefined\\033[0m\\n' >&2; fi\n`);
+    chmodSync(colouredFile, 0o755);
+    const colouredEgo = doctorWithEgo();
+    check('doctor flags an ego lite app whose undefined answer is wrapped in a colour code',
+          colouredEgo.includes('0.4.7.4 is older than the ego-browser skill') && colouredEgo.includes('fix: ego-browser upgrade'),
+          colouredEgo);
   }
 
   const jsonKey = manifest.changes.find(c => c.type === 'json-key' && c.key === 'statusLine');
