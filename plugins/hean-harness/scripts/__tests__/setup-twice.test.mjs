@@ -76,7 +76,7 @@ try {
     mkdirSync(fakeBin, { recursive: true });
     const fakeEgo = typeofTaskSpace => {
       const file = join(fakeBin, 'ego-browser');
-      writeFileSync(file, `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "ego-browser 0.4.7.4"; else echo "${typeofTaskSpace}"; fi\n`);
+      writeFileSync(file, `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "ego-browser 0.4.7.4" >&2; else echo "${typeofTaskSpace}" >&2; fi\n`);
       chmodSync(file, 0o755);
     };
     const doctorWithEgo = () => {

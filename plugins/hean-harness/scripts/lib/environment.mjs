@@ -157,13 +157,15 @@ export function checkEgoSkills() {
 /**
  * Does the installed ego lite app provide `taskSpace`? The ego-browser skill
  * starts every browser task with it, and the skill names no app version to
- * compare against, so ask the app. Returns false only for a definite
- * `undefined`; an error, a timeout or any other answer is not a finding.
+ * compare against, so ask the app. ego lite writes its answer to standard
+ * error, not standard output, so both streams are read. Returns false only
+ * for a definite `undefined`; an error, a timeout or any other answer is not
+ * a finding.
  */
 function egoLiteHasTaskSpace() {
   const r = spawnSync('ego-browser', ['nodejs', '-e', 'console.log(typeof taskSpace)'],
                       { encoding: 'utf8', timeout: 20000 });
-  return (r.stdout || '').trim() !== 'undefined';
+  return `${r.stdout || ''}${r.stderr || ''}`.trim() !== 'undefined';
 }
 
 /**
