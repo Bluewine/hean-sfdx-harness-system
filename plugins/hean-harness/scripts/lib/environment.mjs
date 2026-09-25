@@ -15,7 +15,7 @@ import { homedir, platform } from 'node:os';
 import { dirname, join } from 'node:path';
 import { claudeDir } from './paths.mjs';
 import { findLinear, LINEAR_HOST } from './mcp.mjs';
-import { allowed, gitConfig, keyEmails, signingKey } from './signing-identity.mjs';
+import { allowed, gitConfig, readKey, signingKey } from './signing-identity.mjs';
 
 export const SUPERPOWERS = 'superpowers@claude-plugins-official';
 
@@ -240,24 +240,28 @@ export function checkCodeAnalyzer() {
 /**
  * Is the global user.email one of the signing key's UID emails?
  *
- * Checked only when commits are signed by the global configuration. A global
+ * Checked only when commits are signed with OpenPGP by the global
+ * configuration. GitHub verifies a signed commit only when its committer email
+ * is on the key, and the committer email comes from user.email: a global
  * address that is not on the key makes every signed commit in every repository
  * on this machine fail verification, which GitHub reports only at push.
  */
 export function checkGitIdentity() {
-  const key = signingKey(null, ['--global']);
-  if (!key) return { ok: true, skipped: true, detail: 'commit signing is not on in ~/.gitconfig' };
-  const emails = keyEmails(key);
-  if (!emails) return { ok: true, skipped: true, detail: `signing key ${key} could not be read with gpg` };
+  const signing = signingKey(null, ['--global']);
+  if (!signing) return { ok: true, skipped: true, detail: 'OpenPGP commit signing is not on in ~/.gitconfig' };
+  const key = readKey(signing);
+  if (!key) return { ok: true, skipped: true, detail: `signing key ${signing.key} could not be read with ${signing.program}` };
   const email = gitConfig(null, 'user.email', ['--global']);
-  if (email && allowed(email, emails)) return { ok: true, detail: `${email} is on signing key ${key}` };
-  return { ok: false, emails,
-           detail: `user.email is ${email ?? 'not set'}, which is not on signing key ${key}, so signed commits fail verification at push` };
+  if (email && allowed(email, key.emails)) return { ok: true, detail: `${email} is on signing key ${signing.key}` };
+  return { ok: false, emails: key.emails,
+           detail: `${email ? `user.email is ${email}, which is not on signing key ${signing.key}` : 'user.email is not set'}, ` +
+                   `so signed commits fail verification at push` };
 }
 
 export const gitIdentityFix = r =>
-  r.emails ? `git config --global user.email ${r.emails[0]}` +
-             (r.emails.length > 1 ? `    (or ${r.emails.slice(1).join(', ')})` : '') : null;
+  !r.emails ? null
+  : r.emails.length === 1 ? `git config --global user.email ${r.emails[0]}`
+  : `git config --global user.email <one of the key's emails: ${r.emails.join(', ')}>`;
 
 export const sfCliFix = 'install it from https://developer.salesforce.com/tools/salesforcecli';
 export const analyzerFix = 'sf plugins install @salesforce/plugin-code-analyzer';

@@ -2,9 +2,10 @@
  * Reads a Bash tool call's command text the way the shell would split it, so
  * the hooks can find the commands in it and the folder each one runs in.
  *
- * Shared by the commit message gate, the commit approval gate and the org write
- * gate. All need the same answer to "which command runs where", and copies of a
- * parser drift.
+ * Shared by the commit message gate, the commit approval gate, the org write
+ * gate and the git identity guard. All need the same answer to "which command
+ * runs where", and copies of a parser drift. The git runner lives here too, so
+ * every hook and library runs git one way.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -141,6 +142,21 @@ export function* gitCommands(script, cwd) {
   }
 }
 
+/** Options for a child process whose output is parsed and whose error output is not shown. */
+export const QUIET = { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] };
+
+/** Run git in a folder and return its trimmed output; throws when git fails. */
+export const git = (repo, ...args) => execFileSync('git', ['-C', repo, ...args], QUIET).trim();
+
+/** The same, returning null when git fails. */
+export const tryGit = (repo, ...args) => { try { return git(repo, ...args); } catch { return null; } };
+
+/** tryGit with text on standard input, for revision lists too long for the command line. */
+export const tryGitWithInput = (repo, input, ...args) => {
+  try { return execFileSync('git', ['-C', repo, ...args], { ...QUIET, stdio: ['pipe', 'pipe', 'ignore'], input }).trim(); }
+  catch { return null; }
+};
+
 /**
  * The top of the repository a git command acts on, or null when there is none.
  * --work-tree wins, then --git-dir, then the folder the command runs in, then
@@ -148,8 +164,5 @@ export function* gitCommands(script, cwd) {
  */
 export function repoOf(c, sessionCwd) {
   const start = c.workTree ?? (c.gitDir && basename(c.gitDir) === '.git' ? dirname(c.gitDir) : null) ?? c.dir ?? sessionCwd;
-  try {
-    return execFileSync('git', ['-C', start, 'rev-parse', '--show-toplevel'],
-                        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-  } catch { return null; }
+  return tryGit(start, 'rev-parse', '--show-toplevel');
 }

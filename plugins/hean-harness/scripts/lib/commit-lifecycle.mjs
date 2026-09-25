@@ -32,10 +32,10 @@
  */
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 
 import { STATE_DIR, PREFERENCE_FILE } from './manifest.mjs';
+import { git, tryGit } from './command-line.mjs';
 
 export { PREFERENCE_FILE };
 export const FINISH_SKILL = 'hean-harness:finish-implementation';
@@ -71,9 +71,6 @@ function approvesCommit(prompt) {
   return false;
 }
 
-const git = (repo, ...args) =>
-  execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-const tryGit = (repo, ...args) => { try { return git(repo, ...args); } catch { return null; } };
 
 const stateFile = session => join(STATE_DIR, 'sessions', `${session}.json`);
 const validSession = session => typeof session === 'string' && /^[A-Za-z0-9_-]+$/.test(session);
