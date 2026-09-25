@@ -29,8 +29,6 @@ is which, on every new or changed memory file in both scopes, before anything is
 This skill never runs `git commit`. It stages files (`git add`) or removes them, and reports —
 the user commits manually, always.
 
-> **For agentic workers:** Use checkbox (`- [ ]`) syntax for tracking the steps when executing this skill task-by-task.
-
 ## Task list
 
 Before Phase 1, create a task list holding one task per phase below. Mark a task `in_progress`
