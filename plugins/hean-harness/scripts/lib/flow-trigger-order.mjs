@@ -283,23 +283,13 @@ function detectConflicts(group) {
   for (let i = 0; i < flows.length; i++) {
     const reader = flows[i];
     for (const field of reader.reads) {
-      for (let j = i + 1; j < flows.length; j++) {
-        const writer = flows[j];
-        if (hasField(writer.writes, field)) {
-          messages.push(`${reader.name} reads ${field} but runs before ${writer.name}, which writes ${field}`);
-        }
+      for (const writer of writersOf(flows.slice(i + 1), field)) {
+        messages.push(`${reader.name} reads ${field} but runs before ${writer.name}, which writes ${field}`);
       }
     }
   }
-  const writersByField = new Map();
-  for (const f of flows) {
-    for (const field of f.writes) {
-      const key = field.toLowerCase();
-      if (!writersByField.has(key)) writersByField.set(key, { field, writers: [] });
-      writersByField.get(key).writers.push(f);
-    }
-  }
-  for (const { field, writers } of writersByField.values()) {
+  for (const field of dedupeFields(flows.flatMap(f => f.writes))) {
+    const writers = writersOf(flows, field);
     if (writers.length < 2) continue;
     const last = writers[writers.length - 1];
     messages.push(`${writers.map(w => w.name).join(', ')} all write ${field} \u2014 ${last.name} runs last and sets the final value`);
@@ -419,6 +409,12 @@ function nextInRunOrder(list, anchor) {
   return i === -1 || i === list.length - 1 ? null : list[i + 1];
 }
 
+/** The flow immediately before `anchor` in `list`'s real platform run order, by the same rule as `nextInRunOrder`. Returns null when `anchor` is first, or not present in `list`. */
+function prevInRunOrder(list, anchor) {
+  const i = list.indexOf(anchor);
+  return i <= 0 ? null : list[i - 1];
+}
+
 /**
  * The integer nearest `start` that lies in [lo, hi] and is not in `taken`,
  * checking the lower candidate before the higher one at each distance out
@@ -459,6 +455,7 @@ function placementFor(groupFlowsList, target, predecessors, successors, related)
   const lowestSucc = succOrders.length ? Math.min(...succOrders) : null;
   const allOrders = numericOrders(groupFlowsList, target);
   const takenValues = new Set(allOrders);
+  const others = groupFlowsList.filter(f => f !== target);
 
   if (highestPred !== null && lowestSucc !== null && lowestSucc - highestPred <= 1) {
     const predAt = predecessors.filter(p => p.flow.order === highestPred).map(describeLink).join(', ');
@@ -471,23 +468,40 @@ function placementFor(groupFlowsList, target, predecessors, successors, related)
   const hi = lowestSucc !== null ? lowestSucc - 1 : 2000;
   const rangeText = `${lo}\u2013${hi}`;
 
-  let suggestion;
   if (highestPred !== null && lowestSucc !== null) {
-    // A gap between a predecessor and a successor: the midpoint, rounded down.
-    suggestion = Math.floor((highestPred + lowestSucc) / 2);
-  } else if (lowestSucc !== null) {
-    // A successor with no predecessor: anchor on the nearest group flow
-    // below it, mirroring the no-successor branch's use of its nearest
-    // neighbour above.
-    const below = allOrders.filter(o => o < lowestSucc);
-    const anchor = below.length ? Math.max(...below) : null;
-    suggestion = anchor !== null ? Math.floor((anchor + lowestSucc) / 2) : Math.max(lowestSucc - 100, 1);
-  } else if (related.length) {
+    // A gap between a predecessor and a successor: search outward from the
+    // midpoint, rounded down, across the whole allowed range for the
+    // nearest free integer.
+    const suggestion = Math.floor((highestPred + lowestSucc) / 2);
+    const freeValue = nearestFreeInteger(suggestion, lo, hi, takenValues);
+    const suggestionText = freeValue === null ? 'no free integer fits in the allowed range' : String(freeValue);
+    return { rangeText, suggestionText, suggestionValue: freeValue };
+  }
+
+  if (lowestSucc !== null) {
+    // A successor with no predecessor: anchor on the real run-order
+    // neighbour below the earliest successor at that value — not a numeric
+    // filter, which would skip past a no-order flow sitting in between, the
+    // same reason the no-successor branch below uses real run position.
+    const succFlow = runOrder(successors.filter(s => s.flow.order === lowestSucc).map(s => s.flow))[0];
+    const below = prevInRunOrder(others, succFlow);
+    if (below && below.order === null) {
+      const text = `cannot be given a number \u2014 ${below.name} runs immediately below ${succFlow.name} and has no triggerOrder`;
+      return { rangeText, suggestionText: text, suggestionValue: null };
+    }
+    const suggestion = below !== null ? Math.floor((below.order + lowestSucc) / 2) : Math.max(lowestSucc - 100, 1);
+    const freeValue = nearestFreeInteger(suggestion, lo, hi, takenValues);
+    const suggestionText = freeValue === null ? 'no free integer fits in the allowed range' : String(freeValue);
+    return { rangeText, suggestionText, suggestionValue: freeValue };
+  }
+
+  if (related.length) {
     // No successor: place after the last related flow, using its real run
     // position rather than its triggerOrder value — the flow immediately
     // above it in real run order can be a no-order flow, which a purely
-    // numeric "next higher value" search would skip straight past.
-    const others = groupFlowsList.filter(f => f !== target);
+    // numeric "next higher value" search would skip straight past. The free
+    // integer search is scoped to this specific gap, not the whole allowed
+    // range, so it can never land somewhere that runs before the anchor.
     const anchor = related[related.length - 1];
     if (anchor.order === null) {
       const text = `cannot be given a number \u2014 ${anchor.name}, the last related flow, has no triggerOrder itself`;
@@ -498,18 +512,22 @@ function placementFor(groupFlowsList, target, predecessors, successors, related)
       const text = `cannot be given a number \u2014 ${above.name} runs immediately above ${anchor.name} and has no triggerOrder`;
       return { rangeText, suggestionText: text, suggestionValue: null };
     }
-    suggestion = above ? Math.floor((anchor.order + above.order) / 2) : Math.min(anchor.order + 100, 2000);
-  } else {
-    // No related flow at all: nothing else in the group depends on this
-    // flow's fields, or vice versa, so its position relative to them is
-    // unconstrained — there is nothing to suggest a new value against.
-    const text = `no dependency on any other flow in this group, so order does not matter \u2014 keep the current triggerOrder (${target.order ?? 'none'})`;
-    return { rangeText, suggestionText: text, suggestionValue: null };
+    const gapLo = anchor.order + 1;
+    const gapHi = above ? above.order - 1 : 2000;
+    const suggestion = above ? Math.floor((anchor.order + above.order) / 2) : Math.min(anchor.order + 100, 2000);
+    const freeValue = gapLo <= gapHi ? nearestFreeInteger(suggestion, gapLo, gapHi, takenValues) : null;
+    const aboveDesc = above ? `${above.name} (order ${above.order})` : 'triggerOrder 2000';
+    const suggestionText = freeValue === null
+      ? `no free integer between ${anchor.name} (order ${anchor.order}) and ${aboveDesc} \u2014 existing flows need renumbering`
+      : String(freeValue);
+    return { rangeText, suggestionText, suggestionValue: freeValue };
   }
 
-  const freeValue = nearestFreeInteger(suggestion, lo, hi, takenValues);
-  const suggestionText = freeValue === null ? 'no free integer fits in the allowed range' : String(freeValue);
-  return { rangeText, suggestionText, suggestionValue: freeValue };
+  // No related flow at all: nothing else in the group depends on this flow's
+  // fields, or vice versa, so its position relative to them is unconstrained
+  // — there is nothing to suggest a new value against.
+  const text = `no dependency on any other flow in this group, so order does not matter \u2014 keep the current triggerOrder (${target.order ?? 'none'})`;
+  return { rangeText, suggestionText: text, suggestionValue: null };
 }
 
 /** Which flow's write of `field` would win if `target` ran at `suggestedOrder`. */

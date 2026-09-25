@@ -557,6 +557,49 @@ try {
         (case10ListOut.match(/\[Obsolete\]/g) || []).length === 2,
         case10ListOut);
 
+  // ==== Fix round 2, item 2: the free-integer search must stay in the gap ===
+  // after the last related flow, not the whole allowed range. A=1500 writes
+  // F1 and F2, B=1600 reads F1 (so B is related, via A, to C below), unrelated
+  // U=1601 sits immediately above B with no gap at all -> the round-1 code
+  // searched the whole 1501-2000 range from the 1600/1601 midpoint (1600,
+  // already taken) outward and landed on 1599, which runs BEFORE B. The fix
+  // must instead see there is no room in the gap between B and U and say so.
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase13_A',
+    recordTriggeredFlow({ object: 'DepCase13__c', triggerType: 'RecordAfterSave', order: 1500, updateRecordFields: ['F1', 'F2'] }));
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase13_B',
+    recordTriggeredFlow({ object: 'DepCase13__c', triggerType: 'RecordAfterSave', order: 1600, formulaReadFields: ['F1'] }));
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase13_U',
+    recordTriggeredFlow({ object: 'DepCase13__c', triggerType: 'RecordAfterSave', order: 1601 }));
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase13_C',
+    recordTriggeredFlow({ object: 'DepCase13__c', triggerType: 'RecordAfterSave', order: null, formulaReadFields: ['F2'] }));
+
+  const case13Out = execFileSync('node', [SCRIPT, '--flow', 'DepCase13_C'], { cwd: root, encoding: 'utf8' });
+  check('Item 2: no room between the last related flow (B) and the next flow above it (U) -> renumbering, not 1599',
+        !case13Out.includes('1599') && !case13Out.includes('no free integer fits in the allowed range') &&
+        case13Out.includes('DepCase13_B') && case13Out.includes('DepCase13_U') && case13Out.includes('renumbering'),
+        case13Out);
+
+  // ==== Fix round 2, item 3: the successor-without-predecessor branch must ==
+  // use the real run-order neighbour below the successor, not a numeric
+  // filter. X=500 (low bucket), Y unnumbered (runs right after X, before the
+  // successor S=1200), C writes F1 which S reads. The real neighbour
+  // immediately below S is Y, which has no triggerOrder, so no number can be
+  // suggested (a numeric filter would wrongly find X and suggest 850).
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase11_X',
+    recordTriggeredFlow({ object: 'DepCase11__c', triggerType: 'RecordAfterSave', order: 500 }));
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase11_Y',
+    recordTriggeredFlow({ object: 'DepCase11__c', triggerType: 'RecordAfterSave', order: null }));
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase11_S',
+    recordTriggeredFlow({ object: 'DepCase11__c', triggerType: 'RecordAfterSave', order: 1200, formulaReadFields: ['F1'] }));
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase11_C',
+    recordTriggeredFlow({ object: 'DepCase11__c', triggerType: 'RecordAfterSave', order: null, updateRecordFields: ['F1'] }));
+
+  const case11Out = execFileSync('node', [SCRIPT, '--flow', 'DepCase11_C'], { cwd: root, encoding: 'utf8' });
+  check('Item 3: the real run-order neighbour below the successor (Y, unnumbered) blocks a number, instead of suggesting 850 via X',
+        !case11Out.includes('850') && !case11Out.includes('no free integer fits in the allowed range') &&
+        case11Out.includes('DepCase11_Y') && /Suggested triggerOrder: cannot be given a number/.test(case11Out),
+        case11Out);
+
   // ---- --flow error cases -----------------------------------------------------
   const notFoundOut = execFileSync('node', [SCRIPT, '--flow', 'No_Such_Flow'], { cwd: root, encoding: 'utf8' }).trim();
   check('a --flow name that does not exist reports one plain line',
