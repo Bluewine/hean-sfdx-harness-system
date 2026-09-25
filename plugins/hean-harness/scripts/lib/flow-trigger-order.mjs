@@ -43,6 +43,12 @@ function dedupeFields(fields) {
 /** Whether `field` (case-insensitive) is present in `fields`. */
 const hasField = (fields, field) => fields.some(f => f.toLowerCase() === field.toLowerCase());
 
+/** Every flow in `list` that writes `field` (case-insensitive), excluding `self`. */
+const writersOf = (list, field, self = null) => list.filter(f => f !== self && hasField(f.writes, field));
+
+/** Every flow in `list` that reads `field` (case-insensitive), excluding `self`. */
+const readersOf = (list, field, self = null) => list.filter(f => f !== self && hasField(f.reads, field));
+
 /**
  * True when a <recordUpdates> block updates the flow's own object by filtering
  * on Id = $Record.Id — the "update this same record through Get/Update
@@ -61,17 +67,26 @@ function updatesSameObjectById(body, object) {
  * record, plus any subflow calls (never scanned, only named). See the module
  * comment: this is a whole-file text scan, not a synchronous-path walk.
  *
- * Writes: a before-save `$Record.<Field>` assignment target, or an
- * `inputAssignments/field` on a <recordUpdates> that updates `$Record`
- * directly or updates the same object filtered by Id = $Record.Id.
+ * Writes: a before-save `$Record.<Field>` assignment target — gated on
+ * `triggerType` being RecordBeforeSave, since that is the only context this
+ * assignment actually persists in — or an `inputAssignments/field` on a
+ * <recordUpdates> that updates `$Record` directly or updates the same object
+ * filtered by Id = $Record.Id (either trigger timing).
  *
  * Reads: every <start> entry-filter field, plus every other
- * `$Record.<Field>` / `$Record__Prior.<Field>` reference in the file whose
- * field is not already a write target of this same flow.
+ * `$Record.<Field>` / `$Record__Prior.<Field>` reference in the file. A field
+ * can be both a write and a read of the same flow (e.g. a
+ * `$Record__Prior.Status` comparison in a flow that also sets Status) — only
+ * the exact assignToReference text already counted as a write is stripped
+ * before this second scan, so it is not also counted as a read of the same
+ * occurrence; a different occurrence of the same field name is a genuine,
+ * separate read and is kept.
  */
-function parseFlowDependencies(xmlText, object) {
+function parseFlowDependencies(xmlText, object, triggerType) {
   const writes = [];
-  for (const m of xmlText.matchAll(/<assignToReference>\$Record\.([A-Za-z0-9_]+)/g)) writes.push(m[1]);
+  if (triggerType === 'RecordBeforeSave') {
+    for (const m of xmlText.matchAll(/<assignToReference>\$Record\.([A-Za-z0-9_]+)/g)) writes.push(m[1]);
+  }
   for (const m of xmlText.matchAll(/<recordUpdates>([\s\S]*?)<\/recordUpdates>/g)) {
     const body = m[1];
     const updatesRecord = /<inputReference>\$Record<\/inputReference>/.test(body);
@@ -81,7 +96,6 @@ function parseFlowDependencies(xmlText, object) {
       if (field) writes.push(field);
     }
   }
-  const writeSet = new Set(writes.map(f => f.toLowerCase()));
 
   const reads = [];
   const startBody = /<start>([\s\S]*?)<\/start>/.exec(xmlText)?.[1] ?? '';
@@ -90,10 +104,13 @@ function parseFlowDependencies(xmlText, object) {
     if (field) reads.push(field);
   }
   // Strip the write-target occurrences out first so the same text is not
-  // also picked up as a read of the field it just wrote.
+  // also picked up as a read of the field it just wrote — a field-name
+  // filter would be wrong here, since a genuinely different occurrence of
+  // the same field elsewhere in the file (e.g. $Record__Prior) is a real,
+  // separate read.
   const withoutWriteAssigns = xmlText.replace(/<assignToReference>\$Record\.[A-Za-z0-9_]+/g, '');
   for (const m of withoutWriteAssigns.matchAll(/\$Record(?:__Prior)?\.([A-Za-z0-9_]+)/g)) {
-    if (!writeSet.has(m[1].toLowerCase())) reads.push(m[1]);
+    reads.push(m[1]);
   }
 
   const subflows = [];
@@ -151,7 +168,7 @@ export function parseFlow(xmlText, relativePath) {
   const asyncPaths = [...start.matchAll(/<scheduledPaths>([\s\S]*?)<\/scheduledPaths>/g)]
     .map(m => /<pathType>([^<]+)<\/pathType>/.exec(m[1])?.[1] ?? 'scheduled');
 
-  const deps = parseFlowDependencies(xmlText, object);
+  const deps = parseFlowDependencies(xmlText, object, triggerType);
 
   return {
     object, triggerType, order, status, asyncPaths,
@@ -258,7 +275,10 @@ const fieldListLabel = fields => fields.length ? fields.join(', ') : '(none)';
  * write is the one that survives).
  */
 function detectConflicts(group) {
-  const flows = group.flows;
+  // A Draft or Obsolete flow still gets its own row (fullLines shows it with
+  // its status label), but it never actually runs, so it cannot cause a real
+  // order conflict and is left out of this scan entirely.
+  const flows = group.flows.filter(isActive);
   const messages = [];
   for (let i = 0; i < flows.length; i++) {
     const reader = flows[i];
@@ -287,14 +307,19 @@ function detectConflicts(group) {
   return messages;
 }
 
+/** The writes/reads/subflow-calls lines for one flow, each prefixed by `indent`. */
+function dependencyLines(f, indent) {
+  const lines = [`${indent}writes: ${fieldListLabel(f.writes)}`, `${indent}reads: ${fieldListLabel(f.reads)}`];
+  if (f.subflows.length) lines.push(`${indent}subflow calls, not scanned: ${f.subflows.join(', ')}`);
+  return lines;
+}
+
 function fullLines(group) {
   const lines = [`${group.object} \u00b7 ${group.triggerType} \u2014 ${group.flows.length} flows, in platform run order:`];
   for (const f of group.flows) {
     const async = asyncLabel(f);
     lines.push(`  ${orderLabel(f)}${statusLabel(f)}  ${f.name}` + (async ? `  ${async}` : '') + `  (${f.path})`);
-    lines.push(`    writes: ${fieldListLabel(f.writes)}`);
-    lines.push(`    reads: ${fieldListLabel(f.reads)}`);
-    if (f.subflows.length) lines.push(`    subflow calls, not scanned: ${f.subflows.join(', ')}`);
+    lines.push(...dependencyLines(f, '    '));
   }
   const conflicts = detectConflicts(group);
   if (conflicts.length) {
@@ -339,6 +364,14 @@ export function findFlowFileByName(files, flowApiName) {
   return files.find(f => basename(f, '.flow-meta.xml').toLowerCase() === flowApiName.toLowerCase()) ?? null;
 }
 
+/** Every flow in `list` linked to `f` by a write-read pair, in either direction. */
+function linkedFlows(list, f) {
+  const out = new Set();
+  for (const field of f.writes) for (const reader of readersOf(list, field, f)) out.add(reader);
+  for (const field of f.reads) for (const writer of writersOf(list, field, f)) out.add(writer);
+  return out;
+}
+
 /**
  * Every other flow in `groupFlowsList` reachable from `target` through a
  * write-read link (one flow writes a field another reads), directly or
@@ -346,13 +379,11 @@ export function findFlowFileByName(files, flowApiName) {
  * links. `target` itself is not included in the result.
  */
 function relatedFlows(groupFlowsList, target) {
-  const linked = f => groupFlowsList.filter(g => g !== f &&
-    (f.writes.some(field => hasField(g.reads, field)) || g.writes.some(field => hasField(f.reads, field))));
   const seen = new Set([target]);
   const queue = [target];
   while (queue.length) {
     const current = queue.pop();
-    for (const neighbour of linked(current)) {
+    for (const neighbour of linkedFlows(groupFlowsList, current)) {
       if (!seen.has(neighbour)) { seen.add(neighbour); queue.push(neighbour); }
     }
   }
@@ -362,16 +393,48 @@ function relatedFlows(groupFlowsList, target) {
 
 /** `{ flow, field }` for every other flow in the group that writes a field `target` reads. */
 const predecessorsOf = (groupFlowsList, target) =>
-  target.reads.flatMap(field => groupFlowsList.filter(f => f !== target && hasField(f.writes, field)).map(flow => ({ flow, field })));
+  target.reads.flatMap(field => writersOf(groupFlowsList, field, target).map(flow => ({ flow, field })));
 
 /** `{ flow, field }` for every other flow in the group that reads a field `target` writes. */
 const successorsOf = (groupFlowsList, target) =>
-  target.writes.flatMap(field => groupFlowsList.filter(f => f !== target && hasField(f.reads, field)).map(flow => ({ flow, field })));
+  target.writes.flatMap(field => readersOf(groupFlowsList, field, target).map(flow => ({ flow, field })));
 
 const describeLink = ({ flow, field }) => `${flow.name} (order ${flow.order ?? 'none'}, ${field})`;
 
 /** The other group flows' triggerOrder values, excluding `target` and anything with no value. */
 const numericOrders = (groupFlowsList, target) => groupFlowsList.filter(f => f !== target && f.order !== null).map(f => f.order);
+
+/**
+ * The flow immediately after `anchor` in `list`'s real platform run order —
+ * which may itself have no triggerOrder, since the no-order bucket runs
+ * between every triggerOrder 1-1000 flow and every triggerOrder 1001-2000
+ * flow, so it can be the true "next flow above" even when a purely numeric
+ * search would skip past it to the next flow that does have a value. `list`
+ * must already be in that run order (a group's `.flows`, or the same list
+ * with some flows removed, order preserved). Returns null when `anchor` is
+ * last, or not present in `list`.
+ */
+function nextInRunOrder(list, anchor) {
+  const i = list.indexOf(anchor);
+  return i === -1 || i === list.length - 1 ? null : list[i + 1];
+}
+
+/**
+ * The integer nearest `start` that lies in [lo, hi] and is not in `taken`,
+ * checking the lower candidate before the higher one at each distance out
+ * (keeping `start`'s own "rounded down" bias on a tie). Returns null when
+ * every integer in the range is taken.
+ */
+function nearestFreeInteger(start, lo, hi, taken) {
+  if (Number.isInteger(start) && start >= lo && start <= hi && !taken.has(start)) return start;
+  for (let delta = 1; start - delta >= lo || start + delta <= hi; delta++) {
+    const down = start - delta;
+    if (down >= lo && !taken.has(down)) return down;
+    const up = start + delta;
+    if (up <= hi && !taken.has(up)) return up;
+  }
+  return null;
+}
 
 /**
  * The allowed placement range and a suggested triggerOrder for `target`
@@ -407,7 +470,6 @@ function placementFor(groupFlowsList, target, predecessors, successors, related)
   const lo = highestPred !== null ? highestPred + 1 : 1;
   const hi = lowestSucc !== null ? lowestSucc - 1 : 2000;
   const rangeText = `${lo}\u2013${hi}`;
-  const fitsFreeValue = value => value !== null && Number.isInteger(value) && value >= lo && value <= hi && !takenValues.has(value);
 
   let suggestion;
   if (highestPred !== null && lowestSucc !== null) {
@@ -421,31 +483,38 @@ function placementFor(groupFlowsList, target, predecessors, successors, related)
     const anchor = below.length ? Math.max(...below) : null;
     suggestion = anchor !== null ? Math.floor((anchor + lowestSucc) / 2) : Math.max(lowestSucc - 100, 1);
   } else if (related.length) {
-    const relatedOrders = related.map(f => f.order).filter(o => o !== null);
-    const anchor = relatedOrders.length ? Math.max(...relatedOrders) : null;
-    if (anchor === null) {
-      suggestion = null; // every related flow lacks a triggerOrder — reported as "no free integer" below
-    } else {
-      const above = allOrders.filter(o => o > anchor);
-      suggestion = above.length ? Math.floor((anchor + Math.min(...above)) / 2) : Math.min(anchor + 100, 2000);
+    // No successor: place after the last related flow, using its real run
+    // position rather than its triggerOrder value — the flow immediately
+    // above it in real run order can be a no-order flow, which a purely
+    // numeric "next higher value" search would skip straight past.
+    const others = groupFlowsList.filter(f => f !== target);
+    const anchor = related[related.length - 1];
+    if (anchor.order === null) {
+      const text = `cannot be given a number \u2014 ${anchor.name}, the last related flow, has no triggerOrder itself`;
+      return { rangeText, suggestionText: text, suggestionValue: null };
     }
+    const above = nextInRunOrder(others, anchor);
+    if (above && above.order === null) {
+      const text = `cannot be given a number \u2014 ${above.name} runs immediately above ${anchor.name} and has no triggerOrder`;
+      return { rangeText, suggestionText: text, suggestionValue: null };
+    }
+    suggestion = above ? Math.floor((anchor.order + above.order) / 2) : Math.min(anchor.order + 100, 2000);
   } else {
-    // No dependency at all: task-1-brief.md item 4 gives no case for a fully
-    // isolated flow. global-constraints.md's default ("after the last
-    // related flow") has nothing to anchor on, so this places it after the
-    // last flow in the group instead, the closest reading of that default.
-    const anchor = allOrders.length ? Math.max(...allOrders) : null;
-    suggestion = anchor === null ? 100 : Math.min(anchor + 100, 2000);
+    // No related flow at all: nothing else in the group depends on this
+    // flow's fields, or vice versa, so its position relative to them is
+    // unconstrained — there is nothing to suggest a new value against.
+    const text = `no dependency on any other flow in this group, so order does not matter \u2014 keep the current triggerOrder (${target.order ?? 'none'})`;
+    return { rangeText, suggestionText: text, suggestionValue: null };
   }
 
-  const suggestionText = fitsFreeValue(suggestion) ? String(suggestion) : 'no free integer fits in the allowed range';
-  return { rangeText, suggestionText, suggestionValue: fitsFreeValue(suggestion) ? suggestion : null };
+  const freeValue = nearestFreeInteger(suggestion, lo, hi, takenValues);
+  const suggestionText = freeValue === null ? 'no free integer fits in the allowed range' : String(freeValue);
+  return { rangeText, suggestionText, suggestionValue: freeValue };
 }
 
 /** Which flow's write of `field` would win if `target` ran at `suggestedOrder`. */
 function finalWriterAt(groupFlowsList, target, suggestedOrder, field) {
-  const otherWriters = groupFlowsList.filter(f => f !== target && hasField(f.writes, field));
-  const contenders = [...otherWriters, { ...target, order: suggestedOrder }];
+  const contenders = [...writersOf(groupFlowsList, field, target), { ...target, order: suggestedOrder }];
   const last = runOrder(contenders)[contenders.length - 1];
   return last.path === target.path ? `${target.name} (at the suggested position)` : last.name;
 }
@@ -458,17 +527,19 @@ function finalWriterAt(groupFlowsList, target, suggestedOrder, field) {
  */
 export function formatFlowPlacement(flows, target) {
   const group = groupFlows(flows).find(g => g.flows.includes(target));
-  const groupFlowsList = group.flows;
+  // A Draft or Obsolete flow in the group is never a real predecessor,
+  // successor, related flow, or placement neighbour — it does not actually
+  // run. It can still be the flow being placed; only the flows it is
+  // compared against are filtered here.
+  const activeFlows = group.flows.filter(f => f === target || isActive(f));
 
-  const predecessors = predecessorsOf(groupFlowsList, target);
-  const successors = successorsOf(groupFlowsList, target);
-  const related = relatedFlows(groupFlowsList, target);
+  const predecessors = predecessorsOf(activeFlows, target);
+  const successors = successorsOf(activeFlows, target);
+  const related = relatedFlows(activeFlows, target);
 
   const lines = [];
   lines.push(`${target.name} \u2014 ${group.object} \u00b7 ${group.triggerType}, current triggerOrder: ${target.order ?? 'none'}`);
-  lines.push(`  writes: ${fieldListLabel(target.writes)}`);
-  lines.push(`  reads: ${fieldListLabel(target.reads)}`);
-  if (target.subflows.length) lines.push(`  subflow calls, not scanned: ${target.subflows.join(', ')}`);
+  lines.push(...dependencyLines(target, '  '));
   lines.push('');
   lines.push('Predecessors:');
   lines.push(...(predecessors.length ? predecessors.map(p => `  ${describeLink(p)}`) : ['  (none)']));
@@ -477,15 +548,15 @@ export function formatFlowPlacement(flows, target) {
   lines.push(`Related flows: ${related.length ? related.map(f => f.name).join(', ') : '(none)'}`);
   lines.push('');
 
-  const { rangeText, suggestionText, suggestionValue } = placementFor(groupFlowsList, target, predecessors, successors, related);
+  const { rangeText, suggestionText, suggestionValue } = placementFor(activeFlows, target, predecessors, successors, related);
   lines.push(`Allowed range: ${rangeText}`);
   lines.push(`Suggested triggerOrder: ${suggestionText} (current: ${target.order ?? 'none'})`);
 
   if (suggestionValue !== null && suggestionValue !== undefined) {
     for (const field of target.writes) {
-      const otherWriters = groupFlowsList.filter(f => f !== target && hasField(f.writes, field));
+      const otherWriters = writersOf(activeFlows, field, target);
       if (!otherWriters.length) continue;
-      lines.push(`  ${field} is also written by ${otherWriters.map(w => w.name).join(', ')} \u2014 ${finalWriterAt(groupFlowsList, target, suggestionValue, field)} would set the final value`);
+      lines.push(`  ${field} is also written by ${otherWriters.map(w => w.name).join(', ')} \u2014 ${finalWriterAt(activeFlows, target, suggestionValue, field)} would set the final value`);
     }
   }
 

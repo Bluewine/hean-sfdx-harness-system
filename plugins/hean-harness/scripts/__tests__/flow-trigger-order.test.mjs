@@ -324,6 +324,22 @@ try {
       object: 'Depend__c', triggerType: 'RecordBeforeSave', order: 400,
       updateByIdFields: ['IdUpdateField__c'],
     }));
+  // Fix round 1, Important 1: a field can be both a write and a read of the
+  // same flow — a $Record__Prior comparison against a field this same flow
+  // also sets must still show up as a read.
+  writeFlow(root, 'force-app/main/default/flows', 'Dep_ReadPriorOfWritten',
+    recordTriggeredFlow({
+      object: 'Depend__c', triggerType: 'RecordBeforeSave', order: 50,
+      assignToRecordFields: ['StatusField__c'], priorReadFields: ['StatusField__c'],
+    }));
+  // Fix round 1, Controller ruling B: an Obsolete flow that writes the same
+  // field as two active flows must still show up in the listing with its
+  // status, but must never join the double-write or conflict scans.
+  writeFlow(root, 'force-app/main/default/flows', 'Dep_Obsolete_Writer',
+    recordTriggeredFlow({
+      object: 'Depend__c', triggerType: 'RecordBeforeSave', order: 250, status: 'Obsolete',
+      assignToRecordFields: ['SharedField__c'],
+    }));
 
   const flowsWithDeps = loadFlows(root);
   const depBlock = formatReport(flowsWithDeps, 'Depend__c');
@@ -368,11 +384,27 @@ try {
         depBlock.includes('Dep_WriterUpdate runs last and sets the final value'),
         depBlock);
 
+  const priorWriteBlock = blockFor('Dep_ReadPriorOfWritten');
+  check('Important 1: a field written by this flow can still show up as a read (e.g. via $Record__Prior)',
+        priorWriteBlock.some(l => l.startsWith('    writes:') && l.includes('StatusField__c')) &&
+        priorWriteBlock.some(l => l.startsWith('    reads:') && l.includes('StatusField__c')),
+        priorWriteBlock.join(' | '));
+
+  const obsoleteWriterLine = depLines.find(l => l.includes('  Dep_Obsolete_Writer  ('));
+  const doubleWriteLine = depLines.find(l => l.includes('all write SharedField__c'));
+  check('Controller ruling B: an Obsolete flow is still listed with its status and its own writes',
+        obsoleteWriterLine?.includes('[Obsolete]') === true, obsoleteWriterLine);
+  check('Controller ruling B: an Obsolete writer never joins the double-write scan',
+        doubleWriteLine === '    Dep_WriterAssign, Dep_WriterUpdate all write SharedField__c — Dep_WriterUpdate runs last and sets the final value',
+        doubleWriteLine);
+  check('Controller ruling B: an Obsolete writer never joins the existing-order-conflict scan',
+        !depBlock.includes('runs before Dep_Obsolete_Writer'), depBlock);
+
   // ==== --flow placement (task-1-brief.md item 4), the four fixture cases ====
   // Case 1: C reads F2 written by A only -> predecessor A, no successor,
   // suggestion after the last related flow (B): 1700.
   writeFlow(root, 'force-app/main/default/flows', 'DepCase1_A',
-    recordTriggeredFlow({ object: 'DepCase1__c', triggerType: 'RecordAfterSave', order: 1500, assignToRecordFields: ['F1', 'F2'] }));
+    recordTriggeredFlow({ object: 'DepCase1__c', triggerType: 'RecordAfterSave', order: 1500, updateRecordFields: ['F1', 'F2'] }));
   writeFlow(root, 'force-app/main/default/flows', 'DepCase1_B',
     recordTriggeredFlow({ object: 'DepCase1__c', triggerType: 'RecordAfterSave', order: 1600, formulaReadFields: ['F1'] }));
   writeFlow(root, 'force-app/main/default/flows', 'DepCase1_C',
@@ -386,9 +418,9 @@ try {
 
   // Case 2: A and B both write F2, C reads F2 -> predecessors A and B, suggestion 1700.
   writeFlow(root, 'force-app/main/default/flows', 'DepCase2_A',
-    recordTriggeredFlow({ object: 'DepCase2__c', triggerType: 'RecordAfterSave', order: 1500, assignToRecordFields: ['F2'] }));
+    recordTriggeredFlow({ object: 'DepCase2__c', triggerType: 'RecordAfterSave', order: 1500, updateRecordFields: ['F2'] }));
   writeFlow(root, 'force-app/main/default/flows', 'DepCase2_B',
-    recordTriggeredFlow({ object: 'DepCase2__c', triggerType: 'RecordAfterSave', order: 1600, assignToRecordFields: ['F2'] }));
+    recordTriggeredFlow({ object: 'DepCase2__c', triggerType: 'RecordAfterSave', order: 1600, updateRecordFields: ['F2'] }));
   writeFlow(root, 'force-app/main/default/flows', 'DepCase2_C',
     recordTriggeredFlow({ object: 'DepCase2__c', triggerType: 'RecordAfterSave', order: null, formulaReadFields: ['F2'] }));
 
@@ -403,11 +435,11 @@ try {
   // Case 3: A writes F2, C reads F2 and writes F3, B reads F3 -> predecessor A,
   // successor B, range 1501-1599, suggestion 1550.
   writeFlow(root, 'force-app/main/default/flows', 'DepCase3_A',
-    recordTriggeredFlow({ object: 'DepCase3__c', triggerType: 'RecordAfterSave', order: 1500, assignToRecordFields: ['F2'] }));
+    recordTriggeredFlow({ object: 'DepCase3__c', triggerType: 'RecordAfterSave', order: 1500, updateRecordFields: ['F2'] }));
   writeFlow(root, 'force-app/main/default/flows', 'DepCase3_B',
     recordTriggeredFlow({ object: 'DepCase3__c', triggerType: 'RecordAfterSave', order: 1600, formulaReadFields: ['F3'] }));
   writeFlow(root, 'force-app/main/default/flows', 'DepCase3_C',
-    recordTriggeredFlow({ object: 'DepCase3__c', triggerType: 'RecordAfterSave', order: null, formulaReadFields: ['F2'], assignToRecordFields: ['F3'] }));
+    recordTriggeredFlow({ object: 'DepCase3__c', triggerType: 'RecordAfterSave', order: null, formulaReadFields: ['F2'], updateRecordFields: ['F3'] }));
 
   const case3Out = execFileSync('node', [SCRIPT, '--flow', 'DepCase3_C'], { cwd: root, encoding: 'utf8' });
   check('case 3: predecessor A, successor B, range 1501–1599, suggestion 1550',
@@ -417,14 +449,113 @@ try {
   // Case 4: B writes F2, C reads F2 and writes F1 -> predecessor B (1600),
   // successor B (reads F1) -> empty range, renumbering message. No A.
   writeFlow(root, 'force-app/main/default/flows', 'DepCase4_B',
-    recordTriggeredFlow({ object: 'DepCase4__c', triggerType: 'RecordAfterSave', order: 1600, assignToRecordFields: ['F2'], formulaReadFields: ['F1'] }));
+    recordTriggeredFlow({ object: 'DepCase4__c', triggerType: 'RecordAfterSave', order: 1600, updateRecordFields: ['F2'], formulaReadFields: ['F1'] }));
   writeFlow(root, 'force-app/main/default/flows', 'DepCase4_C',
-    recordTriggeredFlow({ object: 'DepCase4__c', triggerType: 'RecordAfterSave', order: null, formulaReadFields: ['F2'], assignToRecordFields: ['F1'] }));
+    recordTriggeredFlow({ object: 'DepCase4__c', triggerType: 'RecordAfterSave', order: null, formulaReadFields: ['F2'], updateRecordFields: ['F1'] }));
 
   const case4Out = execFileSync('node', [SCRIPT, '--flow', 'DepCase4_C'], { cwd: root, encoding: 'utf8' });
   check('case 4: predecessor and successor are the same flow -> empty range, renumbering message',
         case4Out.includes('Allowed range: empty') && case4Out.includes('renumbering'),
         case4Out);
+
+  // ==== Fix round 1, Important 3: search outward for the nearest free =======
+  // integer instead of only trying the midpoint. A(1500) predecessor,
+  // B(1600) successor, U(1550) unrelated but sitting exactly on the naive
+  // midpoint -> the nearest free integer either side (1549) must be found
+  // instead of reporting no free integer.
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase6_A',
+    recordTriggeredFlow({ object: 'DepCase6__c', triggerType: 'RecordAfterSave', order: 1500, updateRecordFields: ['F2'] }));
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase6_B',
+    recordTriggeredFlow({ object: 'DepCase6__c', triggerType: 'RecordAfterSave', order: 1600, formulaReadFields: ['F3'] }));
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase6_U',
+    recordTriggeredFlow({ object: 'DepCase6__c', triggerType: 'RecordAfterSave', order: 1550 }));
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase6_C',
+    recordTriggeredFlow({ object: 'DepCase6__c', triggerType: 'RecordAfterSave', order: null, formulaReadFields: ['F2'], updateRecordFields: ['F3'] }));
+
+  const case6Out = execFileSync('node', [SCRIPT, '--flow', 'DepCase6_C'], { cwd: root, encoding: 'utf8' });
+  check('Important 3: the naive midpoint (1550) is taken by an unrelated flow, so the nearest free integer (1549) is suggested',
+        case6Out.includes('Allowed range: 1501–1599') && case6Out.includes('Suggested triggerOrder: 1549'),
+        case6Out);
+
+  // ==== Fix round 1, Important 2: real run positions for "next flow above" ===
+  // and "last related flow", not a purely numeric search that skips a
+  // no-order flow sitting in between.
+  // Repro 1: related P=950, unnumbered N, next numbered Q=1500 -> the real
+  // next flow above P is N, not Q, and N has no triggerOrder, so no number
+  // can be suggested (not 1225).
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase7_P',
+    recordTriggeredFlow({ object: 'DepCase7__c', triggerType: 'RecordAfterSave', order: 950, updateRecordFields: ['F1'] }));
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase7_N',
+    recordTriggeredFlow({ object: 'DepCase7__c', triggerType: 'RecordAfterSave', order: null }));
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase7_Q',
+    recordTriggeredFlow({ object: 'DepCase7__c', triggerType: 'RecordAfterSave', order: 1500 }));
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase7_C',
+    recordTriggeredFlow({ object: 'DepCase7__c', triggerType: 'RecordAfterSave', order: null, formulaReadFields: ['F1'] }));
+
+  const case7Out = execFileSync('node', [SCRIPT, '--flow', 'DepCase7_C'], { cwd: root, encoding: 'utf8' });
+  check('Important 2 repro 1: the real next flow above P (N, unnumbered) blocks a number, instead of skipping to Q for 1225',
+        !case7Out.includes('1225') && !case7Out.includes('no free integer fits') &&
+        case7Out.includes('DepCase7_N') && /Suggested triggerOrder: cannot be given a number/.test(case7Out),
+        case7Out);
+
+  // Repro 2: related P=500, unnumbered R runs immediately after P -> no
+  // number can be suggested (not 600), since R's real position blocks it.
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase8_P',
+    recordTriggeredFlow({ object: 'DepCase8__c', triggerType: 'RecordAfterSave', order: 500, updateRecordFields: ['F1'] }));
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase8_R',
+    recordTriggeredFlow({ object: 'DepCase8__c', triggerType: 'RecordAfterSave', order: null }));
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase8_C',
+    recordTriggeredFlow({ object: 'DepCase8__c', triggerType: 'RecordAfterSave', order: null, formulaReadFields: ['F1'] }));
+
+  const case8Out = execFileSync('node', [SCRIPT, '--flow', 'DepCase8_C'], { cwd: root, encoding: 'utf8' });
+  check('Important 2 repro 2: the real next flow above P (R, unnumbered) blocks a number, instead of suggesting 600',
+        !case8Out.includes('600') && !case8Out.includes('no free integer fits') &&
+        case8Out.includes('DepCase8_R') && /Suggested triggerOrder: cannot be given a number/.test(case8Out),
+        case8Out);
+
+  // ==== Fix round 1, Controller ruling A: a fully isolated flow -> keep the ==
+  // current triggerOrder, give no new number, instead of "last flow + 100".
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase9_Other',
+    recordTriggeredFlow({ object: 'DepCase9__c', triggerType: 'RecordAfterSave', order: 1500, formulaReadFields: ['OtherOnlyField__c'] }));
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase9_C',
+    recordTriggeredFlow({ object: 'DepCase9__c', triggerType: 'RecordAfterSave', order: 1300, formulaReadFields: ['COnlyField__c'] }));
+
+  const case9Out = execFileSync('node', [SCRIPT, '--flow', 'DepCase9_C'], { cwd: root, encoding: 'utf8' });
+  check('Controller ruling A: no dependency on any other group flow -> keep the current triggerOrder, no new number',
+        case9Out.includes('Predecessors:\n  (none)') && case9Out.includes('Successors:\n  (none)') &&
+        case9Out.includes('Related flows: (none)') &&
+        case9Out.includes('no dependency on any other flow in this group') &&
+        case9Out.includes('keep the current triggerOrder (1300)'),
+        case9Out);
+
+  // ==== Fix round 1, Controller ruling B: Draft/Obsolete excluded from ======
+  // predecessors, successors, related flows, range and neighbours (not just
+  // from the plain listing's conflict scan, already covered above for the
+  // Depend__c group).
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase10_ActivePred',
+    recordTriggeredFlow({ object: 'DepCase10__c', triggerType: 'RecordAfterSave', order: 1500, updateRecordFields: ['F2'] }));
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase10_ObsoletePred',
+    recordTriggeredFlow({ object: 'DepCase10__c', triggerType: 'RecordAfterSave', order: 1800, status: 'Obsolete', updateRecordFields: ['F2'] }));
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase10_ObsoleteSucc',
+    recordTriggeredFlow({ object: 'DepCase10__c', triggerType: 'RecordAfterSave', order: 1700, status: 'Obsolete', formulaReadFields: ['F3'] }));
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase10_C',
+    recordTriggeredFlow({ object: 'DepCase10__c', triggerType: 'RecordAfterSave', order: null, formulaReadFields: ['F2'], updateRecordFields: ['F3'] }));
+
+  const case10Out = execFileSync('node', [SCRIPT, '--flow', 'DepCase10_C'], { cwd: root, encoding: 'utf8' });
+  check('Controller ruling B: an Obsolete predecessor/successor/related flow is excluded from --flow placement',
+        case10Out.includes('Predecessors:\n  DepCase10_ActivePred') &&
+        !case10Out.includes('DepCase10_ObsoletePred') &&
+        case10Out.includes('Successors:\n  (none)') &&
+        !case10Out.includes('DepCase10_ObsoleteSucc') &&
+        case10Out.includes('Related flows: DepCase10_ActivePred') &&
+        case10Out.includes('Allowed range: 1501–2000') &&
+        case10Out.includes('Suggested triggerOrder: 1600'),
+        case10Out);
+  const case10ListOut = execFileSync('node', [SCRIPT, 'DepCase10__c'], { cwd: root, encoding: 'utf8' });
+  check('Controller ruling B: the Obsolete flows still appear in the plain listing with their status',
+        case10ListOut.includes('DepCase10_ObsoletePred') && case10ListOut.includes('DepCase10_ObsoleteSucc') &&
+        (case10ListOut.match(/\[Obsolete\]/g) || []).length === 2,
+        case10ListOut);
 
   // ---- --flow error cases -----------------------------------------------------
   const notFoundOut = execFileSync('node', [SCRIPT, '--flow', 'No_Such_Flow'], { cwd: root, encoding: 'utf8' }).trim();
