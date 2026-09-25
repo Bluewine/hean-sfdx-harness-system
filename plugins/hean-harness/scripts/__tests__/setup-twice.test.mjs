@@ -11,7 +11,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, statSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, statSync, chmodSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
@@ -68,6 +68,35 @@ try {
   check('a completed setup records when it ran', Boolean(manifest.lastSetupAt), String(manifest.lastSetupAt));
   const doctor = () => { try { return run('doctor.mjs'); } catch (e) { return String(e.stdout ?? ''); } };
   check('doctor does not flag setup as out of date after a run', !doctor().includes('SETUP IS OUT OF DATE'));
+
+  // An ego lite app without taskSpace cannot run the ego-browser skill.
+  // A stand-in ego-browser on PATH answers the same probe doctor sends.
+  if (process.platform === 'darwin') {
+    const fakeBin = join(root, 'fake-bin');
+    mkdirSync(fakeBin, { recursive: true });
+    const fakeEgo = typeofTaskSpace => {
+      const file = join(fakeBin, 'ego-browser');
+      writeFileSync(file, `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "ego-browser 0.4.7.4"; else echo "${typeofTaskSpace}"; fi\n`);
+      chmodSync(file, 0o755);
+    };
+    const doctorWithEgo = () => {
+      try {
+        return execFileSync('node', [join(SCRIPTS, 'doctor.mjs')],
+          { env: { ...env, PATH: `${fakeBin}:${process.env.PATH}` }, encoding: 'utf8', stdio: 'pipe' });
+      } catch (e) { return String(e.stdout ?? ''); }
+    };
+    fakeEgo('undefined');
+    const oldEgo = doctorWithEgo();
+    check('doctor flags an ego lite app that has no taskSpace',
+          oldEgo.includes('0.4.7.4 is older than the ego-browser skill') && oldEgo.includes('fix: ego-browser upgrade'), oldEgo);
+    fakeEgo('function');
+    check('doctor does not flag an ego lite app that has taskSpace',
+          !doctorWithEgo().includes('older than the ego-browser skill'));
+    fakeEgo('');
+    check('doctor does not flag an ego lite app whose probe prints nothing',
+          !doctorWithEgo().includes('older than the ego-browser skill'));
+  }
+
   const jsonKey = manifest.changes.find(c => c.type === 'json-key' && c.key === 'statusLine');
   check('the manifest still holds the user\'s own status line after two runs',
         JSON.stringify(jsonKey?.previousValue) === JSON.stringify(MY_STATUSLINE),

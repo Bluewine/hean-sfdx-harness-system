@@ -155,6 +155,18 @@ export function checkEgoSkills() {
 }
 
 /**
+ * Does the installed ego lite app provide `taskSpace`? The ego-browser skill
+ * starts every browser task with it, and the skill names no app version to
+ * compare against, so ask the app. Returns false only for a definite
+ * `undefined`; an error, a timeout or any other answer is not a finding.
+ */
+function egoLiteHasTaskSpace() {
+  const r = spawnSync('ego-browser', ['nodejs', '-e', 'console.log(typeof taskSpace)'],
+                      { encoding: 'utf8', timeout: 20000 });
+  return (r.stdout || '').trim() !== 'undefined';
+}
+
+/**
  * Is the ego lite browser installed? Each user installs it themselves, so it is
  * recommended rather than required: only the ego-browser skill needs it.
  */
@@ -163,7 +175,13 @@ export function checkEgoLite() {
     return { ok: true, optional: true, detail: `not available here — ego lite is macOS only (${EGO_LITE_URL})` };
   }
   const apps = ['/Applications/ego lite.app', join(homedir(), 'Applications', 'ego lite.app')];
-  if (apps.some(a => existsSync(a)) || present('ego-browser')) return { ok: true, detail: 'installed' };
+  if (apps.some(a => existsSync(a)) || present('ego-browser')) {
+    if (present('ego-browser') && !egoLiteHasTaskSpace()) {
+      const version = run('ego-browser', ['--version']).match(/ego-browser (\S+)/)?.[1] ?? 'The installed app';
+      return { ok: false, detail: `${version} is older than the ego-browser skill, which needs taskSpace` };
+    }
+    return { ok: true, detail: 'installed' };
+  }
   return { ok: true, optional: true, recommend: true,
            detail: `not installed — recommended for browser tasks; install it yourself from ${EGO_LITE_URL}` };
 }
@@ -314,7 +332,7 @@ export function allChecks(repo) {
     { name: 'node modules',  result: checkNodeModules(repo),  fix: nodeModulesFix },
     { name: 'superpowers',   result: sp,       fix: superpowersFix(sp) },
     { name: 'ego skills',    result: ego,      fix: ego.ok ? null : pluginFix(EGO_PLUGIN, ego) },
-    { name: 'ego lite',      result: checkEgoLite(),          fix: null },
+    { name: 'ego lite',      result: checkEgoLite(),          fix: 'ego-browser upgrade' },
     { name: 'Linear',        result: checkLinearMcp(repo),    fix: linearFix },
     { name: 'python3',       result: checkPython(),           fix: pythonFix() },
     { name: 'git identity',  result: identity, fix: gitIdentityFix(identity) }
