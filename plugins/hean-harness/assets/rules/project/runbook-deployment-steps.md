@@ -56,7 +56,7 @@ Manual steps live outside the repo and cannot be derived from a diff. **Always a
 Manual steps a project needs repeatedly, to offer as candidates:
 
 - **Cross-repo deploy order** — when several repositories deploy to one org, any repository owning record types or metadata that another references has to deploy first, or the dependent deploy fails on a reference it cannot resolve.
-- **Publishing the Experience Cloud site** — the pipeline has no automatic publish step, so an unpublished site keeps serving the previous snapshot.
+- **Publish Experience Cloud site** — the pipeline has no automatic publish step, so an unpublished site keeps serving the previous snapshot.
 
 ### Story reminder
 
@@ -74,15 +74,16 @@ Found automatically:
 Same story in other repositories: {repo (branch, N commits), or none — checked {list}}
 ```
 
-- **Line sources**: the title and first sentence come from the Linear story lookup, the counts from the story's commits and file set, the bullets from the "What was Done" step, and the runbook, delete package and site lines from the Automatic rows step. Only the other-repositories line needs a new lookup.
-- **Experience Cloud site files**: any changed path under an `experiences/`, `digitalExperiences/`, `digitalExperienceConfigs/`, `sites/` or `networks/` metadata folder.
-- **Other repositories**: check every sibling folder of the main repository that is a git repository. Resolve the main repository through the common git directory, so a worktree under `.claude/worktrees/` looks beside the main repository, not inside it. A branch matches `work-{ID}` with any suffix that does not extend the ID's number, local or remote:
+- **Line sources**: the title and first sentence come from the Linear story lookup, the counts from the story's commits and file set, the bullets from the step that builds the "What was Done" bullets, the runbook and delete package lines from the Automatic rows step, and the site line from the story's changed files matched against the site paths below. Only the other-repositories line needs a new lookup.
+- **Experience Cloud site files**: Salesforce site metadata matched by type — any changed path under an `experiences/`, `digitalExperiences/`, `digitalExperienceConfigs/` or `siteDotComSites/` metadata folder, and any changed file ending `.site-meta.xml` or `.network-meta.xml`. A folder that is only named `sites`, such as one inside a static resource, does not count.
+- **Other repositories**: check every sibling folder of the main repository that is a git repository. Resolve the main repository through the common git directory, so a worktree under `.claude/worktrees/` looks beside the main repository, not inside it. Skip a sibling whose common git directory is the current repository's, because it is a worktree of this repository, not another one. A branch matches `work-{ID}` with any suffix that does not extend the ID's number, local or remote:
 
   ```bash
-  MAIN=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-  for REPO in "$(dirname "$MAIN")"/*/; do
+  COMMON=$(git rev-parse --path-format=absolute --git-common-dir)
+  for REPO in "$(dirname "$(dirname "$COMMON")")"/*/; do
     REPO=${REPO%/}
-    { [ -e "$REPO/.git" ] && [ "$REPO" != "$MAIN" ]; } || continue
+    [ -e "$REPO/.git" ] || continue
+    [ "$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir)" != "$COMMON" ] || continue
     echo "== $REPO"
     git -C "$REPO" for-each-ref --format='%(refname:short)' refs/heads refs/remotes | grep -E '(^|/)work-{ID}($|[^0-9])'
     git -C "$REPO" log --all --format=%s | grep -c '^@{ID}:' || true
@@ -90,7 +91,7 @@ Same story in other repositories: {repo (branch, N commits), or none — checked
   ```
 
   Report a repository when it has a matching branch or a commit count above zero, with its branch names and the count of `@{ID}:` commits. When none match, write `none` and list the repositories checked.
-- **Option order**: when another repository has work on the story, `Cross-repo deploy order` comes first and its description names that repository and branch. When site files changed, `Publish Experience Cloud site` comes first and its description names the changed site folder. When both apply, `Cross-repo deploy order` comes first and `Publish Experience Cloud site` second. Otherwise `None` stays first. No candidate is preselected.
+- **Option order**: when another repository has work on the story, `Cross-repo deploy order` comes first and its description names that repository and branch. When site files changed, `Publish Experience Cloud site` comes first and its description names the changed site metadata. When both apply, `Cross-repo deploy order` comes first and `Publish Experience Cloud site` second. Otherwise `None` stays first. The `None` option means no manual steps apply. No recurring candidate is preselected; update-pr's existing manual rows stay preselected.
 
 ## Table shape
 
