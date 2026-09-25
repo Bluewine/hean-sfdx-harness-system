@@ -25,13 +25,15 @@ function main() {
     catch { repo = repoRoot(); }
   }
 
-  const { file, lines, missing, old } = missingLines(repo);
+  const { file, lines, missing, old, staleHooks } = missingLines(repo);
   log(`.gitignore      ${file}`);
   if (old.length) log('                to replace  .claude/  (written by an earlier version; it hid .claude/manifest/)');
   for (const l of lines) {
     log(`                ${missing.includes(l) ? 'to add ' : 'present'}  ${l}`);
   }
-  if (repoTracksHooks(repo)) {
+  if (staleHooks.length) {
+    log('                to remove  .githooks/  (the repository now tracks its own hooks there)');
+  } else if (repoTracksHooks(repo)) {
     log('                not added  .githooks/  (the repository tracks its own hooks there)');
   }
   log('');
@@ -41,6 +43,7 @@ function main() {
   init();
   const r = ensureIgnored(repo);
   if (r.removed.length) log(`Removed the old ${r.removed.join(', ')} line, which hid .claude/manifest/`);
+  if (r.removedHooksLine) log('Removed the .githooks/ line, because the repository now tracks its own hooks there');
   if (r.added.length) {
     log(`Added ${r.added.length} line${r.added.length > 1 ? 's' : ''} so files written on each clone are never committed`);
     // ours to undo, and only the lines we actually wrote

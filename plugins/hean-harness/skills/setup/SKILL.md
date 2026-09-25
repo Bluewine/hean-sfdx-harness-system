@@ -75,8 +75,9 @@ Install the environment. Show the user what will change before changing it.
    `.githooks/`, so the hook setup installs is never committed; and `.mcp.json`, so
    the Linear server setup adds is never committed. `.githooks/` is left out when the repository
    tracks its own hooks there. A bare `.claude/` line an earlier version wrote is replaced,
-   because it hid `.claude/manifest/`; say so when the step reports it. Name each line in the
-   report. When the step says a line was
+   because it hid `.claude/manifest/`; say so when the step reports it. A `.githooks/` line
+   written before the repository tracked its own hooks is removed once it does; say so when the
+   step reports that too. Name each line in the report. When the step says a line was
    already there or not added, say so rather than implying it was written.
 
 ## Rules
