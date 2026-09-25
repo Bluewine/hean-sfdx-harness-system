@@ -173,7 +173,9 @@ function failingCommits(repo, rule, revs) {
  * The repair lines for failing commits. One failing commit at HEAD is amended.
  * Otherwise a rebase from the parent of the oldest failing commit rewrites
  * them, unless that range holds a merge: a rebase would drop the merge and
- * rewrite the commits it merged in, so those are repaired by hand.
+ * rewrite the commits it merged in, so those are repaired by hand. An amend
+ * takes its committer from user.email and keeps the author, and only the
+ * committer is checked, so every commit keeps the author it had.
  */
 function repairSteps(repo, rule, failing) {
   const lines = [];
@@ -185,7 +187,7 @@ function repairSteps(repo, rule, failing) {
   const oldest = failing.at(-1).full;
   const base = tryGit(repo, 'rev-parse', '--verify', '-q', '--short', `${oldest}^`) ?? '--root';
   if (failing.length === 1 && oldest === tryGit(repo, 'rev-parse', 'HEAD')) {
-    lines.push(`git commit --amend --no-edit --reset-author`);
+    lines.push(`git commit --amend --no-edit`);
   } else if (tryGitWithInput(repo, failing.map(k => k.full).join('\n'), 'rev-list', '--stdin', '^HEAD')) {
     lines.push(`Some of these commits are not on the checked-out branch. Check out the branch that holds them ` +
                `(git branch --contains <hash> names it) and repair them there.`);
@@ -193,7 +195,7 @@ function repairSteps(repo, rule, failing) {
     lines.push(`The commits from ${base} to HEAD include a merge, so no rebase is suggested: a rebase would drop ` +
                `the merge and rewrite the commits it merged in. Repair these commits by hand.`);
   } else {
-    lines.push(`git rebase --exec 'git commit --amend --no-edit --reset-author' ${base}`);
+    lines.push(`git rebase --exec 'git commit --amend --no-edit' ${base}`);
   }
   return lines;
 }

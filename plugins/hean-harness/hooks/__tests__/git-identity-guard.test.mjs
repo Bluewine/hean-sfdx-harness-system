@@ -286,7 +286,7 @@ for (const cmd of ['git push', 'git push origin', 'git push origin HEAD', 'git p
 }
 const OWN_BAD = commit(WORK, 'My wrong commit', 'signer@example.com', 'other@example.org');
 deny('an added bad commit of the user is refused', 'git push', WORK, OWN_BAD, 'My wrong commit',
-     'git commit --amend --no-edit --reset-author');
+     'git commit --amend --no-edit');
 report('the teammate commit is not listed', !refusal('git push', WORK).includes('Teammate change'));
 allow('tags only, HEAD bad but every tag clean', 'git push origin --tags', WORK);
 
@@ -306,10 +306,12 @@ deny('cd into the repository',             `cd ${SIGNED} && git push origin bad-
 deny('git -C the repository',              `git -C ${SIGNED} push origin bad-committer`, PLAIN, BAD_COMMITTER);
 deny('chained after a commit',             'git commit -m "x" && git push origin bad-committer', SIGNED, BAD_COMMITTER);
 onBranch('bad-committer', () => deny('only HEAD fails: amend', 'git push', SIGNED, BAD_COMMITTER,
-                                     'git commit --amend --no-edit --reset-author'));
+                                     'git commit --amend --no-edit'));
 onBranch('fresh', () => deny('never pushed, only HEAD fails', 'git push -u origin fresh', SIGNED, FRESH_BAD, 'Fresh wrong', 'git commit --amend'));
 onBranch('two-bad', () => deny('two failing: rebase from the oldest one\'s parent', 'git push', SIGNED, 'First wrong', 'Second wrong',
-                               `git rebase --exec 'git commit --amend --no-edit --reset-author' ${TWO_BAD_BASE}`));
+                               `git rebase --exec 'git commit --amend --no-edit' ${TWO_BAD_BASE}`));
+onBranch('two-bad', () => report('the repair keeps authors: no --reset-author', !refusal('git push').includes('--reset-author')));
+onBranch('fresh', () => report('the amend keeps the author: no --reset-author', !refusal('git push').includes('--reset-author')));
 onBranch('merged', () => {
   const got = refusal('git push');
   report('merge after the failing commit: no rebase command, repair by hand',
