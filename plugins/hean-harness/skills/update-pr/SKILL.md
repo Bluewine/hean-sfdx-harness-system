@@ -24,22 +24,33 @@ This `BRANCH_WORK_ID` is only the branch-name validation gate. The body filename
 
 **Step 1 — Rebuild the per-story manifest.**
 
+Before rebuilding, check for uncommitted Salesforce metadata. Read `packageDirectories[].path` from `sfdx-project.json`, then run:
+```bash
+git status --porcelain -- <each packageDirectories path>
+```
+If any of those paths shows as untracked or modified, list those paths, tell the user the manifest would name components this PR does not contain, and stop — before running the script, committing, or pushing.
+
 create-pr, update-pr and branch-manifest work together: the PR carries the story's manifest as the branch now stands. Run:
 ```bash
 node "${CLAUDE_SKILL_DIR}/../branch-manifest/scripts/branch-manifest.mjs"
 ```
 
-Read the first line:
+Read the first line. For any `Manifest: <path> …` line other than `not written` or `Error`, run:
+```bash
+git status --porcelain -- <path>
+```
+Commit the file when it shows as untracked (`??`) or modified, whatever the script's status word says — take the verb from git, not from the script — then continue; Step 2 pushes it:
+```bash
+git add <path>
+git commit -m "@{BRANCH_WORK_ID}: Add the per-story manifest"      # untracked
+git commit -m "@{BRANCH_WORK_ID}: Update the per-story manifest"   # modified
+```
+Commit nothing when git shows the file clean. Show the output's "Added since…" and "Dropped since…" sections to the user, when present. When the commit is refused, show the refusal word for word, list the manifest as uncommitted, and stop.
 
-- `Manifest: <path> created` or `updated` → commit only that file, then continue; the push check below pushes it:
-  ```bash
-  git add <path>
-  git commit -m "@{BRANCH_WORK_ID}: Add the per-story manifest"      # when created
-  git commit -m "@{BRANCH_WORK_ID}: Update the per-story manifest"   # when updated
-  ```
-  Show the output's "Added since…" and "Dropped since…" sections to the user. When the commit is refused, show the refusal word for word, list the manifest as uncommitted, and stop.
-- `Manifest: <path> unchanged` or `… not written; no Salesforce metadata was added or modified` → commit nothing and continue.
-- `Error: …` → show the output word for word and stop.
+`Manifest: <path> not written; no Salesforce metadata was added or modified` → commit nothing and continue.
+`Error: …` → show the output word for word and stop.
+
+**Step 2 — Ensure the branch is pushed and up to date.**
 
 Derive `{owner}/{repo}` from:
 ```bash
@@ -189,7 +200,7 @@ git diff-tree --no-commit-id --name-status -r <SHA>
 ```
 For each group, a commit belongs to it when its subject matches `@<WORK-ID>:`. Non-matching commits belong to the root group.
 
-**Split each group's commits into a main bucket, a Sonar bucket, and a Framework bucket.** A commit falls into the Sonar bucket when its subject, after stripping the `@WORK-ID:` prefix, matches `/^\[Sonar\] /` — case-sensitive, anchored to the start: the literal tag `[Sonar] ` must be the first thing after the `@WORK-ID:` prefix, per the opt-in tag convention in `.claude/rules/commit-message-format.md`. A commit that merely mentions "Sonar" elsewhere in its subject (case-insensitively or not) does not qualify — this is deliberately strict so commits about the *concept* of Sonar (e.g. documenting the tag convention itself) don't get miscategorized as fixes. A commit not already in the Sonar bucket falls into the Framework bucket when none of its files (per `git diff-tree`) are under `force-app/` — i.e. every file it touches is repo tooling (`.claude/`, dotfiles, root config) rather than the Salesforce deliverable. Every other commit stays in the main bucket. Exception: if every commit in a group would land outside the main bucket, keep them in the main bucket instead — a story must never render an empty "What was Done?" section.
+**Split each group's commits into a main bucket, a Sonar bucket, and a Framework bucket.** A commit falls into the Sonar bucket when its subject, after stripping the `@WORK-ID:` prefix, matches `/^\[Sonar\] /` — case-sensitive, anchored to the start: the literal tag `[Sonar] ` must be the first thing after the `@WORK-ID:` prefix, per the opt-in tag convention in `.claude/rules/commit-message-format.md`. A commit that merely mentions "Sonar" elsewhere in its subject (case-insensitively or not) does not qualify — this is deliberately strict so commits about the *concept* of Sonar (e.g. documenting the tag convention itself) don't get miscategorized as fixes. A commit not already in the Sonar bucket falls into the Framework bucket when none of its files (per `git diff-tree`) are under `force-app/` and at least one of its files is outside `.claude/manifest/` — i.e. every file it touches is repo tooling (`.claude/`, dotfiles, root config) rather than the Salesforce deliverable, and it is not just the per-story manifest a manifest-commit step committed. Every other commit, including one that touches only `.claude/manifest/`, stays in the main bucket. Exception: if every commit in a group would land outside the main bucket, keep them in the main bucket instead — a story must never render an empty "What was Done?" section.
 
 The group's main-bucket file set is the union of `git diff-tree` paths across its main-bucket commits. The group's Framework-bucket file set is the union of `git diff-tree` paths across its Framework-bucket commits. For each file in either set, take its status from the **net-status map**, never from `git diff-tree`. If a file is absent from the net map (added then later deleted within the branch), drop it. A file touched by both the root and a child counts toward both stories — once per story — which is intended.
 
