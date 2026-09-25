@@ -31,7 +31,7 @@ node "${CLAUDE_SKILL_DIR}/../branch-manifest/scripts/branch-manifest.mjs"
 
 Read the first line:
 
-- `Manifest: <path> created` or `updated` → commit only that file, then continue; Step 2 pushes it:
+- `Manifest: <path> created` or `updated` → commit only that file, then continue; the push check below pushes it:
   ```bash
   git add <path>
   git commit -m "@{BRANCH_WORK_ID}: Add the per-story manifest"      # when created
