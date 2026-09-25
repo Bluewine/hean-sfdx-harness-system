@@ -67,9 +67,10 @@ function updatesSameObjectById(body, object) {
  * record, plus any subflow calls (never scanned, only named). See the module
  * comment: this is a whole-file text scan, not a synchronous-path walk.
  *
- * Writes: a before-save `$Record.<Field>` assignment target — gated on
- * `triggerType` being RecordBeforeSave, since that is the only context this
- * assignment actually persists in — or an `inputAssignments/field` on a
+ * Writes: a `$Record.<Field>` assignment target in a before-save flow, or in
+ * an after-save flow that saves the whole record (a <recordUpdates> with
+ * inputReference $Record and no inputAssignments) — an after-save assignment
+ * is otherwise never saved — or an `inputAssignments/field` on a
  * <recordUpdates> that updates `$Record` directly or updates the same object
  * filtered by Id = $Record.Id (either trigger timing).
  *
@@ -80,11 +81,26 @@ function updatesSameObjectById(body, object) {
  * the exact assignToReference text already counted as a write is stripped
  * before this second scan, so it is not also counted as a read of the same
  * occurrence; a different occurrence of the same field name is a genuine,
- * separate read and is kept.
+ * separate read and is kept. A read through a relationship
+ * (`$Record.WorkType.Name`) is recorded as the lookup field (`WorkTypeId`).
  */
+/**
+ * The field that holds a lookup's value, from the relationship name a flow
+ * uses to reach the related record: `WorkType` -> `WorkTypeId`,
+ * `Location__r` -> `Location__c`. A write changes the lookup field, so a read
+ * through the relationship has to be recorded under that field to match it.
+ */
+const lookupField = relationship =>
+  relationship.endsWith('__r') ? `${relationship.slice(0, -3)}__c` : `${relationship}Id`;
+
 function parseFlowDependencies(xmlText, object, triggerType) {
   const writes = [];
-  if (triggerType === 'RecordBeforeSave') {
+  // An after-save flow's $Record assignments are saved only by an Update
+  // Records element that saves the whole record: inputReference $Record
+  // with no field assignments of its own.
+  const savesWholeRecord = [...xmlText.matchAll(/<recordUpdates>([\s\S]*?)<\/recordUpdates>/g)]
+    .some(m => /<inputReference>\$Record<\/inputReference>/.test(m[1]) && !/<inputAssignments>/.test(m[1]));
+  if (triggerType === 'RecordBeforeSave' || savesWholeRecord) {
     for (const m of xmlText.matchAll(/<assignToReference>\$Record\.([A-Za-z0-9_]+)/g)) writes.push(m[1]);
   }
   for (const m of xmlText.matchAll(/<recordUpdates>([\s\S]*?)<\/recordUpdates>/g)) {
@@ -109,8 +125,10 @@ function parseFlowDependencies(xmlText, object, triggerType) {
   // the same field elsewhere in the file (e.g. $Record__Prior) is a real,
   // separate read.
   const withoutWriteAssigns = xmlText.replace(/<assignToReference>\$Record\.[A-Za-z0-9_]+/g, '');
-  for (const m of withoutWriteAssigns.matchAll(/\$Record(?:__Prior)?\.([A-Za-z0-9_]+)/g)) {
-    reads.push(m[1]);
+  // `$Record.WorkType.Name` and the polymorphic `$Record.Owner:User.Email`
+  // reach a related record; record the lookup field they go through.
+  for (const m of withoutWriteAssigns.matchAll(/\$Record(?:__Prior)?\.([A-Za-z0-9_]+)([.:][A-Za-z])?/g)) {
+    reads.push(m[2] ? lookupField(m[1]) : m[1]);
   }
 
   const subflows = [];

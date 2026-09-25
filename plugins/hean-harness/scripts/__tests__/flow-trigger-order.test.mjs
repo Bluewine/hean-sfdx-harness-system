@@ -42,11 +42,12 @@ const check = (label, ok, detail = '') => {
  *   - formulaReadFields: a formula referencing `$Record.<field>` — a read.
  *   - priorReadFields: a formula referencing `$Record__Prior.<field>` — a read.
  *   - subflowNames: <subflows> calls — listed, never scanned.
+ *   - updateWholeRecord: a <recordUpdates> with inputReference $Record and no field assignments — saves the whole record.
  */
 function recordTriggeredFlow({
   object, triggerType, order, scheduledPaths = [], status = 'Active',
   startFilterFields = [], assignToRecordFields = [], updateRecordFields = [], updateByIdFields = [],
-  formulaReadFields = [], priorReadFields = [], subflowNames = [],
+  formulaReadFields = [], priorReadFields = [], subflowNames = [], updateWholeRecord = false,
 }) {
   const paths = scheduledPaths.map(pathType => `
         <scheduledPaths>
@@ -109,6 +110,14 @@ function recordTriggeredFlow({
         </filters>${inputAssignments(updateByIdFields)}
         <object>${object}</object>
     </recordUpdates>` : '';
+  const updateWhole = updateWholeRecord ? `
+    <recordUpdates>
+        <name>Save_Whole_Record</name>
+        <label>Save Whole Record</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <inputReference>$Record</inputReference>
+    </recordUpdates>` : '';
   const formulas = [...formulaReadFields.map(field => ({ field, prefix: '$Record' })),
                     ...priorReadFields.map(field => ({ field, prefix: '$Record__Prior' }))]
     .map(({ field, prefix }, i) => `
@@ -129,7 +138,7 @@ function recordTriggeredFlow({
 <Flow xmlns="http://soap.sforce.com/2006/04/metadata">
     <apiVersion>60.0</apiVersion>
     <label>fixture</label>
-    <processType>AutoLaunchedFlow</processType>${assignments}${updateRecord}${updateById}${formulas}${subflows}
+    <processType>AutoLaunchedFlow</processType>${assignments}${updateRecord}${updateById}${updateWhole}${formulas}${subflows}
     <start>
         <locationX>0</locationX>
         <locationY>0</locationY>
@@ -675,6 +684,45 @@ try {
         !case11Out.includes('850') && !case11Out.includes('no free integer fits in the allowed range') &&
         case11Out.includes('DepCase11_Y') && /Suggested triggerOrder: cannot be given a number/.test(case11Out),
         case11Out);
+
+  // ---- lookup reads and whole-record saves ---------------------------------
+  writeFlow(root, 'force-app/main/default/flows', 'Lookup_Reader',
+    recordTriggeredFlow({ object: 'Lookup__c', triggerType: 'RecordAfterSave', order: 1600,
+      formulaReadFields: ['WorkType.Name', 'Location__r.Name', 'Owner:User.Email', 'Status'] }));
+  writeFlow(root, 'force-app/main/default/flows', 'Lookup_Writer',
+    recordTriggeredFlow({ object: 'Lookup__c', triggerType: 'RecordAfterSave', order: 1500, updateRecordFields: ['WorkTypeId'] }));
+  const lookupReport = formatReport(loadFlows(root), 'Lookup__c');
+  const lookupReads = lookupReport.split('\n').find(l => l.startsWith('    reads:') && l.includes('Status')) ?? '';
+  check('a read through a lookup counts as a read of the lookup field',
+        lookupReads.includes('WorkTypeId') && lookupReads.includes('Location__c') && lookupReads.includes('OwnerId') &&
+        !/\bWorkType\b(?!Id)/.test(lookupReads) && !lookupReads.includes('Location__r') && !/\bOwner\b(?!Id)/.test(lookupReads),
+        lookupReads);
+  const lookupOut = execFileSync('node', [SCRIPT, '--flow', 'Lookup_Reader'], { cwd: root, encoding: 'utf8' });
+  check('a writer of WorkTypeId is a predecessor of a reader of $Record.WorkType.Name',
+        lookupOut.split('Predecessors:')[1].split('Successors:')[0].includes('Lookup_Writer (order 1500, WorkTypeId)'),
+        lookupOut);
+
+  writeFlow(root, 'force-app/main/default/flows', 'Whole_Saver',
+    recordTriggeredFlow({ object: 'Whole__c', triggerType: 'RecordAfterSave', order: 1500,
+      assignToRecordFields: ['Priority'], updateWholeRecord: true }));
+  writeFlow(root, 'force-app/main/default/flows', 'Assign_Only',
+    recordTriggeredFlow({ object: 'Whole__c', triggerType: 'RecordAfterSave', order: 1600, assignToRecordFields: ['Tier'] }));
+  writeFlow(root, 'force-app/main/default/flows', 'Before_Whole',
+    recordTriggeredFlow({ object: 'Whole__c', triggerType: 'RecordBeforeSave', order: 1500,
+      assignToRecordFields: ['Level'], updateWholeRecord: true }));
+  writeFlow(root, 'force-app/main/default/flows', 'Before_Other',
+    recordTriggeredFlow({ object: 'Whole__c', triggerType: 'RecordBeforeSave', order: 1600 }));
+  const wholeLines = formatReport(loadFlows(root), 'Whole__c').split('\n');
+  const writesAfter = name => {
+    const i = wholeLines.findIndex(l => l.includes(`  ${name}  (`) || l.includes(`: ${name} —`));
+    return wholeLines.slice(i + 1, i + 4).find(l => l.trim().startsWith('writes:')) ?? '';
+  };
+  check('an after-save $Record assignment saved by a whole-record update is a write',
+        writesAfter('Whole_Saver').includes('Priority'), writesAfter('Whole_Saver'));
+  check('an after-save $Record assignment with no update is still not a write',
+        !writesAfter('Assign_Only').includes('Tier'), writesAfter('Assign_Only'));
+  check('a before-save assignment is listed once even when the flow also saves the whole record',
+        writesAfter('Before_Whole').trim() === 'writes: Level', writesAfter('Before_Whole'));
 
   // ---- --flow error cases -----------------------------------------------------
   const notFoundOut = execFileSync('node', [SCRIPT, '--flow', 'No_Such_Flow'], { cwd: root, encoding: 'utf8' }).trim();
