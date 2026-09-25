@@ -299,6 +299,20 @@ A record-triggered flow whose `<start>` declares a scheduled path anchored on a 
 
 Such a flow must stay on **Created and Updated** with its entry filter left unrestricted. That combination is what lets the platform reschedule a pending path when its date moves and cancel it when the date is cleared.
 
+## Trigger order review
+
+Apply when a record-triggered flow is created, or when its trigger timing, entry criteria or record writes change.
+
+The platform runs record-triggered flows on one object and one trigger timing in this order: `triggerOrder` 1–1000 ascending, then flows with no `triggerOrder` by created date, then 1001–2000 ascending. Flows with equal values run in API-name order. `triggerOrder` has no effect on asynchronous or scheduled paths.
+
+1. Run `/hean-harness:flow-trigger-order <Object>` to list every record-triggered flow in `force-app/` on the same object with the same trigger timing.
+2. Mark each pair where one flow reads a field the other writes, or both write the same field. Only a marked pair needs an order.
+3. Give the writing flow a lower `triggerOrder` than the reading flow. Leave unrelated flows at `1500`.
+4. For an asynchronous or scheduled path, do not rely on `triggerOrder`. Check instead:
+   - whether another asynchronous or scheduled path on the same object writes the same fields (no guaranteed order: merge them or make each safe in either order)
+   - whether the path's own record update reruns the object's synchronous flows
+5. Report which flows share the object and timing, and whether any order changed and why.
+
 ## Context restrictions by trigger type
 
 The platform rejects each construct below at deploy time. These are restrictions, not conventions.
@@ -327,6 +341,6 @@ Before deploying any record-triggered flow, confirm:
 - [ ] Synchronous record-triggered (custom-error): fault paths converge on `Check_Error_Type`; `Loop_Errors` → `Flatten_Custom_Error`/`Show_Error_to_User`; `Error_Concat_Formula` present; `Error` (String) + `Errors` (String collection) declared
 - [ ] Autolaunched/async/platform-event/subflow: fault paths build error-log records into an `Errors` collection persisted by one `Log_Errors` create; `Error` + `Errors` are variables of the org's error-log object
 - [ ] The error-log object was confirmed to exist in the connected org before the pattern was written
-- [ ] `triggerOrder` is set (default `1500` unless ordering is intentional)
+- [ ] Trigger order review done; `triggerOrder` set (`1500` unless the review found a dependency)
 - [ ] Nested decisions alternate the continuation branch side per level (vertical decisions exempt)
 - [ ] `<status>Active</status>` is set
