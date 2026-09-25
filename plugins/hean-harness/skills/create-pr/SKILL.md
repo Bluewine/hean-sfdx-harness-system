@@ -1,6 +1,6 @@
 ---
 name: create-pr
-description: GitHub PR assembler for every PR request on any base branch, except PRs release-pr, uat-hotfix or version-bump open — resolves the base branch and Linear stories, generates diff bullets, splits Sonar-fix and Framework-change bullets, detects runbook steps, asks for manual ones, writes the review body, then calls gh pr create
+description: GitHub PR assembler for every PR request on any base branch, except PRs release-pr, uat-hotfix or version-bump open — resolves the base branch and Linear stories, writes problem-solved bullets, splits Sonar-fix and Framework-change bullets, detects runbook steps, asks for manual ones, writes the review body, then calls gh pr create
 argument-hint: "[--base <branch>]"
 ---
 
@@ -101,7 +101,7 @@ The root group's title is `ROOT_TITLE` and its work ID is `ROOT_WORK_ID`; these 
 
 ## Phase 4 — Generate "What was Done?" bullets and Sonar Fix bullets
 
-Build one authoritative net-status map for the whole branch, then generate intent-based bullets for **each** group from that group's files plus its `ISSUE_DESCRIPTION`.
+Build one authoritative net-status map for the whole branch, then generate bullets for **each** group from that group's `ISSUE_DESCRIPTION` first and its commits second.
 
 Net-status map (clean net status per file, the same source the single-story path uses):
 ```bash
@@ -122,22 +122,18 @@ For each group, a commit belongs to it when its subject matches `@<WORK-ID>:`. N
 
 **Split each group's commits into a main bucket, a Sonar bucket, and a Framework bucket.** A commit falls into the Sonar bucket when its subject, after stripping the `@WORK-ID:` prefix, matches `/^\[Sonar\] /` — case-sensitive, anchored to the start: the literal tag `[Sonar] ` must be the first thing after the `@WORK-ID:` prefix, per the opt-in tag convention in `.claude/rules/commit-message-format.md`. A commit that merely mentions "Sonar" elsewhere in its subject (case-insensitively or not) does not qualify — this is deliberately strict so commits about the *concept* of Sonar (e.g. documenting the tag convention itself) don't get miscategorized as fixes. A commit not already in the Sonar bucket falls into the Framework bucket when none of its files (per `git diff-tree`) are under `force-app/` — i.e. every file it touches is repo tooling (`.claude/`, dotfiles, root config) rather than the Salesforce deliverable. Every other commit stays in the main bucket. Exception: if every commit in a group would land outside the main bucket, keep them in the main bucket instead — a story must never render an empty "What was Done?" section.
 
-The group's main-bucket file set is the union of `git diff-tree` paths across its main-bucket commits. The group's Framework-bucket file set is the union of `git diff-tree` paths across its Framework-bucket commits. For each file in either set, take its status from the **net-status map**, never from `git diff-tree`. If a file is absent from the net map (added then later deleted within the branch), drop it. A file touched by both the root and a child appears in both stories' bullets — once per story — which is intended.
+The group's main-bucket file set is the union of `git diff-tree` paths across its main-bucket commits. The group's Framework-bucket file set is the union of `git diff-tree` paths across its Framework-bucket commits. For each file in either set, take its status from the **net-status map**, never from `git diff-tree`. If a file is absent from the net map (added then later deleted within the branch), drop it. A file touched by both the root and a child counts toward both stories — once per story — which is intended.
 
-Generate main bullets for each group using its main-bucket file set + that group's `ISSUE_DESCRIPTION`, following these rules:
-- Group all files serving the same story intent into a single bullet, even across metadata types.
-- **Roll up internal details of a net-new artifact.** When a file is an internal detail of another file in the same set that is itself net-new (status `A`) — a new LWC's own CSS/HTML/test files, a helper class created solely for a new component, an attribute or markup change inside a component being added for the first time — describe it within that artifact's own bullet, not as a separate bullet. Give a change its own bullet only when it is a capability a reviewer needs to evaluate independently (e.g. a shared service class other callers depend on, a distinct object/profile/permission change).
-- Each bullet is a short past-tense phrase describing what was accomplished, not what files changed.
-- Use the story description to name the intent accurately.
-- Files matching no requirement (e.g. `.claude/` config) → one trailing bullet: "Updated project configuration".
-- Aim for 3–7 bullets per story; consolidate closely related bullets before exceeding 7 — only exceed it when the extra items are genuinely unrelated capabilities that would lose meaning if combined.
-- Wrap any Salesforce API identifier in backticks (field references, object names used technically, metadata artifact names, Apex/Flow/Label/LWC names). Plain-English Salesforce concepts ("permission set", "record type", "flow") stay unformatted.
-- Verb selection from net status: `A` → **Add**/**Create**/**Introduce** (describe the capability, not an incremental change); `M` → **Update**/**Extend**/**Migrate** (describe what changed). When a bullet groups both `A` and `M` files, the verb follows the primary artifact's status.
-- **State the fact, not a defense of it.** A bullet reports what changed; it does not pre-empt or argue against a hypothetical reviewer objection (e.g. no "...so this is expected, not a leftover file" framing). If a design choice genuinely needs explaining (e.g. why a change is split across two files), state the reason plainly and stop — don't editorialize about how it should be perceived.
+Load the bullet rules before writing any bullet:
+```bash
+cat "${CLAUDE_PLUGIN_ROOT}/skills/create-pr/bullets.md"
+```
 
-Generate `SONAR_BULLETS` for each group from its Sonar-bucket commits only: one short past-tense bullet per commit, derived from the commit subject, identifiers wrapped in backticks under the same convention as main bullets. Merge two commits into one bullet only when they clearly describe the same fix. If a group's Sonar bucket is empty, its `SONAR_BULLETS` is empty — Phase 7 omits the Sonar Fixes block for that story.
+Generate main bullets for each group by the "Main bullets" rules in that output. The sources are that group's `ISSUE_DESCRIPTION`, the subjects of its main-bucket commits, and its main-bucket file set.
 
-Generate `FRAMEWORK_BULLETS` for each group from its Framework-bucket file set the same way main bullets are generated (group by intent, one bullet per distinct change, identifiers wrapped in backticks). If a group's Framework bucket is empty, its `FRAMEWORK_BULLETS` is empty — Phase 7 omits the Framework Changes block for that story.
+Generate `SONAR_BULLETS` for each group from its Sonar-bucket commits only, by the "Sonar Fixes bullets" rules in that output. If a group's Sonar bucket is empty, its `SONAR_BULLETS` is empty — Phase 7 omits the Sonar Fixes block for that story.
+
+Generate `FRAMEWORK_BULLETS` for each group from its Framework-bucket file set, by the "Framework Changes bullets" rules in that output. If a group's Framework bucket is empty, its `FRAMEWORK_BULLETS` is empty — Phase 7 omits the Framework Changes block for that story.
 
 ## Phase 5 — Pre and post deployment steps
 

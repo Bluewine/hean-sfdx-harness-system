@@ -151,7 +151,7 @@ The root group's title is `ROOT_TITLE` and its work ID is `ROOT_WORK_ID`; these 
 
 ## Phase 6 — Regenerate and merge bullets per group
 
-Build one authoritative net-status map for the whole branch, then merge bullets for **each** group from that group's files, its `ISSUE_DESCRIPTION`, and its existing bullets.
+Build one authoritative net-status map for the whole branch, then merge bullets for **each** group from that group's `ISSUE_DESCRIPTION` first, its commits second, and its existing bullets.
 
 Net-status map (clean net status per file):
 ```bash
@@ -172,27 +172,27 @@ For each group, a commit belongs to it when its subject matches `@<WORK-ID>:`. N
 
 **Split each group's commits into a main bucket, a Sonar bucket, and a Framework bucket.** A commit falls into the Sonar bucket when its subject, after stripping the `@WORK-ID:` prefix, matches `/^\[Sonar\] /` — case-sensitive, anchored to the start: the literal tag `[Sonar] ` must be the first thing after the `@WORK-ID:` prefix, per the opt-in tag convention in `.claude/rules/commit-message-format.md`. A commit that merely mentions "Sonar" elsewhere in its subject (case-insensitively or not) does not qualify — this is deliberately strict so commits about the *concept* of Sonar (e.g. documenting the tag convention itself) don't get miscategorized as fixes. A commit not already in the Sonar bucket falls into the Framework bucket when none of its files (per `git diff-tree`) are under `force-app/` — i.e. every file it touches is repo tooling (`.claude/`, dotfiles, root config) rather than the Salesforce deliverable. Every other commit stays in the main bucket. Exception: if every commit in a group would land outside the main bucket, keep them in the main bucket instead — a story must never render an empty "What was Done?" section.
 
-The group's main-bucket file set is the union of `git diff-tree` paths across its main-bucket commits. The group's Framework-bucket file set is the union of `git diff-tree` paths across its Framework-bucket commits. For each file in either set, take its status from the **net-status map**, never from `git diff-tree`. If a file is absent from the net map (added then later deleted within the branch), drop it. A file touched by both the root and a child appears in both stories' bullets — once per story — which is intended.
+The group's main-bucket file set is the union of `git diff-tree` paths across its main-bucket commits. The group's Framework-bucket file set is the union of `git diff-tree` paths across its Framework-bucket commits. For each file in either set, take its status from the **net-status map**, never from `git diff-tree`. If a file is absent from the net map (added then later deleted within the branch), drop it. A file touched by both the root and a child counts toward both stories — once per story — which is intended.
 
 For each group, set `EXISTING_BULLETS` = `EXISTING_BULLETS_BY_ID[group work ID]` (an empty list if the PR was created before this child branch was merged in — nothing to merge, generate fresh). Add any unkeyed bullets from Phase 3 to the root group's `EXISTING_BULLETS`. Work IDs present in the existing body but no longer a detected group (commits squashed or rebased off the branch) are intentionally dropped — that work has left the branch. If an existing bullet clearly describes a commit that now falls in the Sonar bucket or the Framework bucket, drop it from `EXISTING_BULLETS` — it belongs in Sonar Fixes or Framework Changes now, not in "What was Done?".
 
-Generate merged main bullets for each group using its main-bucket file set + status, its `ISSUE_DESCRIPTION`, and its `EXISTING_BULLETS` as context.
+Load the bullet rules before writing any bullet:
+```bash
+cat "${CLAUDE_PLUGIN_ROOT}/skills/create-pr/bullets.md"
+```
+
+Generate merged main bullets for each group by the "Main bullets" rules in that output. The sources are that group's `ISSUE_DESCRIPTION`, the subjects of its main-bucket commits, its main-bucket file set, and its `EXISTING_BULLETS`.
 
 **Merge rules — apply in this order, per group:**
-1. For each bullet in the group's `EXISTING_BULLETS`: if it still corresponds to something present in that group's diff or issue description, keep it. Minor rephrasing and tense adjustments are allowed. Do not drop a bullet unless it clearly no longer applies.
-2. For diff content or issue requirements not covered by any retained existing bullet: add a new bullet.
-3. **Roll up internal details of a net-new artifact.** When a file is an internal detail of another file in the same set that is itself net-new (status `A`) in this story — a new LWC's own CSS/HTML/test files, a helper class created solely for a new component, an attribute or markup change inside a component being added for the first time — describe it within that artifact's own bullet, not as a separate bullet. Give a change its own bullet only when it is a capability a reviewer needs to evaluate independently (e.g. a shared service class other callers depend on, a distinct object/profile/permission change, a fix to something that already existed before this story).
-4. Aim for 3–7 bullets per story. If retained + new bullets would exceed 7, consolidate closely related bullets before adding more — exceed 7 only when the extra items are genuinely unrelated capabilities that would lose meaning if combined.
-5. **Verb selection from net status:** `A` (Added) → use **Add**, **Create**, or **Introduce**; `M` (Modified) → use **Update**, **Extend**, or **Migrate**; `D` (Deleted) → use **Remove**. When a bullet groups both `A` and `M` files, the verb follows the status of the primary artifact.
-6. Wrap any Salesforce API identifier in backticks (field references, object names used technically, metadata artifact names, Apex class names, Flow API names, Custom Label names, LWC component names). Plain-English Salesforce concepts ("permission set", "record type", "flow") stay unformatted.
-7. Files matching no requirement (e.g. `.claude/` config) → one trailing bullet: "Updated project configuration".
-8. **State the fact, not a defense of it.** A bullet reports what changed; it does not pre-empt or argue against a hypothetical reviewer objection (e.g. no "...so this is expected, not a leftover file" framing). If a design choice genuinely needs explaining (e.g. why a change is split across two files), state the reason plainly and stop — don't editorialize about how it should be perceived.
+1. For each bullet in the group's `EXISTING_BULLETS`: if it still corresponds to a problem this story solved, per its issue description or commits, keep it. Do not drop a bullet unless it clearly no longer applies.
+2. For each solved problem or delivered request not covered by any retained existing bullet: add a new bullet.
+3. Apply the "Main bullets" rules to every kept or new main bullet. Rewrite a kept bullet that describes how the code changed into what problem was fixed. Merge any bullets, kept or new, that describe the same problem, so no duplicate remains.
 
 The goal per story is a complete, non-redundant list that reflects everything that story contributes to the branch — neither inflated with stale items nor missing new work.
 
-**Merge Sonar bullets per group** the same way, using `EXISTING_SONAR_BULLETS_BY_ID[group work ID]` as context: keep a retained bullet if its commit is still in the Sonar bucket, add a new bullet for any Sonar-bucket commit not already covered, drop bullets whose commit left the branch. If a group's Sonar bucket is empty after merging, its `SONAR_BULLETS` is empty — Phase 9 omits the Sonar Fixes block for that story.
+**Merge Sonar bullets per group** by merge rules 1 and 2 only, never rule 3, and write each new Sonar bullet by the "Sonar Fixes bullets" rules in the loaded output. Use `EXISTING_SONAR_BULLETS_BY_ID[group work ID]` as context: keep a retained bullet if its commit is still in the Sonar bucket, add a new bullet for any Sonar-bucket commit not already covered, drop bullets whose commit left the branch. If a group's Sonar bucket is empty after merging, its `SONAR_BULLETS` is empty — Phase 9 omits the Sonar Fixes block for that story.
 
-**Merge Framework bullets per group** the same way, using `EXISTING_FRAMEWORK_BULLETS_BY_ID[group work ID]` as context: keep a retained bullet if its commit is still in the Framework bucket, add a new bullet for any Framework-bucket commit not already covered, drop bullets whose commit left the branch. If a group's Framework bucket is empty after merging, its `FRAMEWORK_BULLETS` is empty — Phase 9 omits the Framework Changes block for that story.
+**Merge Framework bullets per group** by merge rules 1 and 2 only, never rule 3, and write each new Framework bullet by the "Framework Changes bullets" rules in the loaded output. Use `EXISTING_FRAMEWORK_BULLETS_BY_ID[group work ID]` as context: keep a retained bullet if its commit is still in the Framework bucket, add a new bullet for any Framework-bucket commit not already covered, drop bullets whose commit left the branch. If a group's Framework bucket is empty after merging, its `FRAMEWORK_BULLETS` is empty — Phase 9 omits the Framework Changes block for that story.
 
 ## Phase 7 — Pre and post deployment steps
 
