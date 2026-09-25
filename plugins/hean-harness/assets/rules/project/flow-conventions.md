@@ -301,17 +301,24 @@ Such a flow must stay on **Created and Updated** with its entry filter left unre
 
 ## Trigger order review
 
-Apply when a record-triggered flow is created, or when its trigger timing, entry criteria or record writes change.
+Apply once a record-triggered flow is finished: after it is created, or after its trigger timing, entry criteria or record writes change. Never run the review while the flow is still being written.
 
-The platform runs record-triggered flows on one object and one trigger timing in this order: `triggerOrder` 1–1000 ascending, then flows with no `triggerOrder` by created date, then 1001–2000 ascending. Flows with equal values run in API-name order. `triggerOrder` has no effect on asynchronous or scheduled paths.
+The review covers the synchronous paths of flows triggered by the same object. The platform runs flows on one object and one trigger timing in this order: `triggerOrder` 1–1000 ascending, then flows with no `triggerOrder` by created date, then 1001–2000 ascending. Flows with equal values run in API-name order. Every before-save flow runs before every after-save flow, so a dependency between them needs no `triggerOrder`. `triggerOrder` has no effect on asynchronous or scheduled paths.
 
-1. Run `/hean-harness:flow-trigger-order <Object>` to list every record-triggered flow in `force-app/` on the same object with the same trigger timing.
-2. Mark each pair where one flow reads a field the other writes, or both write the same field. Only a marked pair needs an order.
-3. Give the writing flow a lower `triggerOrder` than the reading flow. Leave unrelated flows at `1500`.
-4. For an asynchronous or scheduled path, do not rely on `triggerOrder`. Check instead:
-   - whether another asynchronous or scheduled path on the same object writes the same fields (no guaranteed order: merge them or make each safe in either order)
-   - whether the path's own record update reruns the object's synchronous flows
-5. Report which flows share the object and timing, and whether any order changed and why.
+1. Run `/hean-harness:flow-trigger-order <Object> --flow <FlowApiName>` for the finished flow.
+2. Confirm each dependency the listing prints by reading the flow files, and add any it missed. The listing matches field references in the XML, so a match can be wrong.
+3. Work out the allowed range from all dependencies together:
+   - after every flow that writes a field the finished flow reads
+   - before every flow that reads a field the finished flow writes
+4. Suggest a `triggerOrder`:
+   - With no flow required after it, place it after the last related flow. A related flow shares a field with the finished flow, directly or through other flows on the same object and timing.
+   - Otherwise, place it in the middle of the allowed range.
+   - With no related flow, keep its current `triggerOrder`; the order does not matter.
+   - When a flow next to the suggested position has no `triggerOrder`, report that flow instead of a number.
+   - With an empty range or no free value, name the existing flows that would need renumbering.
+5. When two flows write the same field, name the one that runs later; it sets the final value.
+6. Name every existing flow on the same object and timing that already runs before a flow whose written field it reads. Leave Draft and Obsolete flows out of every step; they do not run.
+7. Report to the user as a table: each dependency, the field, each flow's current `triggerOrder`, and the suggested value. A subagent puts the table in its final message. Change no `triggerOrder`, on any flow, until the user answers.
 
 ## Context restrictions by trigger type
 
@@ -341,6 +348,6 @@ Before deploying any record-triggered flow, confirm:
 - [ ] Synchronous record-triggered (custom-error): fault paths converge on `Check_Error_Type`; `Loop_Errors` → `Flatten_Custom_Error`/`Show_Error_to_User`; `Error_Concat_Formula` present; `Error` (String) + `Errors` (String collection) declared
 - [ ] Autolaunched/async/platform-event/subflow: fault paths build error-log records into an `Errors` collection persisted by one `Log_Errors` create; `Error` + `Errors` are variables of the org's error-log object
 - [ ] The error-log object was confirmed to exist in the connected org before the pattern was written
-- [ ] Trigger order review done; `triggerOrder` set (`1500` unless the review found a dependency)
+- [ ] Trigger order review run after the flow was finished; dependency table reported to the user; no `triggerOrder` changed without the user's answer
 - [ ] Nested decisions alternate the continuation branch side per level (vertical decisions exempt)
 - [ ] `<status>Active</status>` is set
