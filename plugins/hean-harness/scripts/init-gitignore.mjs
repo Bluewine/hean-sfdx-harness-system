@@ -9,7 +9,7 @@
 
 import { execFileSync } from 'node:child_process';
 
-import { repoRoot, ensureIgnored, missingLines, repoTracksHooks } from './lib/gitignore.mjs';
+import { repoRoot, ensureIgnored, missingLines, repoTracksHooks, noAdditionsMessage } from './lib/gitignore.mjs';
 import { init } from './lib/manifest.mjs';
 import { recordExternal } from './lib/install.mjs';
 
@@ -50,7 +50,7 @@ function main() {
     recordExternal(`gitignore:${r.file}`,
       `remove these lines from ${r.file}: ${r.added.join(', ')} (and the comment above them)`);
   } else {
-    log(`Already ignored in ${r.file} — left as it is`);
+    log(noAdditionsMessage(r));
   }
 }
 

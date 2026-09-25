@@ -174,6 +174,9 @@ function main() {
   if (gi.missing.length) {
     log('  A file written on each clone would be committed. Run the setup skill again to add the missing lines.');
   }
+  if (gi.staleHooks.length) {
+    log('  A stale .githooks/ line is still in the block, though the repository now tracks its own hooks there. Run the setup skill again to remove it.');
+  }
   log('');
 
   log('Environment');

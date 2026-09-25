@@ -203,10 +203,10 @@ function repairSteps(repo, rule, failing) {
 }
 
 const WHY = (repo, rule) =>
-  `!! ${repo} signs commits with GPG key ${rule.key}. This repository requires verified signatures, ` +
-  `and GitHub verifies a signature only when the commit's committer email is a UID email ` +
-  `of that key: ${rule.emails.join(', ')}. Any other committer email is rejected at push with ` +
-  `"Commits must have verified signatures".`;
+  `!! ${repo} signs commits with GPG key ${rule.key}. Commits signed with ${rule.key} must carry a ` +
+  `committer email that is a UID email of that key — one of: ${rule.emails.join(', ')} — or GitHub ` +
+  `will not mark them verified, and a repository that requires verified signatures rejects the ` +
+  `push with "Commits must have verified signatures".`;
 
 function configRefusal(change, repo, rule, after) {
   if (change.unset) {
@@ -251,7 +251,12 @@ export function check(script, sessionCwd) {
       const change = emailChange(c.args);
       if (!change) continue;
       const where = repo ?? c.dir ?? sessionCwd;
-      const rule = identityRule(where);
+      // --global and --system change the address for every repository that has no
+      // scope of its own set, so they are checked against the global signing key,
+      // not this repository's (which may sign with a different local key, or not
+      // sign at all while the global key still applies elsewhere).
+      const ruleScope = ['global', 'system'].includes(change.scope) ? ['--global'] : [];
+      const rule = identityRule(where, ruleScope);
       if (!rule) continue;
       if (change.set && allowed(change.set, rule.emails)) continue;
       let after = null;

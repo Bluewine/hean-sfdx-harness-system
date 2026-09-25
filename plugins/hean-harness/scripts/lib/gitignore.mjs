@@ -139,6 +139,17 @@ export function ensureIgnored(repo) {
   return { added: missing, removed, removedHooksLine, file };
 }
 
+/**
+ * What to say once ensureIgnored has run and added no new lines — shared so
+ * init-gitignore and this file's own `ensure` command agree on the wording,
+ * and a removed stale line is never reported as if nothing had changed.
+ */
+export function noAdditionsMessage(r) {
+  return r.removed.length || r.removedHooksLine
+    ? `Every other line was already in ${r.file}`
+    : `Already ignored in ${r.file} — left as it is`;
+}
+
 // ---- CLI -------------------------------------------------------------------
 
 const isMain = process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;
@@ -163,7 +174,7 @@ if (isMain) {
       const r = ensureIgnored(repo);
       console.log(r.added.length
         ? `  added ${r.added.length} line${r.added.length > 1 ? 's' : ''} to ${r.file}`
-        : `  already ignored in ${r.file}`);
+        : `  ${noAdditionsMessage(r)}`);
       break;
     }
     default:

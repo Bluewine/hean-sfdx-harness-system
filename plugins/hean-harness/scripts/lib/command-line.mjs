@@ -5,7 +5,7 @@
  * Shared by the commit message gate, the commit approval gate, the org write
  * gate and the git identity guard. All need the same answer to "which command
  * runs where", and copies of a parser drift. The git runner lives here too, so
- * every hook and library runs git one way.
+ * the hooks and libraries that need these helpers share them.
  */
 
 import { execFileSync } from 'node:child_process';

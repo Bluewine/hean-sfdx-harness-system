@@ -145,6 +145,12 @@ git(LOCAL_UNSET, 'config', 'extensions.worktreeConfig', 'true');
 git(LOCAL_UNSET, 'config', '--local', 'user.email', 'signer@example.com');
 git(LOCAL_UNSET, 'config', '--worktree', 'user.email', 'wrong@example.org');
 
+// LOCAL_KEY: a different signing key set locally than ~/.gitconfig's, so the
+// repository's own identity and the global identity disagree.
+const LOCAL_KEY = join(sandbox, 'local-key');
+git(sandbox, 'init', '-q', LOCAL_KEY);
+git(LOCAL_KEY, 'config', 'user.signingkey', TEAM_KEY);
+
 // SSH_FORMAT: signing on, but with an SSH key
 const SSH_FORMAT = join(sandbox, 'ssh-format');
 git(sandbox, 'init', '-q', SSH_FORMAT);
@@ -245,7 +251,9 @@ allow('--local unset, global key email then applies', 'git config --local --unse
 allow('unset subcommand --local, key email then applies', 'git config unset --local user.email');
 allow('--worktree unset, local key email then applies', 'git config --worktree --unset user.email', LOCAL_UNSET);
 allow('--worktree without worktree config is local', 'git config --worktree --unset user.email');
-allow('gpg.format ssh',                    'git config --global user.email bad@example.org', SSH_FORMAT);
+allow('gpg.format ssh, no-scope set checked against this repository', 'git config user.email bad@example.org', SSH_FORMAT);
+deny('gpg.format ssh locally does not excuse a --global set: ~/.gitconfig still signs OpenPGP',
+     'git config --global user.email bad@example.org', SSH_FORMAT, '!! REFUSED', KEY);
 allow('gpg.program missing, no openpgp program', 'git config user.email bad@example.org', PROGRAM_MISSING);
 allow('key gpg cannot read',               'git config user.email bad@example.org', UNKNOWN_KEY);
 allow('gpg missing from PATH',             'git config user.email bad@example.org', SIGNED, { PATH: NO_GPG });
@@ -259,6 +267,20 @@ allow('git -C an unsigned repository',     `git -C ${UNSIGNED} config user.email
 deny('chained after another command',      'git status && git config --global user.email bad@example.org');
 deny('second line of a script',            'echo start\ngit config user.email bad@example.org');
 allow('chained, each in an unsigned repo', `git status; git -C ${UNSIGNED} config user.email bad@example.org`);
+
+console.log('git config: --global and --system are checked against the global key');
+deny('--global set, address only on this repository\'s own local key', `git config --global user.email teammate@example.com`, LOCAL_KEY,
+     '!! REFUSED', 'teammate@example.com', KEY);
+deny('--system set, address only on this repository\'s own local key', `git config --system user.email teammate@example.com`, LOCAL_KEY,
+     '!! REFUSED', 'teammate@example.com', KEY);
+allow('--global set, address on the global key even though the local key differs', 'git config --global user.email signer@example.com', LOCAL_KEY);
+allow('--system set, address on the global key even though the local key differs', 'git config --system user.email second@example.com', LOCAL_KEY);
+allow('no-scope set still checked against this repository\'s own key', 'git config user.email teammate@example.com', LOCAL_KEY);
+deny('no-scope set to the global-only address is refused: it is not this repository\'s key', 'git config user.email signer@example.com', LOCAL_KEY,
+     '!! REFUSED', TEAM_KEY);
+deny('--global set is refused here even though this repository itself does not sign', 'git config --global user.email bad@example.org', UNSIGNED,
+     '!! REFUSED', 'bad@example.org', KEY);
+allow('--global set to the global key\'s address, from a repository that does not sign', 'git config --global user.email signer@example.com', UNSIGNED);
 
 console.log('git push: allowed');
 /** Run checks with HEAD on this branch of SIGNED, then go back to main. */

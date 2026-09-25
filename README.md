@@ -152,11 +152,12 @@ Applies in every repository, including inside `/hean-harness:uat-hotfix` and
 
 Where commits are signed with OpenPGP (`commit.gpgsign` on and `user.signingkey` set), GitHub
 verifies a commit only when its committer email is on the signing key. Claude Code is refused a
-`git config` that sets `user.email`, at any scope, to an address not on the key or removes it, and
-a `git push` that sends an unsigned or self-signed commit whose committer email is not on the key.
-Commits already on a remote and commits signed with a teammate's key are not checked. The refusal
-lists the commits and how to repair them. `/hean-harness:doctor` reports whether the global
-`user.email` is on the key.
+`git config` that sets `user.email`, at any scope, to an address not on the key, or removes it —
+except a `--local` or `--worktree` removal that leaves an address still on the key applying — and
+a `git push` that sends an unsigned commit, or a commit signed with this key, whose committer
+email is not on the key. Commits already on a remote and commits signed with a teammate's key are
+not checked. The refusal lists the commits and how to repair them. `/hean-harness:doctor` reports
+whether the global `user.email` is on the key.
 
 ## Org roles
 
