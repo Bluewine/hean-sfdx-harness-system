@@ -442,7 +442,11 @@ try {
     recordTriggeredFlow({ object: 'DepCase3__c', triggerType: 'RecordAfterSave', order: null, formulaReadFields: ['F2'], updateRecordFields: ['F3'] }));
 
   const case3Out = execFileSync('node', [SCRIPT, '--flow', 'DepCase3_C'], { cwd: root, encoding: 'utf8' });
+  const case3Pred = case3Out.split('Predecessors:')[1].split('Successors:')[0];
+  const case3Succ = case3Out.split('Successors:')[1].split('Related flows:')[0];
   check('case 3: predecessor A, successor B, range 1501–1599, suggestion 1550',
+        case3Pred.includes('DepCase3_A') && !case3Pred.includes('DepCase3_B') &&
+        case3Succ.includes('DepCase3_B') && !case3Succ.includes('DepCase3_A') &&
         case3Out.includes('Allowed range: 1501–1599') && case3Out.includes('Suggested triggerOrder: 1550'),
         case3Out);
 
@@ -463,6 +467,12 @@ try {
         !case4Out.includes('renumbering'),
         case4Out);
 
+  const occurrences = (text, phrase) => text.split(phrase).length - 1;
+  check('case 4: the loop explanation is printed once, and the suggestion line points to it',
+        occurrences(case4Out, 'depend on each other') === 1 &&
+        case4Out.includes('Suggested triggerOrder: none — see Allowed range above (current: none)'),
+        case4Out);
+
   // Case 5: A writes F1, C reads F1 (predecessor A) and writes F2, D reads F2
   // (successor D) -> A and D are different flows sitting one apart, so the
   // range is genuinely empty and existing flows need renumbering, unlike
@@ -478,6 +488,11 @@ try {
   check('case 5: predecessor and successor are different flows with an empty range -> the renumbering message',
         case5Out.includes('Allowed range: empty') && case5Out.includes('renumbering') &&
         !case5Out.includes('depend on each other'),
+        case5Out);
+
+  check('case 5: the renumbering explanation is printed once',
+        occurrences(case5Out, 'existing flows need renumbering') === 1 &&
+        case5Out.includes('Suggested triggerOrder: none — see Allowed range above'),
         case5Out);
 
   // Case 12: two after-save flows both write F9 with no read between them ->
@@ -502,6 +517,23 @@ try {
         case12Out.includes('Suggested triggerOrder: 1600') &&
         case12Out.includes('would set the final value'),
         case12Out);
+
+  check('with a suggested number, the final-value line says "at the suggested position"',
+        case12Out.includes('DepCase12_A (at the suggested position) would set the final value'),
+        case12Out);
+
+  // Case 14: B and C depend on each other and both write F1 -> no number is
+  // suggested, so the final-value line must name C's current triggerOrder,
+  // never "the suggested position".
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase14_B',
+    recordTriggeredFlow({ object: 'DepCase14__c', triggerType: 'RecordAfterSave', order: 1500, updateRecordFields: ['F1'], formulaReadFields: ['F2'] }));
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase14_C',
+    recordTriggeredFlow({ object: 'DepCase14__c', triggerType: 'RecordAfterSave', order: 1600, updateRecordFields: ['F2', 'F1'], formulaReadFields: ['F1'] }));
+  const case14Out = execFileSync('node', [SCRIPT, '--flow', 'DepCase14_C'], { cwd: root, encoding: 'utf8' });
+  check('case 14: with no suggested number, the final-value line names the current triggerOrder',
+        case14Out.includes('F1 is also written by DepCase14_B — DepCase14_C (at its current triggerOrder 1600) would set the final value') &&
+        !case14Out.includes('at the suggested position'),
+        case14Out);
 
   // ==== search outward for the nearest free integer instead of only ========
   // trying the midpoint. A(1500) predecessor, B(1600) successor, U(1550)
@@ -652,6 +684,14 @@ try {
   const notRecordTriggeredOut = execFileSync('node', [SCRIPT, '--flow', 'Screen_Flow'], { cwd: root, encoding: 'utf8' }).trim();
   check('a --flow name that exists but is not record-triggered reports one plain line',
         notRecordTriggeredOut === 'Screen_Flow is not a record-triggered flow.', notRecordTriggeredOut);
+
+  const usage = '--flow needs a flow API name. Usage: flow-trigger-order.mjs [ObjectApiName] [--flow FlowApiName]';
+  const noNameOut = execFileSync('node', [SCRIPT, '--flow'], { cwd: root, encoding: 'utf8' }).trim();
+  check('--flow with no name after it reports the usage instead of the group listing', noNameOut === usage, noNameOut);
+  const objectNoNameOut = execFileSync('node', [SCRIPT, 'Case', '--flow'], { cwd: root, encoding: 'utf8' }).trim();
+  check('an object followed by --flow with no name reports the usage', objectNoNameOut === usage, objectNoNameOut);
+  const optionAsNameOut = execFileSync('node', [SCRIPT, '--flow', '--x'], { cwd: root, encoding: 'utf8' }).trim();
+  check('--flow followed by another option is treated as a missing name', optionAsNameOut === usage, optionAsNameOut);
 } finally {
   rmSync(root, { recursive: true, force: true });
 }

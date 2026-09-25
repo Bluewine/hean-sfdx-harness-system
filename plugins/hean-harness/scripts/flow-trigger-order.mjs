@@ -19,8 +19,17 @@ const root = process.cwd();
 const args = process.argv.slice(2);
 let objectFilter = null;
 let flowOption = null;
+const USAGE = 'Usage: flow-trigger-order.mjs [ObjectApiName] [--flow FlowApiName]';
 for (let i = 0; i < args.length; i++) {
-  if (args[i] === '--flow') flowOption = args[++i] ?? null;
+  if (args[i] === '--flow') {
+    flowOption = args[++i] ?? null;
+    // Without a name, falling back to the group listing answers a question
+    // nobody asked; say what is missing instead.
+    if (!flowOption || flowOption.startsWith('--')) {
+      console.log(`--flow needs a flow API name. ${USAGE}`);
+      process.exit(0);
+    }
+  }
   else if (objectFilter === null) objectFilter = args[i];
 }
 

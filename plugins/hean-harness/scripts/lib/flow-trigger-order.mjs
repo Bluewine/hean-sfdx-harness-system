@@ -375,9 +375,10 @@ function linkedFlows(list, f) {
 
 /**
  * Every other flow in `groupFlowsList` reachable from `target` through a
- * write-read link (one flow writes a field another reads), directly or
- * through other flows in the group — a connected component over those
- * links. `target` itself is not included in the result.
+ * field link — one flow writes a field another reads, or both write the same
+ * field (see `linkedFlows`) — directly or through other flows in the group:
+ * a connected component over those links. `target` itself is not included
+ * in the result.
  */
 function relatedFlows(groupFlowsList, target) {
   const seen = new Set([target]);
@@ -557,11 +558,11 @@ function placementFor(groupFlowsList, target, predecessors, successors, related)
   return { rangeText, suggestionText: text, suggestionValue: null };
 }
 
-/** Which flow's write of `field` would win if `target` ran at `suggestedOrder`. */
-function finalWriterAt(groupFlowsList, target, suggestedOrder, field) {
-  const contenders = [...writersOf(groupFlowsList, field, target), { ...target, order: suggestedOrder }];
+/** Which flow's write of `field` would win if `target` ran at `order`; `positionLabel` says which order that is. */
+function finalWriterAt(groupFlowsList, target, order, field, positionLabel) {
+  const contenders = [...writersOf(groupFlowsList, field, target), { ...target, order }];
   const last = runOrder(contenders)[contenders.length - 1];
-  return last.path === target.path ? `${target.name} (at the suggested position)` : last.name;
+  return last.path === target.path ? `${target.name} (${positionLabel})` : last.name;
 }
 
 /**
@@ -595,17 +596,23 @@ export function formatFlowPlacement(flows, target) {
 
   const { rangeText, suggestionText, suggestionValue } = placementFor(activeFlows, target, predecessors, successors, related);
   lines.push(`Allowed range: ${rangeText}`);
-  lines.push(`Suggested triggerOrder: ${suggestionText} (current: ${target.order ?? 'none'})`);
+  // A loop, an empty range and a neighbour with no triggerOrder come back as
+  // one explanation for both lines; print it once.
+  const suggestionShown = suggestionText === rangeText ? 'none — see Allowed range above' : suggestionText;
+  lines.push(`Suggested triggerOrder: ${suggestionShown} (current: ${target.order ?? 'none'})`);
 
   // Printed whether or not a new number was suggested — a double write is a
   // fact about the flow's writes, not about whether this run happened to
   // find a free placement value.
   {
-    const orderForCheck = suggestionValue !== null && suggestionValue !== undefined ? suggestionValue : target.order;
+    const suggested = suggestionValue !== null && suggestionValue !== undefined;
+    const orderForCheck = suggested ? suggestionValue : target.order;
+    const positionLabel = suggested ? 'at the suggested position'
+      : target.order === null ? 'with no triggerOrder' : `at its current triggerOrder ${target.order}`;
     for (const field of target.writes) {
       const otherWriters = writersOf(activeFlows, field, target);
       if (!otherWriters.length) continue;
-      lines.push(`  ${field} is also written by ${otherWriters.map(w => w.name).join(', ')} \u2014 ${finalWriterAt(activeFlows, target, orderForCheck, field)} would set the final value`);
+      lines.push(`  ${field} is also written by ${otherWriters.map(w => w.name).join(', ')} \u2014 ${finalWriterAt(activeFlows, target, orderForCheck, field, positionLabel)} would set the final value`);
     }
   }
 
