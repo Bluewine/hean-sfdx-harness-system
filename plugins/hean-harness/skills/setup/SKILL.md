@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Install the hean-harness environment on this machine — copies rules, memories, agents and the status line into place, adds the claude alias, and records every change so uninstall can reverse it
+description: Install the hean-harness environment on this machine — copies rules, memories, agents and the status line into place, adds the claude alias, turns on Claude Code's task tools in settings.json, and records every change so uninstall can reverse it
 allowed-tools: ["Bash", "Read"]
 ---
 

@@ -168,6 +168,22 @@ try {
   check('a settings.json with no env block has no env block after uninstall',
         afterUninstall4.theme === 'light' && !('env' in afterUninstall4), JSON.stringify(afterUninstall4));
 
+  // A user who already set the task tools key to their own value gets that
+  // value back on uninstall, not a deleted key.
+  const home5 = join(root, 'home5');
+  mkdirSync(join(home5, '.claude'), { recursive: true });
+  const settings5 = join(home5, '.claude', 'settings.json');
+  writeFileSync(settings5, JSON.stringify({ env: { CLAUDE_CODE_ENABLE_TODO_TOOLS: '0' } }, null, 2) + '\n');
+  const env5 = { ...process.env, HOME: home5 };
+  execFileSync('node', [join(SCRIPTS, 'install-task-tools.mjs')], { env: env5, encoding: 'utf8', stdio: 'pipe' });
+  const afterSetup5 = JSON.parse(readFileSync(settings5, 'utf8'));
+  check('setup replaces the user\'s own task tools value with 1',
+        afterSetup5.env?.CLAUDE_CODE_ENABLE_TODO_TOOLS === '1', JSON.stringify(afterSetup5));
+  execFileSync('node', [join(SCRIPTS, 'lib', 'manifest.mjs'), 'revert'], { env: env5, encoding: 'utf8', stdio: 'pipe' });
+  const afterUninstall5 = JSON.parse(readFileSync(settings5, 'utf8'));
+  check('uninstall puts back the user\'s own task tools value',
+        afterUninstall5.env?.CLAUDE_CODE_ENABLE_TODO_TOOLS === '0', JSON.stringify(afterUninstall5));
+
   // A repository that commits its own hook owns the hooks folder.
   const home2 = join(root, 'home2');
   const own = join(root, 'own-hooks');
