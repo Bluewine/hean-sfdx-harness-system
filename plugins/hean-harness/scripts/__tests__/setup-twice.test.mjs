@@ -26,8 +26,9 @@ mkdirSync(join(home, '.claude'), { recursive: true });
 mkdirSync(repo, { recursive: true });
 
 const MY_STATUSLINE = { type: 'command', command: 'bash ~/my-own-statusline.sh' };
-const MY_SETTINGS = { statusLine: MY_STATUSLINE, theme: 'dark' };
+const MY_SETTINGS = { statusLine: MY_STATUSLINE, theme: 'dark', env: { MY_OWN_ENV: 'keep-me' } };
 const MY_ZSHRC = 'export MY_OWN=1\nalias ll="ls -la"\n';
+const readSettings = () => JSON.parse(readFileSync(join(home, '.claude', 'settings.json'), 'utf8'));
 
 writeFileSync(join(home, '.claude', 'settings.json'), JSON.stringify(MY_SETTINGS, null, 2) + '\n');
 writeFileSync(join(home, '.zshrc'), MY_ZSHRC);
@@ -45,12 +46,20 @@ const check = (label, ok, detail = '') => {
 
 try {
   run('setup.mjs', ['--repo', repo, '--commit-format', 'on']);
+  const afterFirst = readSettings();
+  check('the task tools key is set after setup', afterFirst.env?.CLAUDE_CODE_ENABLE_TODO_TOOLS === '1',
+        String(afterFirst.env?.CLAUDE_CODE_ENABLE_TODO_TOOLS));
+  check('an unrelated env key survives setup', afterFirst.env?.MY_OWN_ENV === 'keep-me',
+        String(afterFirst.env?.MY_OWN_ENV));
   const report = join(repo, '.claude', 'skills', 'create-pr', 'output', 'body.md');
   mkdirSync(dirname(report), { recursive: true });
   writeFileSync(report, 'a rendered body\n');
   // no flag this time: the answer saved by the first run is used
   run('setup.mjs', ['--repo', repo]);
   check('a second setup keeps skill output in the repository .claude folder', existsSync(report));
+  const afterTwice = readSettings();
+  check('running setup twice leaves one correct task tools value',
+        afterTwice.env?.CLAUDE_CODE_ENABLE_TODO_TOOLS === '1', String(afterTwice.env?.CLAUDE_CODE_ENABLE_TODO_TOOLS));
 
   const manifest = JSON.parse(readFileSync(join(home, '.claude', 'hean-harness', 'install-manifest.json'), 'utf8'));
   const shipped = JSON.parse(readFileSync(join(dirname(SCRIPTS), '.claude-plugin', 'plugin.json'), 'utf8')).version;
@@ -59,7 +68,7 @@ try {
   check('a completed setup records when it ran', Boolean(manifest.lastSetupAt), String(manifest.lastSetupAt));
   const doctor = () => { try { return run('doctor.mjs'); } catch (e) { return String(e.stdout ?? ''); } };
   check('doctor does not flag setup as out of date after a run', !doctor().includes('SETUP IS OUT OF DATE'));
-  const jsonKey = manifest.changes.find(c => c.type === 'json-key');
+  const jsonKey = manifest.changes.find(c => c.type === 'json-key' && c.key === 'statusLine');
   check('the manifest still holds the user\'s own status line after two runs',
         JSON.stringify(jsonKey?.previousValue) === JSON.stringify(MY_STATUSLINE),
         JSON.stringify(jsonKey?.previousValue));
@@ -113,11 +122,15 @@ try {
   check('every recorded change reverses', revert.every(c => c.ok),
         `${revert.filter(c => c.ok).length}/${revert.length}`);
 
-  const settings = JSON.parse(readFileSync(join(home, '.claude', 'settings.json'), 'utf8'));
+  const settings = readSettings();
   check('the user\'s status line comes back',
         JSON.stringify(settings.statusLine) === JSON.stringify(MY_STATUSLINE),
         JSON.stringify(settings.statusLine));
   check('their other settings are untouched', settings.theme === 'dark');
+  check('the task tools key is removed on uninstall', settings.env?.CLAUDE_CODE_ENABLE_TODO_TOOLS === undefined,
+        String(settings.env?.CLAUDE_CODE_ENABLE_TODO_TOOLS));
+  check('the unrelated env key survives uninstall', settings.env?.MY_OWN_ENV === 'keep-me',
+        String(settings.env?.MY_OWN_ENV));
   check('the alias block is removed from the middle of the shell profile, and nothing else',
         readFileSync(join(home, '.zshrc'), 'utf8') === MY_ZSHRC);
   check('the hook folder is removed', !existsSync(join(repo, '.githooks')));
@@ -129,6 +142,31 @@ try {
         !existsSync(join(home, '.claude', 'projects')) && !existsSync(join(home, '.claude', 'rules')));
   check('nothing of the plugin is left in the home directory',
         !existsSync(join(home, '.claude', 'hean-harness', 'install-manifest.json')));
+
+  // A settings.json this plugin created from nothing must not survive uninstall
+  // as an empty shell of the parent objects (env: {}) it created along the way.
+  const home3 = join(root, 'home3');
+  mkdirSync(join(home3, '.claude'), { recursive: true });
+  const env3 = { ...process.env, HOME: home3 };
+  const settings3 = join(home3, '.claude', 'settings.json');
+  execFileSync('node', [join(SCRIPTS, 'install-statusline.mjs')], { env: env3, encoding: 'utf8', stdio: 'pipe' });
+  execFileSync('node', [join(SCRIPTS, 'install-task-tools.mjs')], { env: env3, encoding: 'utf8', stdio: 'pipe' });
+  execFileSync('node', [join(SCRIPTS, 'lib', 'manifest.mjs'), 'revert'], { env: env3, encoding: 'utf8', stdio: 'pipe' });
+  check('a settings.json this plugin created from nothing is gone after uninstall', !existsSync(settings3));
+
+  // A settings.json that already existed but had no env block keeps that shape:
+  // no leftover empty env object once the task tools key is removed.
+  const home4 = join(root, 'home4');
+  mkdirSync(join(home4, '.claude'), { recursive: true });
+  const settings4 = join(home4, '.claude', 'settings.json');
+  writeFileSync(settings4, JSON.stringify({ theme: 'light' }, null, 2) + '\n');
+  const env4 = { ...process.env, HOME: home4 };
+  execFileSync('node', [join(SCRIPTS, 'install-statusline.mjs')], { env: env4, encoding: 'utf8', stdio: 'pipe' });
+  execFileSync('node', [join(SCRIPTS, 'install-task-tools.mjs')], { env: env4, encoding: 'utf8', stdio: 'pipe' });
+  execFileSync('node', [join(SCRIPTS, 'lib', 'manifest.mjs'), 'revert'], { env: env4, encoding: 'utf8', stdio: 'pipe' });
+  const afterUninstall4 = JSON.parse(readFileSync(settings4, 'utf8'));
+  check('a settings.json with no env block has no env block after uninstall',
+        afterUninstall4.theme === 'light' && !('env' in afterUninstall4), JSON.stringify(afterUninstall4));
 
   // A repository that commits its own hook owns the hooks folder.
   const home2 = join(root, 'home2');

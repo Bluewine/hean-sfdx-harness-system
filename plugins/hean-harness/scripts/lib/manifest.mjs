@@ -165,7 +165,7 @@ export function markSetupRun() {
 // fields are taken from the first recording and never overwritten. Losing
 // `previousValue` this way replaced a user's own status line with the plugin's
 // on uninstall, because the second run read our value as though it were theirs.
-const RESTORE_FIELDS = ['backup', 'existedBefore', 'previousValue', 'fileExisted'];
+const RESTORE_FIELDS = ['backup', 'existedBefore', 'previousValue', 'fileExisted', 'createdParents'];
 
 // A change type that took over a file from an older one. Memory indexes were a
 // marked block until Claude Code's memory writer was found dropping the markers.
@@ -180,8 +180,13 @@ export function record(change) {
   }
   return withLock(() => {
     const m = load();
+    // A json-key change also needs `key` to match: two different settings can
+    // share one target file (statusLine and env.* both live in settings.json),
+    // and matching on target alone would let the second one overwrite the
+    // first one's manifest entry instead of getting an entry of its own.
     const same = c => c.target === change.target &&
-      (c.type === change.type || c.type === SUPERSEDES[change.type]);
+      (c.type === change.type || c.type === SUPERSEDES[change.type]) &&
+      (change.type !== 'json-key' || c.key === change.key);
     const i = m.changes.findIndex(same);
     if (i >= 0) {
       const first = m.changes[i];
@@ -312,6 +317,28 @@ export function getJsonKey(obj, path) {
   return path.split('.').reduce((n, p) => (n == null ? undefined : n[p]), obj);
 }
 
+/**
+ * Which of a dotted path's parent segments do not yet exist as an object,
+ * from the first missing one down to the key's own parent. Recorded at
+ * install time so uninstall can remove a parent object it created (`env`,
+ * when nothing had set it before) once emptying it back out leaves it empty,
+ * without ever touching a parent the user already had.
+ */
+export function missingParents(obj, path) {
+  const parts = path.split('.').slice(0, -1);
+  const missing = [];
+  let node = obj;
+  for (let i = 0; i < parts.length; i++) {
+    if (node == null || typeof node !== 'object' || typeof node[parts[i]] !== 'object' || node[parts[i]] === null) {
+      missing.push(parts.slice(0, i + 1).join('.'));
+      node = null; // everything under a missing parent is missing too
+    } else {
+      node = node[parts[i]];
+    }
+  }
+  return missing;
+}
+
 /** Which keep category a change falls in, or null when it has none. */
 export function category(c) {
   if (c.type === 'repo-folder' || c.type === 'repo-file') return 'uninstall-only';
@@ -354,7 +381,7 @@ export function revert({ dryRun = false, keep = [], only = null } = {}) {
   const ordered = [...newestFirst.filter(c => c.type !== 'repo-folder'),
                    ...newestFirst.filter(c => c.type === 'repo-folder')];
   for (const c of ordered) {
-    const r = { type: c.type, target: c.target, action: null, ok: true, note: null };
+    const r = { type: c.type, target: c.target, key: c.key, action: null, ok: true, note: null };
     if (keep.includes(category(c)) || (only && !only(c))) {
       r.action = 'kept'; r.kept = true; results.push(r); continue;
     }
@@ -418,6 +445,16 @@ export function revert({ dryRun = false, keep = [], only = null } = {}) {
           if (!dryRun && existsSync(c.target)) {
             const j = JSON.parse(readFileSync(c.target, 'utf8'));
             setJsonKey(j, c.key, c.existedBefore ? c.previousValue : undefined);
+            // a parent object this install created (env, when nothing had set it
+            // before) is removed too, deepest first, but only while emptying the
+            // key left it empty; a parent the user already had is never touched
+            if (!c.existedBefore) {
+              for (const p of [...(c.createdParents ?? [])].reverse()) {
+                const parent = getJsonKey(j, p);
+                if (!parent || typeof parent !== 'object' || Object.keys(parent).length > 0) break;
+                setJsonKey(j, p, undefined);
+              }
+            }
             // we created this file; drop it only when nothing is left in it
             if (c.fileExisted === false && Object.keys(j).length === 0) rmSync(c.target);
             else writeFileSync(c.target, JSON.stringify(j, null, 2) + '\n');
@@ -515,7 +552,8 @@ export function revert({ dryRun = false, keep = [], only = null } = {}) {
       }
     }
     else { m.changes = m.changes.filter(c =>
-             remaining.some(r => r.type === c.type && r.target === c.target));
+             remaining.some(r => r.type === c.type && r.target === c.target &&
+               (c.type !== 'json-key' || r.key === c.key)));
            save(m); }
   }
   return results;

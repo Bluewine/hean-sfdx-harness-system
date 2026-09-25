@@ -11,7 +11,7 @@ import { execFileSync } from 'node:child_process';
 import { basename, dirname, relative, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { record, backup, findBlock, block, setJsonKey, getJsonKey, load, markers, note } from './manifest.mjs';
+import { record, backup, findBlock, block, setJsonKey, getJsonKey, missingParents, load, markers, note } from './manifest.mjs';
 import { claudeDir } from './paths.mjs';
 import { MARKER } from './shell.mjs';
 import { indexLine, mergeIndex } from './memory-index.mjs';
@@ -160,13 +160,19 @@ export function installJsonKey(file, key, value) {
 
   const had = existed && getJsonKey(json, key) !== undefined;
   const previous = had ? getJsonKey(json, key) : undefined;
+  // Which parent objects a dotted key needs that are not there yet, so
+  // uninstall can remove them once they're empty rather than leaving an
+  // empty shell (env: {}) behind. Computed before the write, against the
+  // pre-install state, same as existedBefore and previous below.
+  const createdParents = missingParents(json, key);
 
   // As above: one entry, recorded before the write. `fileExisted` says whether
   // the file itself is ours to remove; `existedBefore` says whether the key had
   // a value to put back. On a repeat setup the manifest keeps the value from the
   // first run, because by now the file holds ours rather than the user's.
   record({ type: 'json-key', target: file, key, backup: saved,
-           existedBefore: had, previousValue: previous, fileExisted: existed });
+           existedBefore: had, previousValue: previous, fileExisted: existed,
+           createdParents });
 
   setJsonKey(json, key, value);
   mkdirSync(dirname(file), { recursive: true });

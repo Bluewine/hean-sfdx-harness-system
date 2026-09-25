@@ -46,6 +46,7 @@ const STEPS = [
   { name: 'Rule files',    script: 'install-rules.mjs',        wantsRepo: true },
   { name: 'Memories',      script: 'install-memories.mjs',       wantsRepo: true },
   { name: 'Status line',   script: 'install-statusline.mjs' },
+  { name: 'Task tools',    script: 'install-task-tools.mjs' },
   { name: 'Commit format', script: 'install-githooks.mjs',     wantsRepo: true },
   // After the hooks: npm install runs the repository's prepare script, which
   // may need .githooks to exist. A failure here, such as a private registry the
