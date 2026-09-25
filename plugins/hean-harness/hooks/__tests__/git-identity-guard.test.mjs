@@ -286,7 +286,7 @@ for (const cmd of ['git push', 'git push origin', 'git push origin HEAD', 'git p
 }
 const OWN_BAD = commit(WORK, 'My wrong commit', 'signer@example.com', 'other@example.org');
 deny('an added bad commit of the user is refused', 'git push', WORK, OWN_BAD, 'My wrong commit',
-     'git commit --amend --no-edit');
+     'git commit --amend --no-edit --allow-empty');
 report('the teammate commit is not listed', !refusal('git push', WORK).includes('Teammate change'));
 allow('tags only, HEAD bad but every tag clean', 'git push origin --tags', WORK);
 
@@ -306,10 +306,10 @@ deny('cd into the repository',             `cd ${SIGNED} && git push origin bad-
 deny('git -C the repository',              `git -C ${SIGNED} push origin bad-committer`, PLAIN, BAD_COMMITTER);
 deny('chained after a commit',             'git commit -m "x" && git push origin bad-committer', SIGNED, BAD_COMMITTER);
 onBranch('bad-committer', () => deny('only HEAD fails: amend', 'git push', SIGNED, BAD_COMMITTER,
-                                     'git commit --amend --no-edit'));
+                                     'git commit --amend --no-edit --allow-empty'));
 onBranch('fresh', () => deny('never pushed, only HEAD fails', 'git push -u origin fresh', SIGNED, FRESH_BAD, 'Fresh wrong', 'git commit --amend'));
 onBranch('two-bad', () => deny('two failing: rebase from the oldest one\'s parent', 'git push', SIGNED, 'First wrong', 'Second wrong',
-                               `git rebase --exec 'git commit --amend --no-edit' ${TWO_BAD_BASE}`));
+                               `git rebase --exec 'git commit --amend --no-edit --allow-empty' ${TWO_BAD_BASE}`));
 onBranch('two-bad', () => report('the repair keeps authors: no --reset-author', !refusal('git push').includes('--reset-author')));
 onBranch('fresh', () => report('the amend keeps the author: no --reset-author', !refusal('git push').includes('--reset-author')));
 onBranch('merged', () => {
@@ -317,6 +317,31 @@ onBranch('merged', () => {
   report('merge after the failing commit: no rebase command, repair by hand',
          got?.includes('Wrong before merge') && got.includes('include a merge') && !got.includes('git rebase'));
 });
+
+console.log('git push: the suggested repair runs over empty commits');
+// Every commit these tests make is empty, like the ones made to start a Jenkins
+// build again. Run the advice exactly as the refusal prints it.
+const REPAIR = join(sandbox, 'repair');
+git(sandbox, 'clone', '-q', ORIGIN, REPAIR);
+git(REPAIR, 'checkout', '-q', '-b', 'retrigger');
+commit(REPAIR, 'Retrigger build', 'teammate@example.com', 'other@example.org');
+commit(REPAIR, 'Retrigger again', 'signer@example.com', 'other@example.org');
+const advice = refusal('git push', REPAIR)?.match(/git rebase --exec .*$/m)?.[0];
+report(`advice found: ${advice}`, !!advice);
+let repaired = true;
+try { run('sh', ['-c', advice], REPAIR); } catch { repaired = false; }
+report('the suggested rebase completes on empty commits', repaired);
+allow('the push is allowed after the repair', 'git push', REPAIR);
+report('the repair kept the authors',
+       git(REPAIR, 'log', '-2', '--format=%ae') === 'signer@example.com\nteammate@example.com');
+git(REPAIR, 'commit', '-q', '--allow-empty', '-m', 'Retrigger once more', '--no-gpg-sign');
+run('git', ['-c', 'user.email=other@example.org', 'commit', '-q', '--amend', '--no-edit', '--allow-empty', '--no-gpg-sign', '--reset-author'], REPAIR);
+const amend = refusal('git push', REPAIR)?.match(/git commit --amend .*$/m)?.[0];
+report(`amend advice found: ${amend}`, amend === 'git commit --amend --no-edit --allow-empty');
+let amended = true;
+try { run('sh', ['-c', amend], REPAIR); } catch { amended = false; }
+report('the suggested amend completes on an empty commit', amended);
+allow('the push is allowed after the amend', 'git push', REPAIR);
 
 console.log('git push: 150 branches');
 let t = Date.now();

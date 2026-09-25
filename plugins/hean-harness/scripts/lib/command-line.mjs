@@ -145,17 +145,21 @@ export function* gitCommands(script, cwd) {
 /** Options for a child process whose output is parsed and whose error output is not shown. */
 export const QUIET = { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] };
 
-/** Run git in a folder and return its trimmed output; throws when git fails. */
-export const git = (repo, ...args) => execFileSync('git', ['-C', repo, ...args], QUIET).trim();
+/**
+ * Run git in a folder and return its trimmed output; throws when git fails.
+ * A plain object as the last argument is merged into the child process
+ * options: { input } for revisions too long for the command line, { timeout }
+ * for a read that must not hold up a hook.
+ */
+export const git = (repo, ...args) => {
+  const extra = args.length && typeof args.at(-1) === 'object' ? args.pop() : {};
+  const options = { ...QUIET, ...extra };
+  if (extra.input !== undefined) options.stdio = ['pipe', 'pipe', 'ignore'];
+  return execFileSync('git', ['-C', repo, ...args], options).trim();
+};
 
 /** The same, returning null when git fails. */
 export const tryGit = (repo, ...args) => { try { return git(repo, ...args); } catch { return null; } };
-
-/** tryGit with text on standard input, for revision lists too long for the command line. */
-export const tryGitWithInput = (repo, input, ...args) => {
-  try { return execFileSync('git', ['-C', repo, ...args], { ...QUIET, stdio: ['pipe', 'pipe', 'ignore'], input }).trim(); }
-  catch { return null; }
-};
 
 /**
  * The top of the repository a git command acts on, or null when there is none.

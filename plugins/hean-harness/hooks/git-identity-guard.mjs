@@ -44,7 +44,7 @@
 
 import { readFileSync } from 'node:fs';
 
-import { gitCommands, isLiteral, repoOf, tryGit, tryGitWithInput } from '../scripts/lib/command-line.mjs';
+import { gitCommands, isLiteral, repoOf, tryGit } from '../scripts/lib/command-line.mjs';
 import { allowed, gitConfig, identityRule } from '../scripts/lib/signing-identity.mjs';
 
 // git config options that take the next word as their value
@@ -157,8 +157,8 @@ function failingCommits(repo, rule, revs) {
   if (!log) return [];
   const suspects = log.split('\n').map(l => l.split('\x1f')).filter(([, ce]) => !allowed(ce, rule.emails)).map(([h]) => h);
   if (!suspects.length) return [];
-  const detail = tryGitWithInput(repo, suspects.join('\n'), 'log', '--stdin', '--no-walk=unsorted',
-                                 '--format=%H%x1f%h%x1f%ce%x1f%G?%x1f%GK%x1f%GF%x1f%GP%x1f%s');
+  const detail = tryGit(repo, 'log', '--stdin', '--no-walk=unsorted',
+                        '--format=%H%x1f%h%x1f%ce%x1f%G?%x1f%GK%x1f%GF%x1f%GP%x1f%s', { input: suspects.join('\n') });
   if (!detail) return [];
   const failing = [];
   for (const line of detail.split('\n')) {
@@ -175,7 +175,9 @@ function failingCommits(repo, rule, revs) {
  * them, unless that range holds a merge: a rebase would drop the merge and
  * rewrite the commits it merged in, so those are repaired by hand. An amend
  * takes its committer from user.email and keeps the author, and only the
- * committer is checked, so every commit keeps the author it had.
+ * committer is checked, so every commit keeps the author it had. --allow-empty
+ * keeps an amend from stopping on an empty commit, which the team makes to
+ * start a Jenkins build again.
  */
 function repairSteps(repo, rule, failing) {
   const lines = [];
@@ -187,15 +189,15 @@ function repairSteps(repo, rule, failing) {
   const oldest = failing.at(-1).full;
   const base = tryGit(repo, 'rev-parse', '--verify', '-q', '--short', `${oldest}^`) ?? '--root';
   if (failing.length === 1 && oldest === tryGit(repo, 'rev-parse', 'HEAD')) {
-    lines.push(`git commit --amend --no-edit`);
-  } else if (tryGitWithInput(repo, failing.map(k => k.full).join('\n'), 'rev-list', '--stdin', '^HEAD')) {
+    lines.push(`git commit --amend --no-edit --allow-empty`);
+  } else if (tryGit(repo, 'rev-list', '--stdin', '^HEAD', { input: failing.map(k => k.full).join('\n') })) {
     lines.push(`Some of these commits are not on the checked-out branch. Check out the branch that holds them ` +
                `(git branch --contains <hash> names it) and repair them there.`);
   } else if (tryGit(repo, 'rev-list', '--merges', base === '--root' ? 'HEAD' : `${base}..HEAD`)) {
     lines.push(`The commits from ${base} to HEAD include a merge, so no rebase is suggested: a rebase would drop ` +
                `the merge and rewrite the commits it merged in. Repair these commits by hand.`);
   } else {
-    lines.push(`git rebase --exec 'git commit --amend --no-edit' ${base}`);
+    lines.push(`git rebase --exec 'git commit --amend --no-edit --allow-empty' ${base}`);
   }
   return lines;
 }

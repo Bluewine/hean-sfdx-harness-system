@@ -23,7 +23,7 @@ import { QUIET, tryGit } from './command-line.mjs';
 
 /** One git config value, or null when unset or unreadable. scope is e.g. ['--global'], or [] for the effective value. */
 export function gitConfig(dir, key, scope = [], type = []) {
-  return tryGit(dir ?? '.', 'config', ...scope, ...type, '--get', key) || null;
+  return tryGit(dir ?? '.', 'config', ...scope, ...type, '--get', key, { timeout: 4000 }) || null;
 }
 
 /**
