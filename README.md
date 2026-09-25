@@ -148,6 +148,15 @@ unless the word is negated ("don't commit") or "commit" is directly followed by 
 Applies in every repository, including inside `/hean-harness:uat-hotfix` and
 `/hean-harness:version-bump`. Commits you type in a terminal are not checked.
 
+## Git identity
+
+Where commits are signed (`commit.gpgsign` on and `user.signingkey` set), GitHub verifies a commit
+only when its author and committer emails are on the signing key. Claude Code is refused a
+`git config` that sets `user.email`, at any scope, to an address not on the key or removes it, and
+a `git push` that sends a commit carrying such an address; the refusal lists the commits and the
+command that rewrites them. `/hean-harness:doctor` reports whether the global `user.email` is on
+the key.
+
 ## Org roles
 
 Every org write from Claude Code — deploy, delete, anonymous Apex, data change, permission set

@@ -15,6 +15,7 @@ import { homedir, platform } from 'node:os';
 import { dirname, join } from 'node:path';
 import { claudeDir } from './paths.mjs';
 import { findLinear, LINEAR_HOST } from './mcp.mjs';
+import { allowed, gitConfig, keyEmails, signingKey } from './signing-identity.mjs';
 
 export const SUPERPOWERS = 'superpowers@claude-plugins-official';
 
@@ -236,6 +237,28 @@ export function checkCodeAnalyzer() {
     : { ok: false, detail: 'not installed, so the code analyzer cannot run' };
 }
 
+/**
+ * Is the global user.email one of the signing key's UID emails?
+ *
+ * Checked only when commits are signed by the global configuration. A global
+ * address that is not on the key makes every signed commit in every repository
+ * on this machine fail verification, which GitHub reports only at push.
+ */
+export function checkGitIdentity() {
+  const key = signingKey(null, ['--global']);
+  if (!key) return { ok: true, skipped: true, detail: 'commit signing is not on in ~/.gitconfig' };
+  const emails = keyEmails(key);
+  if (!emails) return { ok: true, skipped: true, detail: `signing key ${key} could not be read with gpg` };
+  const email = gitConfig(null, 'user.email', ['--global']);
+  if (email && allowed(email, emails)) return { ok: true, detail: `${email} is on signing key ${key}` };
+  return { ok: false, emails,
+           detail: `user.email is ${email ?? 'not set'}, which is not on signing key ${key}, so signed commits fail verification at push` };
+}
+
+export const gitIdentityFix = r =>
+  r.emails ? `git config --global user.email ${r.emails[0]}` +
+             (r.emails.length > 1 ? `    (or ${r.emails.slice(1).join(', ')})` : '') : null;
+
 export const sfCliFix = 'install it from https://developer.salesforce.com/tools/salesforcecli';
 export const analyzerFix = 'sf plugins install @salesforce/plugin-code-analyzer';
 export const nodeModulesFix = 'npm install';
@@ -279,6 +302,7 @@ export const superpowersFix = (sp = checkSuperpowers()) => pluginFix(SUPERPOWERS
 export function allChecks(repo) {
   const sp = checkSuperpowers();
   const ego = checkEgoSkills();
+  const identity = checkGitIdentity();
   return [
     { name: 'Java',          result: checkJava(),             fix: javaFix() },
     { name: 'sf CLI',        result: checkSfCli(),            fix: sfCliFix },
@@ -288,7 +312,8 @@ export function allChecks(repo) {
     { name: 'ego skills',    result: ego,      fix: ego.ok ? null : pluginFix(EGO_PLUGIN, ego) },
     { name: 'ego lite',      result: checkEgoLite(),          fix: null },
     { name: 'Linear',        result: checkLinearMcp(repo),    fix: linearFix },
-    { name: 'python3',       result: checkPython(),           fix: pythonFix() }
+    { name: 'python3',       result: checkPython(),           fix: pythonFix() },
+    { name: 'git identity',  result: identity, fix: gitIdentityFix(identity) }
   ];
 }
 
