@@ -223,9 +223,9 @@ Discard `EXISTING_AUTOMATIC_STEPS_BY_ID` for the group and regenerate from the b
 
 **Step 2 — Ask whether the manual rows changed.**
 
-Manual rows are never re-derived. Print the Story reminder defined in `.claude/rules/runbook-deployment-steps.md` immediately before this question. Ask once per group:
+Manual rows are never re-derived. Before the call, send the Story reminder from `.claude/rules/runbook-deployment-steps.md` as reply text, one block per story, in the rule's exact shape; read that file first when it is not already in context. Put the story's purpose in the question itself too: `Which manual deployment steps apply to {ID} ({what the story asks for, 12 words or fewer})?` Ask once per group:
 ```
-Add or update manual deployment steps for Story {N} ({WORK-ID}: {TITLE})? (yes/no)
+Add or update manual deployment steps for Story {N} ({WORK-ID}: {what the story asks for, 12 words or fewer})? (yes/no)
 ```
 If the answer is anything other than an explicit yes, carry `EXISTING_MANUAL_STEPS_BY_ID[group work ID]` through unchanged — an unanswered question must never silently drop a manual step someone already recorded.
 

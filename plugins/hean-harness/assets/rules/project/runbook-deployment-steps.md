@@ -64,7 +64,7 @@ Print this reminder as plain text immediately before the first question about ma
 
 ```
 {ID} — {Linear title}
-Story:   {first sentence of the Linear description}
+Asked for: {what the story asks for, in one or two sentences of your own from the Linear description}
 Done on this branch ({N} commits, {M} files):
   - {up to 5 "What was Done" bullets}
 Found automatically:
@@ -74,7 +74,8 @@ Found automatically:
 Same story in other repositories: {repo (branch, N commits), or none — checked {list}}
 ```
 
-- **Line sources**: the title and first sentence come from the Linear story lookup, the counts from the story's commits and file set, the bullets from the step that builds the "What was Done" bullets, the runbook and delete package lines from the Automatic rows step, and the site line from the story's changed files matched against the site paths below. Only the other-repositories line needs a new lookup.
+- **Line sources**: the title and the Asked for line come from the Linear story lookup, the counts from the story's commits and file set, the bullets from the step that builds the "What was Done" bullets, the runbook and delete package lines from the Automatic rows step, and the site line from the story's changed files matched against the site paths below. Only the other-repositories line needs a new lookup.
+- **Never shortened**: Send the block in this exact shape as reply text, in the same message as the question and before it. A one-sentence summary does not replace it.
 - **Experience Cloud site files**: Salesforce site metadata matched by type — any changed path under an `experiences/`, `digitalExperiences/`, `digitalExperienceConfigs/` or `siteDotComSites/` metadata folder, and any changed file ending `.site-meta.xml` or `.network-meta.xml`. A folder that is only named `sites`, such as one inside a static resource, does not count.
 - **Other repositories**: check every sibling folder of the main repository that is a git repository. Resolve the main repository through the common git directory, so a worktree under `.claude/worktrees/` looks beside the main repository, not inside it. Skip a sibling whose common git directory is the current repository's, because it is a worktree of this repository, not another one. A branch matches `work-{ID}` with any suffix that does not extend the ID's number, local or remote:
 
