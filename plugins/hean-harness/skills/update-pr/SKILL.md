@@ -22,6 +22,25 @@ This `BRANCH_WORK_ID` is only the branch-name validation gate. The body filename
 
 ## Phase 2 — Ensure the remote branch is up to date
 
+**Step 1 — Rebuild the per-story manifest.**
+
+create-pr, update-pr and branch-manifest work together: the PR carries the story's manifest as the branch now stands. Run:
+```bash
+node "${CLAUDE_SKILL_DIR}/../branch-manifest/scripts/branch-manifest.mjs"
+```
+
+Read the first line:
+
+- `Manifest: <path> created` or `updated` → commit only that file, then continue; Step 2 pushes it:
+  ```bash
+  git add <path>
+  git commit -m "@{BRANCH_WORK_ID}: Add the per-story manifest"      # when created
+  git commit -m "@{BRANCH_WORK_ID}: Update the per-story manifest"   # when updated
+  ```
+  Show the output's "Added since…" and "Dropped since…" sections to the user. When the commit is refused, show the refusal word for word, list the manifest as uncommitted, and stop.
+- `Manifest: <path> unchanged` or `… not written; no Salesforce metadata was added or modified` → commit nothing and continue.
+- `Error: …` → show the output word for word and stop.
+
 Derive `{owner}/{repo}` from:
 ```bash
 git remote get-url origin

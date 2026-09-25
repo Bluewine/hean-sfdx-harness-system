@@ -312,7 +312,26 @@ If the output shows `github.com` as authenticated, proceed. If not, stop and tel
 
 ## Phase 9 — Submit the PR
 
-**Step 1 — Ensure the branch is pushed and up to date.**
+**Step 1 — Rebuild the per-story manifest.**
+
+create-pr, update-pr and branch-manifest work together: the PR carries the story's manifest as the branch now stands. Run:
+```bash
+node "${CLAUDE_SKILL_DIR}/../branch-manifest/scripts/branch-manifest.mjs"
+```
+
+Read the first line:
+
+- `Manifest: <path> created` or `updated` → commit only that file, then continue; Step 2 pushes it:
+  ```bash
+  git add <path>
+  git commit -m "@{BRANCH_WORK_ID}: Add the per-story manifest"      # when created
+  git commit -m "@{BRANCH_WORK_ID}: Update the per-story manifest"   # when updated
+  ```
+  Show the output's "Added since…" and "Dropped since…" sections to the user. When the commit is refused, show the refusal word for word, list the manifest as uncommitted, and stop.
+- `Manifest: <path> unchanged` or `… not written; no Salesforce metadata was added or modified` → commit nothing and continue.
+- `Error: …` → show the output word for word and stop.
+
+**Step 2 — Ensure the branch is pushed and up to date.**
 
 Derive `{owner}/{repo}` from `git remote get-url origin` (strip `git@github.com:` prefix and `.git` suffix). Use the current branch name as `{branch}`.
 
@@ -328,7 +347,7 @@ git push origin {branch}
 ```
 No confirmation needed — this is a non-force push of the user's own feature branch. If the push fails (e.g. diverged history), stop and tell the user: "Push failed — resolve manually (`git pull --rebase` or similar), then re-run `/create-pr`."
 
-**Step 2 — Create the PR.**
+**Step 3 — Create the PR.**
 
 ```bash
 BODY_FILE="$(git rev-parse --show-toplevel)/.claude/skills/create-pr/output/{ROOT_WORK_ID}.md"
