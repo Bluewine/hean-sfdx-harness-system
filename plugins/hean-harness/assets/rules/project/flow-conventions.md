@@ -31,7 +31,7 @@ Every flow file must include the following fields. **Element order matters** —
 </processMetadataValues>
 <processType>AutoLaunchedFlow</processType> <!-- or Screen, RecordTriggered, etc. -->
 <!-- ... start, status, triggerOrder, variables ... -->
-<triggerOrder>1500</triggerOrder>            <!-- record-triggered flows -->
+<triggerOrder>1500</triggerOrder>            <!-- record-triggered flows; starting value, the trigger order review suggests the final one -->
 ```
 
 ## Fault path pattern
@@ -315,6 +315,7 @@ The review covers the synchronous paths of flows triggered by the same object. T
    - Otherwise, place it in the middle of the allowed range.
    - With no related flow, keep its current `triggerOrder`; the order does not matter.
    - When a flow next to the suggested position has no `triggerOrder`, report that flow instead of a number.
+   - When a flow must run both before and after the finished flow, report that the two depend on each other; no `triggerOrder` resolves it.
    - With an empty range or no free value, name the existing flows that would need renumbering.
 5. When two flows write the same field, name the one that runs later; it sets the final value.
 6. Name every existing flow on the same object and timing that already runs before a flow whose written field it reads. Leave Draft and Obsolete flows out of every step; they do not run.

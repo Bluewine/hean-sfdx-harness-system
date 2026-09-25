@@ -119,7 +119,12 @@ function parseFlowDependencies(xmlText, object, triggerType) {
     if (flowName) subflows.push(flowName);
   }
 
-  return { writes: dedupeFields(writes), reads: dedupeFields(reads), subflows: dedupeFields(subflows) };
+  // Id is never written, so a scanned $Record.Id (e.g. the Id = $Record.Id
+  // filter of an update-by-id recordUpdates) only adds noise, never a real
+  // dependency on another flow.
+  const realReads = dedupeFields(reads).filter(f => f.toLowerCase() !== 'id');
+
+  return { writes: dedupeFields(writes), reads: realReads, subflows: dedupeFields(subflows) };
 }
 
 export const TIMINGS = ['RecordBeforeSave', 'RecordAfterSave', 'RecordBeforeDelete'];
@@ -354,11 +359,17 @@ export function findFlowFileByName(files, flowApiName) {
   return files.find(f => basename(f, '.flow-meta.xml').toLowerCase() === flowApiName.toLowerCase()) ?? null;
 }
 
-/** Every flow in `list` linked to `f` by a write-read pair, in either direction. */
+/**
+ * Every flow in `list` linked to `f`: by a write-read pair in either
+ * direction, or by writing the same field `f` writes — two flows racing to
+ * set the same field are related even with no read between them, since one
+ * of them overwrites the other.
+ */
 function linkedFlows(list, f) {
   const out = new Set();
   for (const field of f.writes) for (const reader of readersOf(list, field, f)) out.add(reader);
   for (const field of f.reads) for (const writer of writersOf(list, field, f)) out.add(writer);
+  for (const field of f.writes) for (const writer of writersOf(list, field, f)) out.add(writer);
   return out;
 }
 
@@ -435,11 +446,25 @@ function nearestFreeInteger(start, lo, hi, taken) {
 /**
  * The allowed placement range and a suggested triggerOrder for `target`
  * within `groupFlowsList`, given its predecessors and successors. Either half
- * can come back as descriptive text instead of a number, per the rules in
- * task-1-brief.md item 4: an empty range, a dependency with no triggerOrder,
- * or no free integer to suggest.
+ * can come back as descriptive text instead of a number: an empty range, a
+ * dependency with no triggerOrder, a genuine cycle, or no free integer to
+ * suggest.
  */
 function placementFor(groupFlowsList, target, predecessors, successors, related) {
+  // A flow that is both a predecessor and a successor of `target` demands
+  // target run after it and before it at once. No triggerOrder value can
+  // satisfy that, regardless of what the other flows in the group allow, so
+  // this is checked before anything numeric.
+  const cyclePred = predecessors.find(p => successors.some(s => s.flow === p.flow));
+  if (cyclePred) {
+    const cycleSucc = successors.find(s => s.flow === cyclePred.flow);
+    const text = `${target.name} and ${cyclePred.flow.name} depend on each other \u2014 ` +
+      `${cyclePred.flow.name} writes ${cyclePred.field}, which ${target.name} reads, and ` +
+      `${target.name} writes ${cycleSucc.field}, which ${cyclePred.flow.name} reads. ` +
+      `triggerOrder cannot resolve this: confirm one dependency is not real, or restructure the flow logic.`;
+    return { rangeText: text, suggestionText: text, suggestionValue: null };
+  }
+
   const predOrders = predecessors.map(p => p.flow.order);
   const succOrders = successors.map(s => s.flow.order);
   const predWithNoOrder = predecessors.find(p => p.flow.order === null);
@@ -457,6 +482,8 @@ function placementFor(groupFlowsList, target, predecessors, successors, related)
   const takenValues = new Set(allOrders);
   const others = groupFlowsList.filter(f => f !== target);
 
+  // An empty range here is always caused by different flows — a shared
+  // culprit was already caught by the cycle check above.
   if (highestPred !== null && lowestSucc !== null && lowestSucc - highestPred <= 1) {
     const predAt = predecessors.filter(p => p.flow.order === highestPred).map(describeLink).join(', ');
     const succAt = successors.filter(s => s.flow.order === lowestSucc).map(describeLink).join(', ');
@@ -538,8 +565,8 @@ function finalWriterAt(groupFlowsList, target, suggestedOrder, field) {
 }
 
 /**
- * The placement report for one record-triggered flow (task-1-brief.md item
- * 4): its predecessors and successors within its own group, the group's
+ * The placement report for one record-triggered flow, for --flow placement:
+ * its predecessors and successors within its own group, the group's
  * connected component of related flows, the allowed triggerOrder range, and
  * a suggested value.
  */
@@ -570,11 +597,15 @@ export function formatFlowPlacement(flows, target) {
   lines.push(`Allowed range: ${rangeText}`);
   lines.push(`Suggested triggerOrder: ${suggestionText} (current: ${target.order ?? 'none'})`);
 
-  if (suggestionValue !== null && suggestionValue !== undefined) {
+  // Printed whether or not a new number was suggested — a double write is a
+  // fact about the flow's writes, not about whether this run happened to
+  // find a free placement value.
+  {
+    const orderForCheck = suggestionValue !== null && suggestionValue !== undefined ? suggestionValue : target.order;
     for (const field of target.writes) {
       const otherWriters = writersOf(activeFlows, field, target);
       if (!otherWriters.length) continue;
-      lines.push(`  ${field} is also written by ${otherWriters.map(w => w.name).join(', ')} \u2014 ${finalWriterAt(activeFlows, target, suggestionValue, field)} would set the final value`);
+      lines.push(`  ${field} is also written by ${otherWriters.map(w => w.name).join(', ')} \u2014 ${finalWriterAt(activeFlows, target, orderForCheck, field)} would set the final value`);
     }
   }
 

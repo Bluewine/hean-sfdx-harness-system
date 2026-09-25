@@ -34,7 +34,7 @@ const check = (label, ok, detail = '') => {
 /**
  * A minimal record-triggered flow file, just complete enough for the parser.
  * The dependency-scan fields (default empty) each add one XML construct that
- * task-1-brief.md item 1 defines as a write or a read:
+ * the dependency scan treats as a write or a read:
  *   - startFilterFields: <start> entry filters — a read.
  *   - assignToRecordFields: a before-save `$Record.<field>` assignment — a write.
  *   - updateRecordFields: a <recordUpdates> with inputReference $Record — a write.
@@ -295,7 +295,7 @@ try {
   check('the CLI passes its argument through as the object filter',
         cliOut.includes('Contact_Validate') && !cliOut.includes('Case_'), cliOut);
 
-  // ==== field dependency analysis (task-1-brief.md item 1-3) =================
+  // ==== field dependency analysis (writes, reads, subflow calls) =============
   // Dep_Reader (100) reads a field via each of the three read mechanisms, plus
   // SharedField__c (also written by both later flows, for the conflict and
   // double-write checks), and calls a subflow. Dep_WriterAssign (200) writes
@@ -324,17 +324,17 @@ try {
       object: 'Depend__c', triggerType: 'RecordBeforeSave', order: 400,
       updateByIdFields: ['IdUpdateField__c'],
     }));
-  // Fix round 1, Important 1: a field can be both a write and a read of the
-  // same flow — a $Record__Prior comparison against a field this same flow
-  // also sets must still show up as a read.
+  // A field can be both a write and a read of the same flow — a
+  // $Record__Prior comparison against a field this same flow also sets must
+  // still show up as a read.
   writeFlow(root, 'force-app/main/default/flows', 'Dep_ReadPriorOfWritten',
     recordTriggeredFlow({
       object: 'Depend__c', triggerType: 'RecordBeforeSave', order: 50,
       assignToRecordFields: ['StatusField__c'], priorReadFields: ['StatusField__c'],
     }));
-  // Fix round 1, Controller ruling B: an Obsolete flow that writes the same
-  // field as two active flows must still show up in the listing with its
-  // status, but must never join the double-write or conflict scans.
+  // An Obsolete flow that writes the same field as two active flows must
+  // still show up in the listing with its status, but must never join the
+  // double-write or conflict scans.
   writeFlow(root, 'force-app/main/default/flows', 'Dep_Obsolete_Writer',
     recordTriggeredFlow({
       object: 'Depend__c', triggerType: 'RecordBeforeSave', order: 250, status: 'Obsolete',
@@ -385,22 +385,22 @@ try {
         depBlock);
 
   const priorWriteBlock = blockFor('Dep_ReadPriorOfWritten');
-  check('Important 1: a field written by this flow can still show up as a read (e.g. via $Record__Prior)',
+  check('a field written by this flow can still show up as a read (e.g. via $Record__Prior)',
         priorWriteBlock.some(l => l.startsWith('    writes:') && l.includes('StatusField__c')) &&
         priorWriteBlock.some(l => l.startsWith('    reads:') && l.includes('StatusField__c')),
         priorWriteBlock.join(' | '));
 
   const obsoleteWriterLine = depLines.find(l => l.includes('  Dep_Obsolete_Writer  ('));
   const doubleWriteLine = depLines.find(l => l.includes('all write SharedField__c'));
-  check('Controller ruling B: an Obsolete flow is still listed with its status and its own writes',
+  check('an Obsolete flow is still listed with its status and its own writes',
         obsoleteWriterLine?.includes('[Obsolete]') === true, obsoleteWriterLine);
-  check('Controller ruling B: an Obsolete writer never joins the double-write scan',
+  check('an Obsolete writer never joins the double-write scan',
         doubleWriteLine === '    Dep_WriterAssign, Dep_WriterUpdate all write SharedField__c — Dep_WriterUpdate runs last and sets the final value',
         doubleWriteLine);
-  check('Controller ruling B: an Obsolete writer never joins the existing-order-conflict scan',
+  check('an Obsolete writer never joins the existing-order-conflict scan',
         !depBlock.includes('runs before Dep_Obsolete_Writer'), depBlock);
 
-  // ==== --flow placement (task-1-brief.md item 4), the four fixture cases ====
+  // ==== --flow placement: four basic predecessor/successor shapes ============
   // Case 1: C reads F2 written by A only -> predecessor A, no successor,
   // suggestion after the last related flow (B): 1700.
   writeFlow(root, 'force-app/main/default/flows', 'DepCase1_A',
@@ -446,23 +446,68 @@ try {
         case3Out.includes('Allowed range: 1501–1599') && case3Out.includes('Suggested triggerOrder: 1550'),
         case3Out);
 
-  // Case 4: B writes F2, C reads F2 and writes F1 -> predecessor B (1600),
-  // successor B (reads F1) -> empty range, renumbering message. No A.
+  // Case 4: B writes F2, C reads F2 and writes F1, B reads F1 -> B is both a
+  // predecessor and a successor of C, a genuine cycle: no triggerOrder can
+  // put C after B and before B at once. No A.
   writeFlow(root, 'force-app/main/default/flows', 'DepCase4_B',
     recordTriggeredFlow({ object: 'DepCase4__c', triggerType: 'RecordAfterSave', order: 1600, updateRecordFields: ['F2'], formulaReadFields: ['F1'] }));
   writeFlow(root, 'force-app/main/default/flows', 'DepCase4_C',
     recordTriggeredFlow({ object: 'DepCase4__c', triggerType: 'RecordAfterSave', order: null, formulaReadFields: ['F2'], updateRecordFields: ['F1'] }));
 
   const case4Out = execFileSync('node', [SCRIPT, '--flow', 'DepCase4_C'], { cwd: root, encoding: 'utf8' });
-  check('case 4: predecessor and successor are the same flow -> empty range, renumbering message',
-        case4Out.includes('Allowed range: empty') && case4Out.includes('renumbering'),
+  check('case 4: the same flow is both predecessor and successor -> the two are reported as depending on each other, not a renumbering',
+        case4Out.includes('DepCase4_C and DepCase4_B depend on each other') &&
+        case4Out.includes('DepCase4_B writes F2, which DepCase4_C reads') &&
+        case4Out.includes('DepCase4_C writes F1, which DepCase4_B reads') &&
+        case4Out.includes('triggerOrder cannot resolve this') &&
+        !case4Out.includes('renumbering'),
         case4Out);
 
-  // ==== Fix round 1, Important 3: search outward for the nearest free =======
-  // integer instead of only trying the midpoint. A(1500) predecessor,
-  // B(1600) successor, U(1550) unrelated but sitting exactly on the naive
-  // midpoint -> the nearest free integer either side (1549) must be found
-  // instead of reporting no free integer.
+  // Case 5: A writes F1, C reads F1 (predecessor A) and writes F2, D reads F2
+  // (successor D) -> A and D are different flows sitting one apart, so the
+  // range is genuinely empty and existing flows need renumbering, unlike
+  // case 4 where the same flow filled both roles.
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase5_A',
+    recordTriggeredFlow({ object: 'DepCase5__c', triggerType: 'RecordAfterSave', order: 1600, updateRecordFields: ['F1'] }));
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase5_D',
+    recordTriggeredFlow({ object: 'DepCase5__c', triggerType: 'RecordAfterSave', order: 1601, formulaReadFields: ['F2'] }));
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase5_C',
+    recordTriggeredFlow({ object: 'DepCase5__c', triggerType: 'RecordAfterSave', order: null, formulaReadFields: ['F1'], updateRecordFields: ['F2'] }));
+
+  const case5Out = execFileSync('node', [SCRIPT, '--flow', 'DepCase5_C'], { cwd: root, encoding: 'utf8' });
+  check('case 5: predecessor and successor are different flows with an empty range -> the renumbering message',
+        case5Out.includes('Allowed range: empty') && case5Out.includes('renumbering') &&
+        !case5Out.includes('depend on each other'),
+        case5Out);
+
+  // Case 12: two after-save flows both write F9 with no read between them ->
+  // a same-field double write must still make them related to each other,
+  // must still print which one would set the final value, and must never
+  // fall into the "order does not matter" branch.
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase12_A',
+    recordTriggeredFlow({ object: 'DepCase12__c', triggerType: 'RecordAfterSave', order: 1500, updateRecordFields: ['F9'] }));
+  writeFlow(root, 'force-app/main/default/flows', 'DepCase12_B',
+    recordTriggeredFlow({ object: 'DepCase12__c', triggerType: 'RecordAfterSave', order: 1500, updateRecordFields: ['F9'] }));
+
+  const case12Out = execFileSync('node', [SCRIPT, '--flow', 'DepCase12_A'], { cwd: root, encoding: 'utf8' });
+  check('case 12: a same-field double write with no read link still counts as related, with the final-value line printed',
+        case12Out.includes('Related flows: DepCase12_B') &&
+        case12Out.includes('F9 is also written by DepCase12_B') && case12Out.includes('would set the final value') &&
+        !case12Out.includes('order does not matter'),
+        case12Out);
+  // The final-value line must print alongside a --flow placement that does
+  // have a suggested number (this case's suggestion is 1600), not only for
+  // one that falls back to keeping the current triggerOrder.
+  check('the final-value line is printed alongside a suggested triggerOrder number',
+        case12Out.includes('Suggested triggerOrder: 1600') &&
+        case12Out.includes('would set the final value'),
+        case12Out);
+
+  // ==== search outward for the nearest free integer instead of only ========
+  // trying the midpoint. A(1500) predecessor, B(1600) successor, U(1550)
+  // unrelated but sitting exactly on the naive midpoint -> the nearest free
+  // integer either side (1549) must be found instead of reporting no free
+  // integer.
   writeFlow(root, 'force-app/main/default/flows', 'DepCase6_A',
     recordTriggeredFlow({ object: 'DepCase6__c', triggerType: 'RecordAfterSave', order: 1500, updateRecordFields: ['F2'] }));
   writeFlow(root, 'force-app/main/default/flows', 'DepCase6_B',
@@ -473,13 +518,13 @@ try {
     recordTriggeredFlow({ object: 'DepCase6__c', triggerType: 'RecordAfterSave', order: null, formulaReadFields: ['F2'], updateRecordFields: ['F3'] }));
 
   const case6Out = execFileSync('node', [SCRIPT, '--flow', 'DepCase6_C'], { cwd: root, encoding: 'utf8' });
-  check('Important 3: the naive midpoint (1550) is taken by an unrelated flow, so the nearest free integer (1549) is suggested',
+  check('the naive midpoint (1550) is taken by an unrelated flow, so the nearest free integer (1549) is suggested',
         case6Out.includes('Allowed range: 1501–1599') && case6Out.includes('Suggested triggerOrder: 1549'),
         case6Out);
 
-  // ==== Fix round 1, Important 2: real run positions for "next flow above" ===
-  // and "last related flow", not a purely numeric search that skips a
-  // no-order flow sitting in between.
+  // ==== real run positions for "next flow above" and "last related flow", ===
+  // not a purely numeric search that skips a no-order flow sitting in
+  // between.
   // Repro 1: related P=950, unnumbered N, next numbered Q=1500 -> the real
   // next flow above P is N, not Q, and N has no triggerOrder, so no number
   // can be suggested (not 1225).
@@ -493,7 +538,7 @@ try {
     recordTriggeredFlow({ object: 'DepCase7__c', triggerType: 'RecordAfterSave', order: null, formulaReadFields: ['F1'] }));
 
   const case7Out = execFileSync('node', [SCRIPT, '--flow', 'DepCase7_C'], { cwd: root, encoding: 'utf8' });
-  check('Important 2 repro 1: the real next flow above P (N, unnumbered) blocks a number, instead of skipping to Q for 1225',
+  check('repro 1: the real next flow above P (N, unnumbered) blocks a number, instead of skipping to Q for 1225',
         !case7Out.includes('1225') && !case7Out.includes('no free integer fits') &&
         case7Out.includes('DepCase7_N') && /Suggested triggerOrder: cannot be given a number/.test(case7Out),
         case7Out);
@@ -508,30 +553,29 @@ try {
     recordTriggeredFlow({ object: 'DepCase8__c', triggerType: 'RecordAfterSave', order: null, formulaReadFields: ['F1'] }));
 
   const case8Out = execFileSync('node', [SCRIPT, '--flow', 'DepCase8_C'], { cwd: root, encoding: 'utf8' });
-  check('Important 2 repro 2: the real next flow above P (R, unnumbered) blocks a number, instead of suggesting 600',
+  check('repro 2: the real next flow above P (R, unnumbered) blocks a number, instead of suggesting 600',
         !case8Out.includes('600') && !case8Out.includes('no free integer fits') &&
         case8Out.includes('DepCase8_R') && /Suggested triggerOrder: cannot be given a number/.test(case8Out),
         case8Out);
 
-  // ==== Fix round 1, Controller ruling A: a fully isolated flow -> keep the ==
-  // current triggerOrder, give no new number, instead of "last flow + 100".
+  // ==== a fully isolated flow keeps its current triggerOrder, with no new ===
+  // number given, instead of "last flow + 100".
   writeFlow(root, 'force-app/main/default/flows', 'DepCase9_Other',
     recordTriggeredFlow({ object: 'DepCase9__c', triggerType: 'RecordAfterSave', order: 1500, formulaReadFields: ['OtherOnlyField__c'] }));
   writeFlow(root, 'force-app/main/default/flows', 'DepCase9_C',
     recordTriggeredFlow({ object: 'DepCase9__c', triggerType: 'RecordAfterSave', order: 1300, formulaReadFields: ['COnlyField__c'] }));
 
   const case9Out = execFileSync('node', [SCRIPT, '--flow', 'DepCase9_C'], { cwd: root, encoding: 'utf8' });
-  check('Controller ruling A: no dependency on any other group flow -> keep the current triggerOrder, no new number',
+  check('no dependency on any other group flow -> keep the current triggerOrder, no new number',
         case9Out.includes('Predecessors:\n  (none)') && case9Out.includes('Successors:\n  (none)') &&
         case9Out.includes('Related flows: (none)') &&
         case9Out.includes('no dependency on any other flow in this group') &&
         case9Out.includes('keep the current triggerOrder (1300)'),
         case9Out);
 
-  // ==== Fix round 1, Controller ruling B: Draft/Obsolete excluded from ======
-  // predecessors, successors, related flows, range and neighbours (not just
-  // from the plain listing's conflict scan, already covered above for the
-  // Depend__c group).
+  // ==== Draft/Obsolete flows are excluded from predecessors, successors, ===
+  // related flows, range and neighbours (not just from the plain listing's
+  // conflict scan, already covered above for the Depend__c group).
   writeFlow(root, 'force-app/main/default/flows', 'DepCase10_ActivePred',
     recordTriggeredFlow({ object: 'DepCase10__c', triggerType: 'RecordAfterSave', order: 1500, updateRecordFields: ['F2'] }));
   writeFlow(root, 'force-app/main/default/flows', 'DepCase10_ObsoletePred',
@@ -542,7 +586,7 @@ try {
     recordTriggeredFlow({ object: 'DepCase10__c', triggerType: 'RecordAfterSave', order: null, formulaReadFields: ['F2'], updateRecordFields: ['F3'] }));
 
   const case10Out = execFileSync('node', [SCRIPT, '--flow', 'DepCase10_C'], { cwd: root, encoding: 'utf8' });
-  check('Controller ruling B: an Obsolete predecessor/successor/related flow is excluded from --flow placement',
+  check('an Obsolete predecessor/successor/related flow is excluded from --flow placement',
         case10Out.includes('Predecessors:\n  DepCase10_ActivePred') &&
         !case10Out.includes('DepCase10_ObsoletePred') &&
         case10Out.includes('Successors:\n  (none)') &&
@@ -552,18 +596,18 @@ try {
         case10Out.includes('Suggested triggerOrder: 1600'),
         case10Out);
   const case10ListOut = execFileSync('node', [SCRIPT, 'DepCase10__c'], { cwd: root, encoding: 'utf8' });
-  check('Controller ruling B: the Obsolete flows still appear in the plain listing with their status',
+  check('the Obsolete flows still appear in the plain listing with their status',
         case10ListOut.includes('DepCase10_ObsoletePred') && case10ListOut.includes('DepCase10_ObsoleteSucc') &&
         (case10ListOut.match(/\[Obsolete\]/g) || []).length === 2,
         case10ListOut);
 
-  // ==== Fix round 2, item 2: the free-integer search must stay in the gap ===
-  // after the last related flow, not the whole allowed range. A=1500 writes
-  // F1 and F2, B=1600 reads F1 (so B is related, via A, to C below), unrelated
-  // U=1601 sits immediately above B with no gap at all -> the round-1 code
-  // searched the whole 1501-2000 range from the 1600/1601 midpoint (1600,
-  // already taken) outward and landed on 1599, which runs BEFORE B. The fix
-  // must instead see there is no room in the gap between B and U and say so.
+  // ==== the free-integer search must stay in the gap after the last related =
+  // flow, not the whole allowed range. A=1500 writes F1 and F2, B=1600 reads
+  // F1 (so B is related, via A, to C below), unrelated U=1601 sits
+  // immediately above B with no gap at all -> a search across the whole
+  // 1501-2000 range from the 1600/1601 midpoint (1600, already taken)
+  // outward would land on 1599, which runs BEFORE B. It must instead see
+  // there is no room in the gap between B and U and say so.
   writeFlow(root, 'force-app/main/default/flows', 'DepCase13_A',
     recordTriggeredFlow({ object: 'DepCase13__c', triggerType: 'RecordAfterSave', order: 1500, updateRecordFields: ['F1', 'F2'] }));
   writeFlow(root, 'force-app/main/default/flows', 'DepCase13_B',
@@ -574,17 +618,17 @@ try {
     recordTriggeredFlow({ object: 'DepCase13__c', triggerType: 'RecordAfterSave', order: null, formulaReadFields: ['F2'] }));
 
   const case13Out = execFileSync('node', [SCRIPT, '--flow', 'DepCase13_C'], { cwd: root, encoding: 'utf8' });
-  check('Item 2: no room between the last related flow (B) and the next flow above it (U) -> renumbering, not 1599',
+  check('no room between the last related flow (B) and the next flow above it (U) -> renumbering, not 1599',
         !case13Out.includes('1599') && !case13Out.includes('no free integer fits in the allowed range') &&
         case13Out.includes('DepCase13_B') && case13Out.includes('DepCase13_U') && case13Out.includes('renumbering'),
         case13Out);
 
-  // ==== Fix round 2, item 3: the successor-without-predecessor branch must ==
-  // use the real run-order neighbour below the successor, not a numeric
-  // filter. X=500 (low bucket), Y unnumbered (runs right after X, before the
-  // successor S=1200), C writes F1 which S reads. The real neighbour
-  // immediately below S is Y, which has no triggerOrder, so no number can be
-  // suggested (a numeric filter would wrongly find X and suggest 850).
+  // ==== the successor-without-predecessor branch must use the real ==========
+  // run-order neighbour below the successor, not a numeric filter. X=500
+  // (low bucket), Y unnumbered (runs right after X, before the successor
+  // S=1200), C writes F1 which S reads. The real neighbour immediately below
+  // S is Y, which has no triggerOrder, so no number can be suggested (a
+  // numeric filter would wrongly find X and suggest 850).
   writeFlow(root, 'force-app/main/default/flows', 'DepCase11_X',
     recordTriggeredFlow({ object: 'DepCase11__c', triggerType: 'RecordAfterSave', order: 500 }));
   writeFlow(root, 'force-app/main/default/flows', 'DepCase11_Y',
@@ -595,7 +639,7 @@ try {
     recordTriggeredFlow({ object: 'DepCase11__c', triggerType: 'RecordAfterSave', order: null, updateRecordFields: ['F1'] }));
 
   const case11Out = execFileSync('node', [SCRIPT, '--flow', 'DepCase11_C'], { cwd: root, encoding: 'utf8' });
-  check('Item 3: the real run-order neighbour below the successor (Y, unnumbered) blocks a number, instead of suggesting 850 via X',
+  check('the real run-order neighbour below the successor (Y, unnumbered) blocks a number, instead of suggesting 850 via X',
         !case11Out.includes('850') && !case11Out.includes('no free integer fits in the allowed range') &&
         case11Out.includes('DepCase11_Y') && /Suggested triggerOrder: cannot be given a number/.test(case11Out),
         case11Out);
