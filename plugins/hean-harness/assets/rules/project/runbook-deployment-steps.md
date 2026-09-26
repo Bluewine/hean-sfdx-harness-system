@@ -43,7 +43,7 @@ Use dynamic, string-keyed access instead, for every field or object touched by t
 
 - Read: `Database.query('...')` into `List<SObject>`, then `.get('Field__c')` / `.getSObject('Relationship__r')`.
 - Write: `Schema.getGlobalDescribe().get('ObjectName').newSObject()`, then `.put('Field__c', value)`.
-- Guard with `Schema.SObjectType.<Object>.fields.getMap().containsKey('field__c')` (lowercase key) before touching a field that may not exist. The guard protects the field's data at runtime; it does nothing for compile-time syntax — the dynamic-access rule above is what makes the guard meaningful at all.
+- Guard with `Schema.getGlobalDescribe().get('ObjectName').getDescribe().fields.getMap().containsKey('field__c')` (lowercase key) before touching a field that may not exist. The guard protects the field's data at runtime; it does nothing for compile-time syntax — the dynamic-access rule above is what makes the guard meaningful at all.
 
 Apply this to every field the script touches that this release adds or removes — not only the one being removed. A script safe against the field it deletes but still typed against the field it creates fails identically, just in the opposite direction: it compiles once the new field exists everywhere, and fails everywhere it does not yet.
 
