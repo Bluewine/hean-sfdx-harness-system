@@ -169,22 +169,22 @@ Record the answer as `CAPTURE_TARGET`.
 
 **Step 2 — Capture the image.**
 
-Check whether Playwright MCP browser tools are available in this session.
+Try, in this order:
 
-Playwright available:
-- Ask for the page URL if it was not already given earlier in this conversation → `TARGET_URL`.
-- Ask for login credentials if the page requires them and they were not already given → `CREDENTIALS`. State plainly that credentials are typed into the live browser session only, never stored or logged.
-- Navigate to `TARGET_URL`, sign in if `CREDENTIALS` were given, then take a page snapshot to locate `CAPTURE_TARGET` if it names a specific element.
-- Take the screenshot: full page when `CAPTURE_TARGET` is "entire page"/"window", scoped to the located element otherwise. Save it to a temporary file.
-
-Playwright unavailable, or the capture attempt fails:
-```
-I can't capture that automatically. Provide either:
-1. A file path to an existing screenshot, or
-2. Paste the image from your clipboard.
-```
-- File path → use as-is.
-- Clipboard paste → `pbpaste` does not handle images; extract the clipboard image to a temp PNG via `osascript` reading the clipboard's PNG class instead.
+1. **ego lite** — when the ego-browser skill is listed in this session and `ego-browser nodejs -e 'console.log(typeof taskSpace)'` prints `function` (read standard output and standard error together; ego lite answers on standard error). Load the ego-browser skill and follow it: ask for the page URL if not already given → `TARGET_URL`; capture in one task space; when the page asks for a login, hand the ego lite window to the user to sign in there and wait for their confirmation — never ask for credentials in chat. Take the screenshot of `CAPTURE_TARGET` (full page for "entire page"/"window", the located element otherwise) and save it to a temporary file.
+2. **Playwright MCP** — when ego lite is not usable and the Playwright MCP browser tools are available.
+   - Ask for the page URL if it was not already given earlier in this conversation → `TARGET_URL`.
+   - Ask for login credentials if the page requires them and they were not already given → `CREDENTIALS`. State plainly that credentials are typed into the live browser session only, never stored or logged.
+   - Navigate to `TARGET_URL`, sign in if `CREDENTIALS` were given, then take a page snapshot to locate `CAPTURE_TARGET` if it names a specific element.
+   - Take the screenshot: full page when `CAPTURE_TARGET` is "entire page"/"window", scoped to the located element otherwise. Save it to a temporary file.
+3. **Manual** — when neither works, or a capture fails:
+   ```
+   I can't capture that automatically. Provide either:
+   1. A file path to an existing screenshot, or
+   2. Paste the image from your clipboard.
+   ```
+   - File path → use as-is.
+   - Clipboard paste → `pbpaste` does not handle images; extract the clipboard image to a temp PNG via `osascript` reading the clipboard's PNG class instead.
 
 **Step 3 — Caption and continue.**
 
