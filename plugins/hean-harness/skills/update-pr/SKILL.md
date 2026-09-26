@@ -5,7 +5,7 @@ description: Update an existing open PR body — detects root and merged child-b
 
 You are executing the `/update-pr` skill. Work through the phases below in order.
 
-Every request to update or refresh an open pull request's body runs this skill, whatever the PR's base branch, except a PR that release-pr, uat-hotfix or version-bump opens or edits as one of its own steps. A PR body not rendered from this skill's template is wrong; never write one by hand and call `gh pr edit` directly.
+Every request to update or refresh an open pull request's body runs this skill, whatever the PR's base branch, except a PR that release-pr, uat-hotfix or version-bump opens or edits as one of its own steps. Render the body from this skill's template, unless the user asks in their own words for a different body or template — then write the body as they ask, skip the template self-check, and keep every other phase.
 
 ## Phase 1 — Extract branch work ID
 
@@ -384,6 +384,8 @@ Wait for the user to type `yes` before proceeding.
 ## Phase 10 — Submit
 
 Use the repo-root path for `--body-file` and never pass `--title` or `--base`. `gh pr edit` changes only the body and, when the PR has none, the assignee; the live PR title and base stay as they are.
+
+**Check the rendered body.** Unless the user asked for a different body or template, confirm the body file starts with `<!-- PR Title:` and contains `### What was Done?`. When either is missing, render the body again from the template and check once more; if it is still missing, show the file path and stop.
 
 If `HAS_ASSIGNEES` is false (no existing assignees), include `--add-assignee @me`:
 ```bash

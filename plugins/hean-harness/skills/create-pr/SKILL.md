@@ -6,7 +6,7 @@ argument-hint: "[--base <branch>]"
 
 You are executing the `/create-pr` skill. Work through the phases below in order.
 
-Every request to open, create or raise a pull request runs this skill, whatever the target branch, except a PR that release-pr, uat-hotfix or version-bump opens or edits as one of its own steps. A PR body not rendered from this skill's template is wrong; never write one by hand and call `gh pr create` directly.
+Every request to open, create or raise a pull request runs this skill, whatever the target branch, except a PR that release-pr, uat-hotfix or version-bump opens or edits as one of its own steps. Render the body from this skill's template, unless the user asks in their own words for a different body or template — then write the body as they ask, skip the template self-check, and keep every other phase.
 
 ## Phase 0 — Base branch
 
@@ -355,6 +355,8 @@ If the `gh api` call is a 404 (branch not on the remote yet) or `git rev-list --
 git push origin {branch}
 ```
 No confirmation needed — this is a non-force push of the user's own feature branch. If the push fails (e.g. diverged history), stop and tell the user: "Push failed — resolve manually (`git pull --rebase` or similar), then re-run `/create-pr`."
+
+**Check the rendered body.** Unless the user asked for a different body or template, confirm the body file starts with `<!-- PR Title:` and contains `### What was Done?`. When either is missing, render the body again from the template and check once more; if it is still missing, show the file path and stop.
 
 **Step 3 — Create the PR.**
 
