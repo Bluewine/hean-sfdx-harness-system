@@ -25,36 +25,24 @@ import {
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { parseArgs } from "node:util";
+import {
+  MAX_BUFFER,
+  git,
+  gitOut,
+  resolveMergeBase
+} from "../../../scripts/lib/merge-base.mjs";
 
 const USAGE =
   "Usage: branch-manifest.mjs [--base <branch>] [--name <manifest-name>] [--output-dir <dir>] [--args-stdin]";
 // Work IDs such as ABC-123; the first one in the branch name names the manifest.
 const WORK_ID = /[A-Z][A-Z0-9]*-\d+/;
-// Base branch names tried after the branch's recorded creation source and origin's default branch.
-const COMMON_BASES = ["integration", "develop", "main", "master"];
 const UNINFERABLE = /^(.*): Could not infer a metadata type$/;
 // Folders whose components are directories: deleting one file inside still changes the component.
 const BUNDLE_FOLDERS = new Set(["lwc", "aura", "staticresources"]);
-const MAX_BUFFER = 64 * 1024 * 1024;
 // A custom-labels file, source-format suffix; sf always names it CustomLabels.labels-meta.xml.
 const LABELS_FILE = /\.labels-meta\.xml$/;
 // Label fields compared as scalars; categories is multi-valued and compared as a sorted set instead.
 const LABEL_FIELDS = ["value", "shortDescription", "protected", "language"];
-
-function git(args, input) {
-  return spawnSync("git", args, {
-    encoding: "utf8",
-    input,
-    maxBuffer: MAX_BUFFER
-  });
-}
-
-function gitOut(args) {
-  const result = git(args);
-  if (result.status !== 0)
-    throw new Error(`git ${args.join(" ")} failed: ${result.stderr.trim()}`);
-  return result.stdout;
-}
 
 function nulList(text) {
   return text.split("\0").filter(Boolean);
@@ -90,78 +78,6 @@ function manifestName(explicit, branch) {
   if (!branch)
     return `detached-${gitOut(["rev-parse", "--short=8", "HEAD"]).trim()}`;
   return WORK_ID.exec(branch)?.[0] ?? branch.replace(/[^A-Za-z0-9._-]+/g, "-");
-}
-
-function refExists(ref) {
-  return (
-    git(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]).status === 0
-  );
-}
-
-// The reflog's oldest entry records the ref a local branch was created from, when it names one.
-function creationSource(branch) {
-  if (!branch) return null;
-  const entries = git([
-    "reflog",
-    "show",
-    "--format=%gs",
-    `refs/heads/${branch}`
-  ])
-    .stdout.trim()
-    .split("\n");
-  const source = /^branch: Created from (.+)$/.exec(
-    entries[entries.length - 1] ?? ""
-  )?.[1];
-  const name = source
-    ?.replace(/^refs\/(heads|remotes)\//, "")
-    .replace(/^origin\//, "");
-  return name && name !== "HEAD" && name !== branch && refExists(source)
-    ? name
-    : null;
-}
-
-function originDefault() {
-  const result = git([
-    "symbolic-ref",
-    "--quiet",
-    "--short",
-    "refs/remotes/origin/HEAD"
-  ]);
-  return result.status === 0
-    ? result.stdout.trim().replace(/^origin\//, "")
-    : null;
-}
-
-// Every candidate is tried as origin/<name> and <name>; the newest merge-base wins, so a stale local
-// branch never drags merged work into the diff, and an older trunk loses to the branch actually cut from.
-function resolveMergeBase(explicit, branch) {
-  const names = explicit
-    ? [explicit]
-    : [creationSource(branch), originDefault(), ...COMMON_BASES];
-  const refs = [
-    ...new Set(
-      names
-        .filter((name) => name && name !== branch)
-        .flatMap((name) => [`origin/${name}`, name])
-    )
-  ];
-  let best = null;
-  for (const ref of refs.filter(refExists)) {
-    const sha = git(["merge-base", "HEAD", ref]).stdout.trim();
-    if (!sha) continue;
-    const newer =
-      !best ||
-      (sha !== best.sha &&
-        git(["merge-base", "--is-ancestor", best.sha, sha]).status === 0);
-    if (newer) best = { ref, sha };
-  }
-  if (!best)
-    throw new Error(
-      `no base branch found (tried ${
-        refs.join(", ") || "nothing"
-      }); pass --base <branch>`
-    );
-  return best;
 }
 
 function packageDirectories() {

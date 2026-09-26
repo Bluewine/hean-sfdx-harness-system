@@ -3,7 +3,7 @@ name: test-changed
 description: Post-dev test orchestration — resolves Apex + LWC test scope transitively from working tree changes, then spawns apex-tester and/or lwc-tester in parallel with pre-computed scope
 ---
 
-You are executing the `/test-changed` skill. Work through the seven phases below in order. Do not spawn any agent until Phase 7.
+You are executing the `/test-changed` skill. Work through the eight phases below in order. Do not spawn any agent until Phase 7.
 
 ## Phase 1 — Collect modified files
 
@@ -113,3 +113,12 @@ Use a single message with multiple Agent tool calls so they run in parallel:
 - `runLwc only` → spawn `lwc-tester`
 
 Use `subagent_type: "hean-harness:apex-tester"` and `subagent_type: "hean-harness:lwc-tester"` respectively. Follow the agent briefing style rule: pass the goal and pre-resolved scope only — no shell commands, no CLI flags.
+
+## Phase 8 — Whole-suite coverage split
+
+When `runLwc` was true, run the whole Jest suite once with coverage from the current files, then print the split:
+
+    npx jest --coverage --coverageReporters=json-summary
+    node "${CLAUDE_SKILL_DIR}/scripts/coverage-split.mjs"
+
+Report its three lines as they are. Skip this phase when no LWC was in scope.

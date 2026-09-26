@@ -293,3 +293,7 @@ handleRowSelection(event) { ... }
 - [ ] `@param`/`@return` types documented on every method, including same-signature overrides
 - [ ] Description opens with a third-person verb phrase, not an imperative phrase
 - [ ] Inline JSDoc form used only for simple, description-free type-only functions
+
+## 9. LWC Jest — Run Jest with `npx jest`
+
+Run Jest as `npx jest`, never `npm run test:unit`. `test:unit` runs the `sfdx-lwc-jest` wrapper, which passes on only `--coverage`, `--updateSnapshot`, `--verbose` and `--watch` and silently drops every other option — so `npm run test:unit -- --coverage --collectCoverageFrom "<path>"` measures the whole repository instead of `<path>`, with no warning.
