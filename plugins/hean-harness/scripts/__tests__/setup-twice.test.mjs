@@ -375,6 +375,28 @@ try {
   const env13 = { ...process.env, HOME: home13 };
   execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs')], { env: env13, encoding: 'utf8', stdio: 'pipe' });
   check('a real run with no flag changes nothing', readFileSync(settings13, 'utf8') === settings13Text);
+
+  // home14: --auto-update all still sets every existing entry when the plugin's
+  // own marketplace (test-market) has no extraKnownMarketplaces entry at all
+  const home14 = join(root, 'home14');
+  mkdirSync(join(home14, '.claude', 'plugins'), { recursive: true });
+  writeInstalled(home14, 'test-market');
+  const settings14 = join(home14, '.claude', 'settings.json');
+  writeFileSync(settings14, JSON.stringify({ extraKnownMarketplaces: {
+    'other-market': marketEntry('https://example.com/b.git')
+  } }, null, 2) + '\n');
+  const env14 = { ...process.env, HOME: home14 };
+  const out14 = execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'all'], { env: env14, encoding: 'utf8', stdio: 'pipe' });
+  const afterAll14 = JSON.parse(readFileSync(settings14, 'utf8'));
+  check('--auto-update all turns autoUpdate on for a marketplace that exists even when the plugin\'s own marketplace has no entry',
+        afterAll14.extraKnownMarketplaces['other-market'].autoUpdate === true);
+  check('the plugin\'s own marketplace still has no entry', !('test-market' in afterAll14.extraKnownMarketplaces));
+  check('the output names the plugin\'s own marketplace as not changed', out14.includes('test-market'));
+  check('the output points at /plugin for the plugin\'s own marketplace', out14.includes('/plugin'));
+  execFileSync('node', [join(SCRIPTS, 'lib', 'manifest.mjs'), 'revert'], { env: env14, encoding: 'utf8', stdio: 'pipe' });
+  const afterRevert14 = JSON.parse(readFileSync(settings14, 'utf8'));
+  check('revert restores the file to no autoUpdate key on other-market',
+        !('autoUpdate' in afterRevert14.extraKnownMarketplaces['other-market']));
 } finally {
   rmSync(root, { recursive: true, force: true });
 }

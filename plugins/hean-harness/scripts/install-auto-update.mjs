@@ -11,10 +11,12 @@
  *
  * `--auto-update hean` turns it on for the marketplace this plugin was
  * installed from, `--auto-update all` turns it on for every marketplace
- * `extraKnownMarketplaces` already lists, and `--auto-update off` turns it off
- * for this plugin's marketplace — which also records the choice, so setup does
- * not ask again. With no flag, a real run changes nothing; a dry run asks by
- * printing a `!! ASK` line, unless the choice was already recorded.
+ * `extraKnownMarketplaces` already lists — even when the plugin's own
+ * marketplace has no entry there, in which case that one is named separately
+ * as not changed — and `--auto-update off` turns it off for this plugin's
+ * marketplace, which also records the choice, so setup does not ask again.
+ * With no flag, a real run changes nothing; a dry run asks by printing a
+ * `!! ASK` line, unless the choice was already recorded.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -95,7 +97,10 @@ function main() {
   const extra = settings.extraKnownMarketplaces ?? {};
   const heanEntry = extra[marketplace];
 
-  if (heanEntry === undefined) {
+  // "all" still runs when the plugin's own marketplace has no entry — it acts
+  // on every entry that does exist and names this one separately below. Every
+  // other choice, including no choice at all, needs this one entry to exist.
+  if (heanEntry === undefined && choice !== 'all') {
     log(`Auto-update was not turned on: ${marketplace} has no entry in settings.json. ` +
         `Turn it on in /plugin → Marketplaces → ${marketplace} → Enable auto-update.`);
     return;
@@ -126,9 +131,9 @@ function main() {
     const value = choice === 'hean';
     const key = autoUpdateKey(marketplace);
     if (!key) {
-      log(`Auto-update was not changed: "${marketplace}" contains a "." and installJsonKey ` +
-          `addresses settings.json by a dotted path with no escaping, so this name cannot be set ` +
-          `safely. Turn it on in /plugin → Marketplaces → ${marketplace} → Enable auto-update.`);
+      // setAutoUpdate returns its refusal note without writing anything when
+      // the key is unusable, so the wording lives in one place only.
+      log(`Auto-update was not changed: ${setAutoUpdate(marketplace, value).note}`);
       return;
     }
     log(`Setting        ${key} to ${value} in ${SETTINGS}`);
@@ -136,7 +141,7 @@ function main() {
     if (dryRun) { log('Dry run. Nothing was changed.'); return; }
 
     init();
-    const r = installJsonKey(SETTINGS, key, value);
+    const r = setAutoUpdate(marketplace, value);
     log(r.hadKey
       ? 'Replaced the auto-update setting. Your previous one is recorded and comes back on uninstall.'
       : `Turned ${value ? 'on' : 'off'} auto-update for ${marketplace}.`);
@@ -158,8 +163,11 @@ function main() {
     const r = setAutoUpdate(name, true);
     log(r.ok ? `  ${name}  ${r.hadKey ? 'replaced (previous value recorded)' : 'turned on'}` : `  ${name}  not changed — ${r.note}`);
   }
+  if (heanEntry === undefined) {
+    log(`  ${marketplace}  not changed — no entry in settings.json; turn it on in /plugin → Marketplaces → ${marketplace} → Enable auto-update.`);
+  }
   const knownNames = Object.keys(readJson(KNOWN) ?? {});
-  for (const name of knownNames.filter(n => !names.includes(n))) {
+  for (const name of knownNames.filter(n => !names.includes(n) && n !== marketplace)) {
     log(`  ${name}  not changed — no entry in settings.json; turn it on in /plugin → Marketplaces → ${name} → Enable auto-update.`);
   }
   log('');
