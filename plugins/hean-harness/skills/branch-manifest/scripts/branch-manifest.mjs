@@ -29,6 +29,7 @@ import {
   MAX_BUFFER,
   git,
   gitOut,
+  nulList,
   resolveMergeBase
 } from "../../../scripts/lib/merge-base.mjs";
 
@@ -43,10 +44,6 @@ const BUNDLE_FOLDERS = new Set(["lwc", "aura", "staticresources"]);
 const LABELS_FILE = /\.labels-meta\.xml$/;
 // Label fields compared as scalars; categories is multi-valued and compared as a sorted set instead.
 const LABEL_FIELDS = ["value", "shortDescription", "protected", "language"];
-
-function nulList(text) {
-  return text.split("\0").filter(Boolean);
-}
 
 // Skill arguments arrive as free text on stdin; only --base and --name are read from it.
 function readOptions() {

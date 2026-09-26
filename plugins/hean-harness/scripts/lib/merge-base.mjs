@@ -22,6 +22,10 @@ export function gitOut(args) {
   return result.stdout;
 }
 
+export function nulList(text) {
+  return text.split("\0").filter(Boolean);
+}
+
 export function refExists(ref) {
   return (
     git(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]).status === 0

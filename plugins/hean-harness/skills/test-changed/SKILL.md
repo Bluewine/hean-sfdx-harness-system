@@ -121,4 +121,6 @@ When `runLwc` was true, run the whole Jest suite once with coverage from the cur
     npx jest --coverage --coverageReporters=json-summary
     node "${CLAUDE_SKILL_DIR}/scripts/coverage-split.mjs"
 
+`coverage-split.mjs` computes its own "changed" set independently of Phase 1: it is not the uncommitted `force-app/` files Phase 1 collected, but every file that differs from the branch's merge-base (committed or not) plus every untracked file, repo-wide.
+
 Report its three lines as they are. Skip this phase when no LWC was in scope.

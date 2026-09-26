@@ -8,7 +8,11 @@
 // `npx jest --coverage --coverageReporters=json-summary` writes there.
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
-import { gitOut, resolveMergeBase } from "../../../scripts/lib/merge-base.mjs";
+import {
+  gitOut,
+  nulList,
+  resolveMergeBase
+} from "../../../scripts/lib/merge-base.mjs";
 
 const NO_SUMMARY =
   "No coverage summary found — run npx jest --coverage --coverageReporters=json-summary first.";
@@ -16,10 +20,6 @@ const NO_SUMMARY =
 // inside it so every line's number ends at the same column, whatever the
 // label or the file count's width.
 const WIDTH = 53;
-
-function nulList(text) {
-  return text.split("\0").filter(Boolean);
-}
 
 // Every file that differs from the merge-base, plus every staged, unstaged, or
 // untracked file. `git diff <merge-base>` alone already compares that commit
