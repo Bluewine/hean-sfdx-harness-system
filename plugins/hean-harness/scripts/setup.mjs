@@ -23,6 +23,8 @@ const repo = repoArg >= 0 ? argv[repoArg + 1] : null;
 const optIns = ['--replace-githook', '--edit-mcp'].filter(f => argv.includes(f));
 const formatArg = argv.indexOf('--commit-format');
 if (formatArg >= 0) optIns.push('--commit-format', argv[formatArg + 1]);
+const autoUpdateArg = argv.indexOf('--auto-update');
+if (autoUpdateArg >= 0) optIns.push('--auto-update', argv[autoUpdateArg + 1]);
 
 /**
  * Each step, in the order it runs.
@@ -47,6 +49,7 @@ const STEPS = [
   { name: 'Memories',      script: 'install-memories.mjs',       wantsRepo: true },
   { name: 'Status line',   script: 'install-statusline.mjs' },
   { name: 'Task tools',    script: 'install-task-tools.mjs' },
+  { name: 'Auto-update',   script: 'install-auto-update.mjs',   keepGoing: true },
   { name: 'Commit format', script: 'install-githooks.mjs',     wantsRepo: true },
   // After the hooks: npm install runs the repository's prepare script, which
   // may need .githooks to exist. A failure here, such as a private registry the

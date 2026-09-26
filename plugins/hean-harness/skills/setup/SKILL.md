@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Install the hean-harness environment on this machine — copies rules, memories, agents and the status line into place, adds the claude alias, turns on Claude Code's task tools in settings.json, and records every change so uninstall can reverse it
+description: Install the hean-harness environment on this machine — copies rules, memories, agents and the status line into place, adds the claude alias, turns on Claude Code's task tools in settings.json, offers auto-update for its marketplace or all marketplaces, and records every change so uninstall can reverse it
 allowed-tools: ["Bash", "Read"]
 ---
 
@@ -31,10 +31,15 @@ Install the environment. Show the user what will change before changing it.
    nothing. Ask only then. A saved answer is reused, and `/hean-harness:commit-format` changes it
    later.
 
+   When the output has a line starting `!! ASK — AUTO-UPDATE NOT CHOSEN`, ask whether Claude Code
+   should download new plugin versions automatically: `hean` — only hean-harness; `all` — every
+   marketplace listed in that line; `off` — neither (updates stay manual; setup stops asking).
+   Ask only then.
+
 3. When the user agrees, run it, adding only the flags the user chose:
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" [--replace-githook] [--edit-mcp] [--commit-format on|off]
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" [--replace-githook] [--edit-mcp] [--commit-format on|off] [--auto-update all|hean|off]
    ```
 
 4. Report, using the script's own summary:
