@@ -339,9 +339,17 @@ export function missingParents(obj, path) {
   return missing;
 }
 
+/**
+ * True for the settings.json key that holds one marketplace's auto-update
+ * choice. install-auto-update writes it, and the revert before a reinstall
+ * keeps it under the `choices` category.
+ */
+export const isAutoUpdateKey = key => /^extraKnownMarketplaces\.[^.]+\.autoUpdate$/.test(String(key));
+
 /** Which keep category a change falls in, or null when it has none. */
 export function category(c) {
   if (c.type === 'repo-folder' || c.type === 'repo-file') return 'uninstall-only';
+  if (c.type === 'json-key' && isAutoUpdateKey(c.key)) return 'choices';
   if (c.type === 'external' && runnableUndo(c.undoHint)) return 'uninstall-only';
   if (c.type === 'marker-block' || c.type === 'index-lines') return 'blocks';
   if (c.type === 'git-config' && c.key === 'core.hooksPath') return 'githooks';
@@ -368,6 +376,11 @@ export function category(c) {
  *   githooks        the commit-msg hook and core.hooksPath. The repository may
  *                   have come to rely on the hook, so a reinstall replaces it
  *                   only when asked.
+ *   choices         the auto-update setting for each marketplace. Setup asks
+ *                   once and reads the answer from settings.json on the next
+ *                   run; reverting it first would lose the answer without
+ *                   asking again. The entry keeps the value from before the
+ *                   first setup, so uninstall still restores it.
  *
  * only, when given, limits the revert to the entries it returns true for. The
  * rest are left untouched in the manifest. Turning the commit format off uses it

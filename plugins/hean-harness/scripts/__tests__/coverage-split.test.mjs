@@ -16,7 +16,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, utimesSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
@@ -74,8 +74,8 @@ function summary(repo, entries) {
   put(repo, 'coverage/coverage-summary.json', JSON.stringify(files));
 }
 
-function run(repo) {
-  return execFileSync('node', [SCRIPT], { cwd: repo, encoding: 'utf8' });
+function run(repo, args = []) {
+  return execFileSync('node', [SCRIPT, ...args], { cwd: repo, encoding: 'utf8' });
 }
 
 try {
@@ -122,9 +122,63 @@ try {
   commit(noChange, 'base');
   git(noChange, ['checkout', '-q', '-b', 'work-TEST-2']);
   summary(noChange, [['src/only.js', 10, 10]]);
-  const out3 = run(noChange).trimEnd();
-  check('no changed file in the summary prints just that one line',
-        out3 === 'Files this branch changed (0): —', out3);
+  const out3 = run(noChange).trimEnd().split('\n');
+  check('no changed file in the summary still prints three lines', out3.length === 3, JSON.stringify(out3));
+  check('the changed line shows a dash when no changed file is in the summary',
+        out3[0] === 'Files this branch changed (0):                      —', out3[0]);
+  check('the whole-repository line is still printed',
+        out3[2] === 'Whole repository (1):                          100.0%', out3[2]);
+
+  // 4. a changed file with no lines to cover prints a dash, not NaN%
+  const zeroLines = newRepo('zero-lines', 'integration');
+  put(zeroLines, 'src/base.js', 'a\n');
+  commit(zeroLines, 'base');
+  git(zeroLines, ['checkout', '-q', '-b', 'work-TEST-3']);
+  put(zeroLines, 'src/empty.js', '\n');
+  summary(zeroLines, [['src/empty.js', 0, 0], ['src/base.js', 4, 4]]);
+  const out4 = run(zeroLines).trimEnd().split('\n');
+  check('a group with no lines prints a dash, not NaN%',
+        out4[0] === 'Files this branch changed (1):                      —' && !out4.join('').includes('NaN'),
+        JSON.stringify(out4));
+
+  // 5. no base branch: one line saying so, then the whole-repository line, exit 0
+  const noBase = newRepo('no-base', 'solo');
+  put(noBase, 'src/a.js', 'a\n');
+  commit(noBase, 'base');
+  summary(noBase, [['src/a.js', 10, 5]]);
+  const out5 = run(noBase).trimEnd().split('\n');
+  check('no base branch prints one line saying so, then the whole-repository line',
+        out5.length === 2 &&
+        out5[0] === 'Base branch could not be found, so the split into changed and untouched files is skipped.' &&
+        out5[1] === 'Whole repository (1):                           50.0%',
+        JSON.stringify(out5));
+
+  // 6. a file under .claude/worktrees/ is another branch's checkout and is not counted
+  const worktree = newRepo('worktree', 'integration');
+  put(worktree, 'src/a.js', 'a\n');
+  commit(worktree, 'base');
+  git(worktree, ['checkout', '-q', '-b', 'work-TEST-4']);
+  summary(worktree, [['src/a.js', 10, 10], ['.claude/worktrees/other/src/a.js', 10, 0]]);
+  const out6 = run(worktree).trimEnd().split('\n');
+  check('a .claude/worktrees/ file is left out of every line',
+        out6[2] === 'Whole repository (1):                          100.0%', JSON.stringify(out6));
+
+  // 7. a summary older than this run's start is refused; a fresh one is read
+  const stale = newRepo('stale', 'integration');
+  put(stale, 'src/a.js', 'a\n');
+  commit(stale, 'base');
+  git(stale, ['checkout', '-q', '-b', 'work-TEST-5']);
+  summary(stale, [['src/a.js', 10, 10]]);
+  const summaryFile = join(realRoot(stale), 'coverage', 'coverage-summary.json');
+  const now = Math.floor(Date.now() / 1000);
+  utimesSync(summaryFile, now - 3600, now - 3600);
+  const out7 = run(stale, ['--since', String(now)]).trimEnd();
+  check('a summary older than --since is refused',
+        out7 === 'The coverage summary is older than this Jest run, so Jest stopped before writing coverage. No numbers are reported.',
+        out7);
+  utimesSync(summaryFile, now + 1, now + 1);
+  const out7b = run(stale, ['--since', String(now)]).trimEnd().split('\n');
+  check('a summary written after --since is read', out7b.length === 3, JSON.stringify(out7b));
 } finally {
   rmSync(root, { recursive: true, force: true });
 }

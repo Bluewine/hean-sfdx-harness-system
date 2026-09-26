@@ -34,7 +34,7 @@ import { claudeDir } from './lib/paths.mjs';
 const argv = process.argv.slice(2);
 const dryRun = argv.includes('--dry-run');
 // kept for the install ahead, which replaces blocks and index lines in place and the hook only when asked
-const keep = ['uninstall-only', 'blocks', ...(argv.includes('--replace-githook') ? [] : ['githooks'])];
+const keep = ['uninstall-only', 'blocks', 'choices', ...(argv.includes('--replace-githook') ? [] : ['githooks'])];
 const log = (...a) => console.log(...a);
 
 /** What each kind of recorded change is, in words, for the count lines. */
@@ -102,7 +102,8 @@ function main() {
   log('this plugin replaced is restored from its backup.');
   log('');
   log('Kept for the install ahead: marked blocks and memory index lines, which it');
-  log('replaces where they sit;');
+  log('replaces where they sit; the auto-update setting, which is your answer and');
+  log('is not asked again;');
   log(keep.includes('githooks')
     ? 'the git hook, which it replaces only with --replace-githook; and'
     : 'and');

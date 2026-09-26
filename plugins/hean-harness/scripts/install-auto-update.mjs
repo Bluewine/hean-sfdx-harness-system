@@ -17,12 +17,16 @@
  * marketplace, which also records the choice, so setup does not ask again.
  * With no flag, a real run changes nothing; a dry run asks by printing a
  * `!! ASK` line, unless the choice was already recorded.
+ *
+ * The choice lasts across setup runs: the revert setup runs first keeps every
+ * recorded autoUpdate key (the `choices` category in lib/manifest.mjs), and
+ * each entry keeps the value from before the first setup for uninstall.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { init } from './lib/manifest.mjs';
+import { init, revert, isAutoUpdateKey } from './lib/manifest.mjs';
 import { installJsonKey } from './lib/install.mjs';
 import { claudeDir } from './lib/paths.mjs';
 
@@ -145,6 +149,15 @@ function main() {
     log(r.hadKey
       ? 'Replaced the auto-update setting. Your previous one is recorded and comes back on uninstall.'
       : `Turned ${value ? 'on' : 'off'} auto-update for ${marketplace}.`);
+    // An earlier "all" set other marketplaces too. The revert before a
+    // reinstall keeps those, so the narrower choice undoes them here, putting
+    // back each one's value from before the first setup.
+    const others = revert({ only: c => c.type === 'json-key' && isAutoUpdateKey(c.key) && c.key !== key })
+      .filter(x => !x.kept);
+    for (const x of others) {
+      log(x.ok ? `Put back ${x.key}, set by an earlier --auto-update all.`
+               : `Could not put back ${x.key}: ${x.note}`);
+    }
     log('');
     log('This shows up in your next session.');
     return;
@@ -157,7 +170,9 @@ function main() {
   if (!dryRun && names.length) init();
   for (const name of names) {
     if (dryRun) {
-      log(`  ${name}  ${extra[name]?.autoUpdate === true ? 'already true' : 'to true'}`);
+      const refusal = autoUpdateKey(name) ? null : setAutoUpdate(name, true).note;
+      log(refusal ? `  ${name}  not changed — ${refusal}`
+                  : `  ${name}  ${extra[name]?.autoUpdate === true ? 'already true' : 'to true'}`);
       continue;
     }
     const r = setAutoUpdate(name, true);

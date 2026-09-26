@@ -397,6 +397,77 @@ try {
   const afterRevert14 = JSON.parse(readFileSync(settings14, 'utf8'));
   check('revert restores the file to no autoUpdate key on other-market',
         !('autoUpdate' in afterRevert14.extraKnownMarketplaces['other-market']));
+
+  // home15: setup run twice keeps the auto-update choice, and uninstall still
+  // restores the state from before the first run
+  const home15 = join(root, 'home15');
+  const repo15 = join(root, 'repo15');
+  mkdirSync(join(home15, '.claude', 'plugins'), { recursive: true });
+  mkdirSync(repo15, { recursive: true });
+  execFileSync('git', ['-C', repo15, 'init', '-q', '-b', 'main']);
+  writeInstalled(home15, 'test-market');
+  const settings15 = join(home15, '.claude', 'settings.json');
+  writeFileSync(settings15, JSON.stringify({ theme: 'dark', extraKnownMarketplaces: {
+    'test-market': marketEntry('https://example.com/a.git')
+  } }, null, 2) + '\n');
+  const env15 = { ...process.env, HOME: home15, SHELL: '/bin/zsh' };
+  const setup15 = args => execFileSync('node', [join(SCRIPTS, 'setup.mjs'), '--repo', repo15, ...args],
+                                       { env: env15, encoding: 'utf8', stdio: 'pipe' });
+  setup15(['--commit-format', 'off', '--auto-update', 'hean']);
+  const autoUpdate15 = () => JSON.parse(readFileSync(settings15, 'utf8')).extraKnownMarketplaces['test-market'].autoUpdate;
+  check('the first setup with hean turns autoUpdate on', autoUpdate15() === true, String(autoUpdate15()));
+  const dry15 = setup15(['--dry-run']);
+  check('a dry run after the first setup does not ask about auto-update again', !dry15.includes('!! ASK — AUTO-UPDATE'));
+  const second15 = setup15([]);
+  check('a second setup with no flag does not ask about auto-update', !second15.includes('!! ASK — AUTO-UPDATE'));
+  check('a second setup with no flag keeps autoUpdate on', autoUpdate15() === true, String(autoUpdate15()));
+  const dryAgain15 = setup15(['--dry-run']);
+  check('a dry run after the second setup still does not ask', !dryAgain15.includes('!! ASK — AUTO-UPDATE'));
+  execFileSync('node', [join(SCRIPTS, 'lib', 'manifest.mjs'), 'revert'], { env: env15, encoding: 'utf8', stdio: 'pipe' });
+  const afterUninstall15 = JSON.parse(readFileSync(settings15, 'utf8'));
+  check('uninstall after two setups removes the autoUpdate key setup added',
+        !('autoUpdate' in afterUninstall15.extraKnownMarketplaces['test-market']), JSON.stringify(afterUninstall15));
+  check('uninstall after two setups leaves the other settings as they were', afterUninstall15.theme === 'dark');
+
+  // home16: a marketplace name with a dot is refused by the real run and the dry run
+  const home16 = join(root, 'home16');
+  mkdirSync(join(home16, '.claude', 'plugins'), { recursive: true });
+  writeInstalled(home16, 'my.market');
+  const settings16 = join(home16, '.claude', 'settings.json');
+  const settings16Text = JSON.stringify({ extraKnownMarketplaces: {
+    'my.market': marketEntry('https://example.com/a.git')
+  } }, null, 2) + '\n';
+  writeFileSync(settings16, settings16Text);
+  const env16 = { ...process.env, HOME: home16 };
+  const out16 = execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'hean'], { env: env16, encoding: 'utf8', stdio: 'pipe' });
+  check('a dotted marketplace name is refused', out16.includes('Auto-update was not changed') && out16.includes('contains a "."'), out16);
+  check('settings.json is untouched after the refusal', readFileSync(settings16, 'utf8') === settings16Text);
+  const dryAll16 = execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'all', '--dry-run'], { env: env16, encoding: 'utf8', stdio: 'pipe' });
+  check('the all dry run reports the dotted name as not changed',
+        dryAll16.includes('my.market  not changed') && !dryAll16.includes('my.market  to true'), dryAll16);
+  execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'all'], { env: env16, encoding: 'utf8', stdio: 'pipe' });
+  check('the all real run leaves the dotted name untouched', readFileSync(settings16, 'utf8') === settings16Text);
+
+  // home17: switching from all to hean puts the other marketplace back
+  const home17 = join(root, 'home17');
+  mkdirSync(join(home17, '.claude', 'plugins'), { recursive: true });
+  writeInstalled(home17, 'test-market');
+  const settings17 = join(home17, '.claude', 'settings.json');
+  writeFileSync(settings17, JSON.stringify({ extraKnownMarketplaces: {
+    'test-market':  marketEntry('https://example.com/a.git'),
+    'other-market': { ...marketEntry('https://example.com/b.git'), autoUpdate: false }
+  } }, null, 2) + '\n');
+  const env17 = { ...process.env, HOME: home17 };
+  execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'all'], { env: env17, encoding: 'utf8', stdio: 'pipe' });
+  execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'hean'], { env: env17, encoding: 'utf8', stdio: 'pipe' });
+  const after17 = JSON.parse(readFileSync(settings17, 'utf8')).extraKnownMarketplaces;
+  check('switching from all to hean keeps the plugin\'s own marketplace on', after17['test-market'].autoUpdate === true);
+  check('switching from all to hean puts the other marketplace\'s own value back', after17['other-market'].autoUpdate === false,
+        String(after17['other-market'].autoUpdate));
+  execFileSync('node', [join(SCRIPTS, 'lib', 'manifest.mjs'), 'revert'], { env: env17, encoding: 'utf8', stdio: 'pipe' });
+  const afterRevert17 = JSON.parse(readFileSync(settings17, 'utf8')).extraKnownMarketplaces;
+  check('uninstall after the switch restores the original state',
+        !('autoUpdate' in afterRevert17['test-market']) && afterRevert17['other-market'].autoUpdate === false);
 } finally {
   rmSync(root, { recursive: true, force: true });
 }
