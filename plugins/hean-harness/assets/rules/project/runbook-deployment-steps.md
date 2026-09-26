@@ -19,13 +19,35 @@ Each stage runs around the `force-app` deployment, in this order:
 2. Run every `.apex` file under `runbooks/<stage>-deploy/apex/` in filename order
 3. Apply `deletePackage/<stage>/destructiveChanges<Stage>.xml`
 
-**Both stages share one conversion output folder, and it is not cleared between them.** Anything declared in `pre` must also exist in `post`, at minimum as an empty declaration, or `post`'s generated `package.xml` omits it and the deploy fails with "Not in package.xml". Declaring a transient component in one stage only avoids this entirely.
+**Both stages share one conversion output folder, and it is not cleared between them.** Confirmed by running the conversion for `pre` then `post` back to back into the same output folder: `post`'s conversion regenerates `package.xml` from `post`'s own declared source, but never removes a file `pre`'s earlier conversion left behind, so a component only `pre` declared can still be physically present when `post` deploys. Whether that breaks the deploy depends on the component's shape:
+
+- **A component nested inside a shared container file needs a matching declaration in the later stage too, at minimum an empty one** — a `CustomField` (or any other member living inside an `.object` file) that `pre` declares and `post` doesn't fails `post`'s deploy with "Not in package.xml", confirmed against a real org: Salesforce parses the whole container file and cross-checks every nested member against that stage's `package.xml`.
+- **A standalone-file component needs no matching declaration.** Confirmed against a real org: a leftover file with no `package.xml` entry at all — an `ApexClass`, a `Flow`, a `FlowDefinition` — is silently dropped by the deploy; it neither applies nor errors. Duplicating it into the later stage is unnecessary.
 
 **Metadata under a stage's `metaData/` must be listed in that stage's destructive manifest**, so the transient component is removed again once it has run. The only exception is a component the user says to keep.
 
 **`ACME_Deployment` is a shared placeholder. Never add, edit, or remove it.**
 
-**A destructive entry naming a component absent from the target org does not fail the deploy.** Deprecating a component that predates the branch belongs in the post destructive manifest, alongside deleting it from the repo.
+**A destructive entry naming a component absent from the target org does not fail the deploy.** A destructive entry naming a component something else in the org still references does fail, regardless of metadata type — a custom field, a flexipage, an Apex class, a permission set. Two ways to satisfy the dependency, in order of preference:
+
+- **Defer the deletion to the post destructive manifest.** The default. `post` runs after `deploy` pushes `force-app`, so any consumer this release already updates there to stop referencing the component is live in the org before `post`'s destructive step runs — nothing needs duplicating. Deprecating a component that predates the branch, with no name reuse involved, is always this case: list it here, alongside deleting it from the repo.
+- **Deploy the referencing components' updated content early, under the same stage's `metaData/`,** so the metadata-deploy step (Stage mechanics step 1) clears every reference before that stage's destructive step (step 3) runs. Use this only when the deletion cannot wait for `post` — typically because the release reuses the exact same API name for new metadata, and the old component must be gone before `deploy` creates the new one under that name. This duplicates real `force-app` content into the runbook; keep both copies in sync for as long as the runbook keeps them.
+
+## Writing pre/post-deploy Apex scripts
+
+A `runbooks/*-deploy/apex/*.apex` script's target org does not reliably match whatever schema state the script was written and tested against. The same script runs unmodified across every environment the release reaches, and a field this release adds or removes may exist in one environment and not another at the moment the script runs, depending on that environment's own deploy history and where in the stage sequence the script sits relative to the metadata step.
+
+**Never reference a field, object, or record type this same release adds or removes using typed dot-notation or a typed named-constructor** (`record.Field__c`, `new SomeObject(Field__c = value)`). Apex resolves every such reference against the target org's compiled schema at compile time, before any runtime logic — including an `if` guard checking whether the field exists — ever executes. A runtime existence check never protects a compile-time reference; the script fails to compile regardless of which branch would have run.
+
+Use dynamic, string-keyed access instead, for every field or object touched by the script that this release adds or removes:
+
+- Read: `Database.query('...')` into `List<SObject>`, then `.get('Field__c')` / `.getSObject('Relationship__r')`.
+- Write: `Schema.getGlobalDescribe().get('ObjectName').newSObject()`, then `.put('Field__c', value)`.
+- Guard with `Schema.SObjectType.<Object>.fields.getMap().containsKey('field__c')` (lowercase key) before touching a field that may not exist. The guard protects the field's data at runtime; it does nothing for compile-time syntax — the dynamic-access rule above is what makes the guard meaningful at all.
+
+Apply this to every field the script touches that this release adds or removes — not only the one being removed. A script safe against the field it deletes but still typed against the field it creates fails identically, just in the opposite direction: it compiles once the new field exists everywhere, and fails everywhere it does not yet.
+
+A field a `pre-deploy` script reads does not need to be deleted in `pre` too. The script only needs the field to still exist at the moment it runs, which holds regardless of which stage's destructive manifest eventually removes it — see Stage mechanics above for which stage that should be.
 
 ## Automatic rows
 
