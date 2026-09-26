@@ -259,6 +259,8 @@ Write the PR title as the first line as a comment so the user sees it:
 
 (For single-story, the first content line after the comment is `### Story` from `pr-body.md`, unchanged.)
 
+**Check the template markers.** Unless the user asked for a different body or template, confirm the body file starts with `<!-- PR Title:` and contains `### What was Done?`. When either is missing, render the body again from the template and check once more; if it is still missing, show the file path and stop.
+
 **Verify the rendered body before handing it over.** Read the file back and confirm no Claude attribution reached it:
 
 ```bash
@@ -355,8 +357,6 @@ If the `gh api` call is a 404 (branch not on the remote yet) or `git rev-list --
 git push origin {branch}
 ```
 No confirmation needed — this is a non-force push of the user's own feature branch. If the push fails (e.g. diverged history), stop and tell the user: "Push failed — resolve manually (`git pull --rebase` or similar), then re-run `/create-pr`."
-
-**Check the rendered body.** Unless the user asked for a different body or template, confirm the body file starts with `<!-- PR Title:` and contains `### What was Done?`. When either is missing, render the body again from the template and check once more; if it is still missing, show the file path and stop.
 
 **Step 3 — Create the PR.**
 

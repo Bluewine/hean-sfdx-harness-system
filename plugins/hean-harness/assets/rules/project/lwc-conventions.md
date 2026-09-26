@@ -296,4 +296,4 @@ handleRowSelection(event) { ... }
 
 ## 9. LWC Jest — Run Jest with `npx jest`
 
-Run Jest as `npx jest`, never `npm run test:unit`. `test:unit` runs the `sfdx-lwc-jest` wrapper, which passes on only `--coverage`, `--updateSnapshot`, `--verbose` and `--watch` and silently drops every other option — so `npm run test:unit -- --coverage --collectCoverageFrom "<path>"` measures the whole repository instead of `<path>`, with no warning.
+Run Jest as `npx jest`, never `npm run test:unit`. `test:unit` runs the `sfdx-lwc-jest` wrapper, which reads only its own flags (`--coverage`, `--updateSnapshot`, `--verbose`, `--watch`, `--debug`) and passes to Jest only what follows a second `--`. npm consumes the first `--`, so `npm run test:unit -- --coverage --collectCoverageFrom "<path>"` never hands `--collectCoverageFrom` to Jest and measures the whole repository instead of `<path>`, with no warning. `npx jest` takes every Jest option directly, with no second `--` to forget.

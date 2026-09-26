@@ -32,8 +32,8 @@ Install the environment. Show the user what will change before changing it.
    later.
 
    When the output has a line starting `!! ASK — AUTO-UPDATE NOT CHOSEN`, ask whether Claude Code
-   should download new plugin versions automatically: `hean` — only hean-harness; `all` — every
-   marketplace listed in that line; `off` — neither (updates stay manual; setup stops asking).
+   should download new plugin versions automatically: `hean` — every plugin in the marketplace
+   hean-harness was installed from; `all` — every marketplace listed in that line; `off` — neither (updates stay manual; setup stops asking).
    Ask only then.
 
 3. When the user agrees, run it, adding only the flags the user chose:

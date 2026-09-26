@@ -352,6 +352,8 @@ Prepend the PR title and PR number as a comment on line 1 so the user sees it wh
 
 (For single-story, the first content line after the comment is `### Story` from `pr-body.md`, unchanged.)
 
+**Check the template markers.** Unless the user asked for a different body or template, confirm the body file starts with `<!-- PR Title:` and contains `### What was Done?`. When either is missing, render the body again from the template and check once more; if it is still missing, show the file path and stop.
+
 **Verify the rendered body before handing it over.** Read the file back and confirm no Claude attribution reached it:
 
 ```bash
@@ -384,8 +386,6 @@ Wait for the user to type `yes` before proceeding.
 ## Phase 10 — Submit
 
 Use the repo-root path for `--body-file` and never pass `--title` or `--base`. `gh pr edit` changes only the body and, when the PR has none, the assignee; the live PR title and base stay as they are.
-
-**Check the rendered body.** Unless the user asked for a different body or template, confirm the body file starts with `<!-- PR Title:` and contains `### What was Done?`. When either is missing, render the body again from the template and check once more; if it is still missing, show the file path and stop.
 
 If `HAS_ASSIGNEES` is false (no existing assignees), include `--add-assignee @me`:
 ```bash

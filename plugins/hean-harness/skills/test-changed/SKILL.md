@@ -116,11 +116,16 @@ Use `subagent_type: "hean-harness:apex-tester"` and `subagent_type: "hean-harnes
 
 ## Phase 8 — Whole-suite coverage split
 
-When `runLwc` was true, run the whole Jest suite once with coverage from the current files, then print the split:
+When `runLwc` was true, run the whole Jest suite once with coverage from the current files, then print the split. Run these lines as one command from the repository root:
 
-    npx jest --coverage --coverageReporters=json-summary
-    node "${CLAUDE_SKILL_DIR}/scripts/coverage-split.mjs"
+    start=$(date +%s)
+    rm -f coverage/coverage-summary.json
+    npx jest --coverage --coverageReporters=json-summary --testPathIgnorePatterns="/node_modules/|/\.claude/worktrees/" --coveragePathIgnorePatterns="/node_modules/|/\.claude/worktrees/"
+    node "${CLAUDE_SKILL_DIR}/scripts/coverage-split.mjs" --since "$start"
+
+- **Delete the old summary first.** A Jest run that stops before writing coverage would otherwise leave the previous run's `coverage/coverage-summary.json` to be read. `--since` makes `coverage-split.mjs` refuse a summary older than this run's start.
+- **Skip `.claude/worktrees/`.** A plain `npx jest --coverage` also runs and measures the specs in other branches' checkouts under `.claude/worktrees/`. The two ignore patterns keep them out of the test run and the coverage; `coverage-split.mjs` also skips any path there.
 
 `coverage-split.mjs` computes its own "changed" set independently of Phase 1: it is not the uncommitted `force-app/` files Phase 1 collected, but every file that differs from the branch's merge-base (committed or not) plus every untracked file, repo-wide.
 
-Report its three lines as they are. Skip this phase when no LWC was in scope.
+Report its output as it is: three lines, or a line saying why the split or the numbers are missing. Skip this phase when no LWC was in scope.

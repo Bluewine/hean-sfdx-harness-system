@@ -19,10 +19,10 @@ Each stage runs around the `force-app` deployment, in this order:
 2. Run every `.apex` file under `runbooks/<stage>-deploy/apex/` in filename order
 3. Apply `deletePackage/<stage>/destructiveChanges<Stage>.xml`
 
-**Both stages share one conversion output folder, and it is not cleared between them.** Confirmed by running the conversion for `pre` then `post` back to back into the same output folder: `post`'s conversion regenerates `package.xml` from `post`'s own declared source, but never removes a file `pre`'s earlier conversion left behind, so a component only `pre` declared can still be physically present when `post` deploys. Whether that breaks the deploy depends on the component's shape:
+**Both stages share one conversion output folder, and it is not cleared between them.** When `pre` and `post` convert back to back into the same output folder, `post`'s conversion regenerates `package.xml` from `post`'s own declared source, but never removes a file `pre`'s earlier conversion left behind, so a component only `pre` declared can still be physically present when `post` deploys. Whether that breaks the deploy depends on the component's shape:
 
-- **A component nested inside a shared container file needs a matching declaration in the later stage too, at minimum an empty one** — a `CustomField` (or any other member living inside an `.object` file) that `pre` declares and `post` doesn't fails `post`'s deploy with "Not in package.xml", confirmed against a real org: Salesforce parses the whole container file and cross-checks every nested member against that stage's `package.xml`.
-- **A standalone-file component needs no matching declaration.** Confirmed against a real org: a leftover file with no `package.xml` entry at all — an `ApexClass`, a `Flow`, a `FlowDefinition` — is silently dropped by the deploy; it neither applies nor errors. Duplicating it into the later stage is unnecessary.
+- **A component nested inside a shared container file needs a matching declaration in the later stage too, at minimum an empty one** — a `CustomField` (or any other member living inside an `.object` file) that `pre` declares and `post` doesn't fails `post`'s deploy with "Not in package.xml": Salesforce parses the whole container file and cross-checks every nested member against that stage's `package.xml`.
+- **A standalone-file component needs no matching declaration.** A leftover file with no `package.xml` entry at all — an `ApexClass`, a `Flow`, a `FlowDefinition` — is silently dropped by the deploy; it neither applies nor errors. Duplicating it into the later stage is unnecessary.
 
 **Metadata under a stage's `metaData/` must be listed in that stage's destructive manifest**, so the transient component is removed again once it has run. The only exception is a component the user says to keep.
 
@@ -43,7 +43,7 @@ Use dynamic, string-keyed access instead, for every field or object touched by t
 
 - Read: `Database.query('...')` into `List<SObject>`, then `.get('Field__c')` / `.getSObject('Relationship__r')`.
 - Write: `Schema.getGlobalDescribe().get('ObjectName').newSObject()`, then `.put('Field__c', value)`.
-- Guard with `Schema.getGlobalDescribe().get('ObjectName').getDescribe().fields.getMap().containsKey('field__c')` (lowercase key) before touching a field that may not exist. The guard protects the field's data at runtime; it does nothing for compile-time syntax — the dynamic-access rule above is what makes the guard meaningful at all.
+- Guard the object first, then the field: `Schema.SObjectType objectType = Schema.getGlobalDescribe().get('ObjectName');` is `null` for an object that does not exist yet, so check `objectType != null` before calling `objectType.getDescribe().fields.getMap().containsKey('field__c')` (lowercase key) on a field that may not exist. The guard protects the field's data at runtime; it does nothing for compile-time syntax — the dynamic-access rule above is what makes the guard meaningful at all.
 
 Apply this to every field the script touches that this release adds or removes — not only the one being removed. A script safe against the field it deletes but still typed against the field it creates fails identically, just in the opposite direction: it compiles once the new field exists everywhere, and fails everywhere it does not yet.
 
