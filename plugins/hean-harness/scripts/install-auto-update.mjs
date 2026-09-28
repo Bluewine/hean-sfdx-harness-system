@@ -15,8 +15,9 @@
  * marketplace has no entry there, in which case that one is named separately
  * as not changed — and `--auto-update off` turns it off for this plugin's
  * marketplace, which also records the choice, so setup does not ask again.
- * With no flag, a real run changes nothing; a dry run asks by printing a
- * `!! ASK` line, unless the choice was already recorded.
+ * With no flag, nothing changes; a choice already recorded is reported by a
+ * real run and a dry run alike. Otherwise a dry run asks with a `!! ASK`
+ * line and a real run says no choice was made.
  *
  * The choice lasts across setup runs: the revert setup runs first keeps every
  * recorded autoUpdate key (the `choices` category in lib/manifest.mjs), and
@@ -111,21 +112,23 @@ function main() {
   }
 
   if (choice === null) {
+    if (heanEntry.autoUpdate !== undefined) {
+      log(`Auto-update    ${marketplace} is already ${heanEntry.autoUpdate} in settings.json. Not asking again.`);
+      if (dryRun) {
+        log('');
+        log('Dry run. Nothing was changed.');
+      }
+      return;
+    }
     if (!dryRun) {
       log('Auto-update was not chosen. Run setup with --auto-update all, --auto-update hean, or --auto-update off.');
       return;
     }
-    if (heanEntry.autoUpdate === undefined) {
-      const names = Object.keys(extra);
-      log('!! ASK — AUTO-UPDATE NOT CHOSEN');
-      log('!! Should Claude Code download new plugin versions automatically? Run setup with');
-      log(`!! --auto-update hean (${marketplace} only), --auto-update all (${names.join(', ')}), or`);
-      log('!! --auto-update off (neither — updates stay manual, and setup stops asking).');
-      log('');
-      log('Dry run. Nothing was changed.');
-      return;
-    }
-    log(`Auto-update    ${marketplace} is already ${heanEntry.autoUpdate} in settings.json. Not asking again.`);
+    const names = Object.keys(extra);
+    log('!! ASK — AUTO-UPDATE NOT CHOSEN');
+    log('!! Should Claude Code download new plugin versions automatically? Run setup with');
+    log(`!! --auto-update hean (${marketplace} only), --auto-update all (${names.join(', ')}), or`);
+    log('!! --auto-update off (neither — updates stay manual, and setup stops asking).');
     log('');
     log('Dry run. Nothing was changed.');
     return;

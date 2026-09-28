@@ -352,6 +352,12 @@ try {
   check('--auto-update off records autoUpdate false', afterOff11.extraKnownMarketplaces['test-market'].autoUpdate === false);
   const dryAfterOff11 = execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--dry-run'], { env: env11, encoding: 'utf8', stdio: 'pipe' });
   check('a dry run after --auto-update off does not ask again', !dryAfterOff11.includes('!! ASK'));
+  const beforeRealOff11 = readFileSync(settings11, 'utf8');
+  const realAfterOff11 = execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs')], { env: env11, encoding: 'utf8', stdio: 'pipe' });
+  check('a real run after --auto-update off reports the recorded choice',
+        realAfterOff11.includes('test-market is already false in settings.json') && !realAfterOff11.includes('Auto-update was not chosen'),
+        realAfterOff11);
+  check('a real run after --auto-update off changes nothing', readFileSync(settings11, 'utf8') === beforeRealOff11);
 
   // home12: a dry run with no autoUpdate key yet prints the ASK line
   const home12 = join(root, 'home12');
