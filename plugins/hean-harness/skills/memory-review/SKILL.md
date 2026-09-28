@@ -81,8 +81,7 @@ prior copy step — these files already live directly in the repo. Parse the out
 under `.claude/agent-memory/hean-harness-developer/` belongs to the `hean-harness:developer`
 agent's own `MEMORY.md`). Treat each agent's directory independently — a `hean-harness:developer`
 memory's index line only ever lives in `.claude/agent-memory/hean-harness-developer/MEMORY.md`,
-never in another agent's index or in main memory's
-`MEMORY.md`.
+never in another agent's index or in main memory's `MEMORY.md`.
 
 If both commands produce empty output, stop — tell the user there is nothing to review in either
 scope and end the skill. (In the hook-triggered case this should not happen, since the hook only

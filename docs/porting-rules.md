@@ -42,10 +42,10 @@ Work through the phases in order. Each rule states what to do and why it matters
     - The project key: the repository's absolute path with every `/` and every `.` replaced by `-`.
     - The agent folder: the agent's full name, `<plugin-name>:<agent-name>`, with every character
       other than a letter, a digit, `-` or `_` replaced by `-`. Example: `my-plugin:developer`
-      becomes `my-plugin-developer`, and an agent in `agents/review/` gives
-      `my-plugin-review-security`. Claude Code reads a plugin agent's memory from that folder
-      only; a folder named after the agent alone is never loaded, so the agent runs without the
-      memories setup installed.
+      becomes `my-plugin-developer`, and an agent named `security` in `agents/review/`
+      gives `my-plugin-review-security`. Claude Code reads a plugin agent's memory from
+      that folder only; a folder named after the agent alone is never loaded, so the
+      agent runs without the memories setup installed.
     - The agent file: never paste the `# Persistent Agent Memory` section into it. Claude Code
       writes that section at run time from the `memory:` field, with the folder and the current
       `MEMORY.md`. A pasted copy keeps the folder and `MEMORY.md` from the session it was copied
