@@ -37,12 +37,26 @@ Work through the phases in order. Each rule states what to do and why it matters
     - Rules that apply to every project of the user's → `~/.claude/rules/`
     - Rules that apply to this repository → `<repo>/.claude/rules/`
     - Memories about the project → `~/.claude/projects/<project-key>/memory/`
-    - Memories belonging to one agent → `<repo>/.claude/agent-memory/<agent-name>/`
-12. The project key in rule 11 is the repository's absolute path with every `/` and every `.`
-    replaced by `-`. Build it at run time; never hardcode it.
+    - Memories belonging to one agent → `<repo>/.claude/agent-memory/<agent-folder>/`
+12. Build both folder names in rule 11 at run time; never hardcode them.
+    - The project key: the repository's absolute path with every `/` and every `.` replaced by `-`.
+    - The agent folder: the agent's full name, `<plugin-name>:<agent-name>`, with every character
+      other than a letter, a digit, `-` or `_` replaced by `-`. Example: `my-plugin:developer`
+      becomes `my-plugin-developer`, and an agent in `agents/review/` gives
+      `my-plugin-review-security`. Claude Code reads a plugin agent's memory from that folder
+      only; a folder named after the agent alone is never loaded, so the agent runs without the
+      memories setup installed.
+    - The agent file: never paste the `# Persistent Agent Memory` section into it. Claude Code
+      writes that section at run time from the `memory:` field, with the folder and the current
+      `MEMORY.md`. A pasted copy keeps the folder and `MEMORY.md` from the session it was copied
+      in, and the agent then gets two sections naming different folders.
 13. Never write state into the plugin directory. `${CLAUDE_PLUGIN_ROOT}` points at a new path after
     every plugin update, so anything written there is lost, and uninstall stops working. Write state
     to `~/.claude/<plugin-name>/`.
+
+**Check:** run each agent that has a `memory:` field once, then list `.claude/agent-memory/`.
+Claude Code creates the folder it reads when that folder is missing, so an empty folder beside the
+one setup filled means the two names differ.
 
 ## Phase 3 — Decide what to port, file by file
 
