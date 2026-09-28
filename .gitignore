@@ -12,5 +12,9 @@ plugins/hean-harness/skills/create-pr/screenshots/
 # hean-harness: installed or written on each clone, not shared
 .claude/*
 !.claude/manifest/
+# Shared maintenance convention for developing this plugin, not a per-clone install artifact
+!.claude/rules/
+.claude/rules/*
+!.claude/rules/wiki-coverage-tracking.md
 .githooks/
 .mcp.json
