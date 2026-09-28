@@ -118,7 +118,7 @@ const shipped = dir => readdirSync(dir).filter(f => f.endsWith('.md')).sort();
 
 const memDir = join(home, '.claude', 'projects', repo.replace(/[/.]/g, '-'), 'memory');
 const index = join(memDir, 'MEMORY.md');
-const agentIndex = join(repo, '.claude', 'agent-memory', 'sfdx-deployer', 'MEMORY.md');
+const agentIndex = join(repo, '.claude', 'agent-memory', 'hean-harness-sfdx-deployer', 'MEMORY.md');
 const projectShipped = shipped(join(MEMORIES, 'project'));
 
 try {
@@ -133,6 +133,9 @@ try {
   writeFileSync(index, `${USER_TOP}\n${oldLines}\n${USER_BOTTOM}`);
 
   run('install-memories.mjs', ['--repo', repo]);
+  check('agent memories are not written to a folder named after the agent alone',
+        ['developer', 'lwc-tester', 'sfdx-deployer'].every(
+          a => !existsSync(join(repo, '.claude', 'agent-memory', a))));
   const repaired = readFileSync(index, 'utf8');
   const links = targets(repaired);
   check('a rewrite without markers is repaired with no duplicate lines', links.length === new Set(links).size,
@@ -157,7 +160,7 @@ try {
           shipped(join(MEMORIES, 'agent', 'sfdx-deployer'))
             .map(f => indexLine(join(MEMORIES, 'agent', 'sfdx-deployer', f)) + '\n').join(''),
         JSON.stringify(agentText));
-  const devIndex = join(repo, '.claude', 'agent-memory', 'developer', 'MEMORY.md');
+  const devIndex = join(repo, '.claude', 'agent-memory', 'hean-harness-developer', 'MEMORY.md');
   writeFileSync(devIndex, readFileSync(devIndex, 'utf8') + '- [Team note](team_note.md) — the team\'s\n');
 
   writeFileSync(join(memDir, 'stray_memory.md'), '---\nname: stray\ndescription: x\n---\n');

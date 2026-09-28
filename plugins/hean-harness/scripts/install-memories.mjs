@@ -3,7 +3,7 @@
  * Installs memories for the repository the developer is working in.
  *
  *   Project memories   ->  ~/.claude/projects/<encoded repo path>/memory/
- *   Per-agent memories ->  <repo>/.claude/agent-memory/<agent>/
+ *   Per-agent memories ->  <repo>/.claude/agent-memory/<plugin>-<agent>/
  *
  * Claude Code names the project folder after the repository's absolute path,
  * with every "/" and "." turned into "-". Verified against existing folders.
@@ -13,7 +13,7 @@
  * that memory's frontmatter, and leaves every other line alone.
  */
 
-import { readdirSync, existsSync, statSync } from 'node:fs';
+import { readdirSync, existsSync, statSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -27,6 +27,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN_ROOT = dirname(HERE);
 const PROJECT_SRC = join(PLUGIN_ROOT, 'assets', 'memories', 'project');
 const AGENT_SRC   = join(PLUGIN_ROOT, 'assets', 'memories', 'agent');
+const PLUGIN_NAME = JSON.parse(readFileSync(join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'), 'utf8')).name;
 
 const argv = process.argv.slice(2);
 const dryRun = argv.includes('--dry-run');
@@ -36,6 +37,15 @@ const log = (...a) => console.log(...a);
 /** Claude Code's folder name for a repository. */
 export function encodeProjectPath(absPath) {
   return absPath.replace(/[/.]/g, '-');
+}
+
+/**
+ * Claude Code names a plugin agent `<plugin>:<agent>` and reads its project
+ * memory from that name with every other character turned into "-". A folder
+ * named after the agent alone is never read.
+ */
+export function agentMemoryFolder(pluginName, agentName) {
+  return `${pluginName}:${agentName}`.replace(/[^a-zA-Z0-9\-_]/g, '-') || 'unknown';
 }
 
 function findRepo() {
@@ -68,7 +78,7 @@ function main() {
   log(`Project memories   ${projectFiles.length} files -> ${projectMemDir}`);
   log(`Memory index       ${projectFiles.length} lines in ${join(projectMemDir, INDEX)}`);
   log(`Agent memories     ${agentCount} files across ${agents.length} agents -> ${agentMemDir}`);
-  for (const a of agents) log(`                     ${a}: ${mdFiles(join(AGENT_SRC, a)).length} files`);
+  for (const a of agents) log(`                     ${a}: ${mdFiles(join(AGENT_SRC, a)).length} files -> ${agentMemoryFolder(PLUGIN_NAME, a)}`);
   log('');
 
   if (dryRun) { log('Dry run. Nothing was changed.'); return; }
@@ -83,7 +93,7 @@ function main() {
   log(`Indexed ${projectFiles.length} project memories`);
 
   for (const a of agents) {
-    const dest = join(agentMemDir, a);
+    const dest = join(agentMemDir, agentMemoryFolder(PLUGIN_NAME, a));
     installDir(agentMemDir);
     installDir(dest);
     const files = mdFiles(join(AGENT_SRC, a));
