@@ -115,72 +115,16 @@ Inside Claude Code only:
 
 `claude plugin uninstall` in a terminal removes only the plugin and leaves setup's files behind.
 
-## Commit format
+## Learn more
 
-Setup asks once per repository whether commit subjects must read `@WORK-ID: Summary`.
+Every skill, agent, hook, and global rule this plugin ships — what it does, what problem it
+solves, when it runs, and how it's enforced — is documented on the
+[wiki](https://github.com/Bluewine/hean-sfdx-harness-system/wiki):
 
-| Command | Purpose |
-|---|---|
-| `/hean-harness:commit-format on` | Refuse a commit without a work item reference |
-| `/hean-harness:commit-format off` | Check nothing |
-
-## Commit approval
-
-Agents do not commit on their own. The two implementation questions — subagent-driven or main
-session, and commit per task or not — are asked once per machine and saved.
-`/hean-harness:start-implementation` runs the saved preference before the first change, with or
-without a plan, and asks the questions only when none is saved.
-
-| Saved preference | Result |
-|---|---|
-| Commit per task | Each task is committed, and the commits stay |
-| No commits, main session | Every commit is refused |
-| No commits, subagent-driven | Tasks commit for their reviews, then `/hean-harness:finish-implementation` undoes the commits and leaves the changes for you. Push is refused until then |
-
-To switch commits or dev mode, ask in chat or type `/hean-harness:implementation-defaults`; the
-answer replaces the saved preference on this machine.
-
-Under `No commits`, a commit is also allowed in the turn where your own message contains "commit",
-"commits", "committed" or "committing" — for example, asking for one after reviewing the changes —
-unless the word is negated ("don't commit") or "commit" is directly followed by a hyphen, as in
-`/hean-harness:commit-format`.
-
-Applies in every repository, including inside `/hean-harness:uat-hotfix` and
-`/hean-harness:version-bump`. Commits you type in a terminal are not checked.
-
-## Git identity
-
-Where commits are signed with OpenPGP (`commit.gpgsign` on and `user.signingkey` set), GitHub
-verifies a commit only when its committer email is on the signing key. Claude Code is refused a
-`git config` that sets `user.email`, at any scope, to an address not on the key, or removes it —
-except a `--local` or `--worktree` removal that leaves an address still on the key applying — and
-a `git push` that sends an unsigned commit, or a commit signed with this key, whose committer
-email is not on the key. Commits already on a remote and commits signed with a teammate's key are
-not checked. The refusal lists the commits and how to repair them. `/hean-harness:doctor` reports
-whether the global `user.email` is on the key.
-
-## Org roles
-
-Every org write from Claude Code — deploy, delete, anonymous Apex, data change, permission set
-assignment, package install — is checked against the role saved for the target org.
-
-| Command | Purpose |
-|---|---|
-| `/hean-harness:org-roles` | List logged-in orgs and save each one's role and whether agents may deploy to it |
-
-- No roles saved: every org write is refused.
-- A write to an org not saved as a deploy target is refused.
-- Queries, retrieves, test runs and validations are never checked.
-
-## Browser
-
-Setup installs the `ego-browser` skill, unless ego lite already put it in
-`~/.claude/skills/ego-browser`. Agents test in the browser with ego-browser when ego lite is
-installed, and with Playwright MCP when it is not.
-
-When superpowers or the ego-browser skill is already installed, setup updates it instead. A copy
-of `ego-browser` installed by the `skills` command-line tool is updated with `skills update`
-rather than left alone.
+- [Skills](https://github.com/Bluewine/hean-sfdx-harness-system/wiki/Skills)
+- [Agents](https://github.com/Bluewine/hean-sfdx-harness-system/wiki/Agents)
+- [Hooks](https://github.com/Bluewine/hean-sfdx-harness-system/wiki/Hooks)
+- [Global Rules](https://github.com/Bluewine/hean-sfdx-harness-system/wiki/Global-Rules)
 
 ## What setup leaves to you
 
