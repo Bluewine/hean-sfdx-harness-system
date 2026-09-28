@@ -15,11 +15,13 @@ commit-worthiness test:
   agent works) and a mirror at `.claude/memory/` inside this repo (what the team actually shares).
   This scope needs a copy step (Phase 1) and dual-location resolution (Phase 5), since a rejected
   memory must be removed from both places.
-- **Agent memory** — each subagent (`developer`, `sfdx-deployer`, `lwc-tester`, and any future
-  agent) keeps its own memory directly under `.claude/agent-memory/<agent-name>/`, with its own
-  `MEMORY.md` index. There is no global source and no sync step — these files are written directly
-  into the repo's working tree by the subagent as it works. This scope skips the copy step
-  entirely and resolves in a single location (Phase 5).
+- **Agent memory** — each subagent (`hean-harness:developer`, `hean-harness:sfdx-deployer`,
+  `hean-harness:lwc-tester`, and any future agent) keeps its own memory, with its own `MEMORY.md`
+  index, directly under `.claude/agent-memory/<agent-folder>/`, where `<agent-folder>` is the
+  agent's full name with the colon replaced by `-` (`hean-harness-developer`). There is no global
+  source and no sync step — these files are written directly into the repo's working tree by the
+  subagent as it works. This scope skips the copy step entirely and resolves in a single location
+  (Phase 5).
 
 Every memory captured in either scope is not automatically fit to share — some are team-wide facts
 that prevent real recurrences of a mistake, and some are personal, environment-tied, or already
@@ -76,9 +78,10 @@ index, not a memory), read the full file. For every ` D` entry, note the filenam
 **Agent memory:** run `git -C "$ROOT" status --porcelain -- .claude/agent-memory/`. This needs no
 prior copy step — these files already live directly in the repo. Parse the output the same way
 (`??`/` M`/` D`), but group each entry by which agent's subdirectory it falls under (e.g. a hit
-under `.claude/agent-memory/developer/` belongs to the `developer` agent's own `MEMORY.md`). Treat
-each agent's directory independently — a `developer` memory's index line only ever lives in
-`.claude/agent-memory/developer/MEMORY.md`, never in another agent's index or in main memory's
+under `.claude/agent-memory/hean-harness-developer/` belongs to the `hean-harness:developer`
+agent's own `MEMORY.md`). Treat each agent's directory independently — a `hean-harness:developer`
+memory's index line only ever lives in `.claude/agent-memory/hean-harness-developer/MEMORY.md`,
+never in another agent's index or in main memory's
 `MEMORY.md`.
 
 If both commands produce empty output, stop — tell the user there is nothing to review in either
@@ -173,21 +176,21 @@ For every main-memory file with a final "reject" decision, or every ` D` entry f
    line in the file.
 
 **Agent memory** — single location, no global source to reconcile. For every file with a final
-"commit" decision, under agent `<agent-name>`:
+"commit" decision, under agent `<agent-folder>`:
 
 ```bash
-git -C "$ROOT" add ".claude/agent-memory/<agent-name>/<filename>.md"
+git -C "$ROOT" add ".claude/agent-memory/<agent-folder>/<filename>.md"
 ```
 
-Its `MEMORY.md` index line lives directly in `.claude/agent-memory/<agent-name>/MEMORY.md` — stage
+Its `MEMORY.md` index line lives directly in `.claude/agent-memory/<agent-folder>/MEMORY.md` — stage
 that file once after all edits to it in this phase are complete, same as main memory's index.
 
 For every agent-memory file with a final "reject" decision, or every ` D` entry from Phase 2 under
 that agent's directory:
 
-1. Delete the file: `rm "$ROOT/.claude/agent-memory/<agent-name>/<filename>.md"` (skip if it's a
+1. Delete the file: `rm "$ROOT/.claude/agent-memory/<agent-folder>/<filename>.md"` (skip if it's a
    `D` entry that's already gone).
-2. Remove its corresponding line from `.claude/agent-memory/<agent-name>/MEMORY.md` only — never
+2. Remove its corresponding line from `.claude/agent-memory/<agent-folder>/MEMORY.md` only — never
    touch another agent's index or main memory's `MEMORY.md` for an agent-memory rejection.
 
 **If the link target cannot be found unambiguously** in any `MEMORY.md` file involved — main
