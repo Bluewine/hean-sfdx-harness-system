@@ -13,7 +13,7 @@ Updated whenever a skill, agent, hook, or rule is added, removed, or renamed —
 | org-roles | Skills | documented |
 | setup | Skills | documented |
 | uninstall | Skills | documented |
-| branch-manifest | Skills | documented |
+| branch-manifest | — | pending (exists, not in original scope) |
 | commit-format | Skills | documented |
 | create-pr | Skills | documented |
 | deprecate-flow | Skills | documented |
@@ -21,17 +21,17 @@ Updated whenever a skill, agent, hook, or rule is added, removed, or renamed —
 | flow-description-comment | Skills | documented |
 | flow-trigger-order | Skills | documented |
 | linear-start-issue | Skills | documented |
-| memory-review | Skills | documented |
-| open-work-report | Skills | documented |
+| memory-review | — | pending (exists, not in original scope) |
+| open-work-report | — | pending (exists, not in original scope) |
 | release-pr | Skills | documented |
 | start-implementation | Skills | documented |
 | update-pr | Skills | documented |
-| test-changed | Skills | documented |
+| test-changed | — | pending (exists, not in original scope) |
 | jenkins-pre-post-deploy | Skills | documented |
 | uat-hotfix | Skills | documented |
 | version-bump | Skills | documented |
-| hean | Skills | documented |
-| soql-bindvar-resolver | Skills | documented |
+| hean | — | pending (exists, not in original scope) |
+| soql-bindvar-resolver | — | pending (exists, not in original scope) |
 | commit-walk-sync | — | excluded (ships as `SKILL.mdx`, not discoverable) |
 | sync-to-branch | — | excluded (ships as `SKILL.mdx`, not discoverable) |
 
