@@ -1,9 +1,10 @@
 /**
  * Whether a repository enforces the @WORK-ID commit subject format.
  *
- * The answer is asked once, by setup, and kept in the repository's .claude
- * folder. That folder is ignored by git and deleted on uninstall, so the answer
- * belongs to one clone and goes away with the install. The commit gate reads it
+ * The answer is asked once, by setup, and kept in the repository's
+ * .claude/hean-harness.json. The folder is ignored by git, and uninstall deletes
+ * this file as one of the plugin's own files, so the answer belongs to one clone
+ * and goes away with the install. The commit gate reads it
  * on every commit: no file means setup never ran here, and nothing is enforced.
  *
  * The switch has two effects, kept together here so setup and the

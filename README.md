@@ -126,7 +126,8 @@ Inside Claude Code only:
 ```
 
 - Reverses every change setup made, including the plugins it added.
-- Keeps `.claude/manifest/`, files git tracks, and the `.gitignore` lines it added.
+- Removes only what the plugin put in the repository's `.claude` folder; your own files there, including worktrees, stay.
+- A rule or memory you edited after setup is copied to the backups folder before it is deleted or restored. `.claude/manifest/`, files git tracks, and the `.gitignore` lines setup added are kept.
 - Backups stay in `~/.claude/hean-harness/backups/`.
 
 `claude plugin uninstall` in a terminal removes only the plugin and leaves setup's files behind.

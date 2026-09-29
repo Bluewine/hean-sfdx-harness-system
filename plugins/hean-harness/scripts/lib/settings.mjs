@@ -2,7 +2,8 @@
  * The answers setup and the skills save for one repository, kept in
  * <repo>/.claude/hean-harness.json.
  *
- * That folder is ignored by git and emptied on uninstall, so the answers belong
+ * That folder is ignored by git, and uninstall deletes this file as one of the
+ * plugin's own files while leaving the rest of the folder, so the answers belong
  * to one clone on one machine and go away with the install. Each answer lives
  * under its own key; a write replaces only its own key and keeps the others.
  */

@@ -11,7 +11,8 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, statSync, chmodSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, statSync, chmodSync,
+         readdirSync, appendFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
@@ -164,6 +165,36 @@ try {
   mkdirSync(dirname(storyManifest), { recursive: true });
   writeFileSync(storyManifest, '<Package/>\n');
 
+  // the user's own files in the repository .claude folder, which uninstall must keep
+  const repoClaude = join(repo, '.claude');
+  const agentMemory = join(repoClaude, 'agent-memory');
+  const memoryFolder = readdirSync(agentMemory).find(d => statSync(join(agentMemory, d)).isDirectory());
+  const userFiles = {
+    [join(repoClaude, 'rules', 'my-own-rule.md')]: '# my own rule\n',
+    [join(agentMemory, memoryFolder, 'my-own-memory.md')]: '# my own memory\n',
+    [join(repoClaude, 'settings.local.json')]: '{ "mine": true }\n',
+    [join(repoClaude, 'worktrees', 'wt1', 'notes.txt')]: 'my worktree notes\n'
+  };
+  for (const [file, text] of Object.entries(userFiles)) {
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, text);
+  }
+  // one installed project rule and one installed user rule, edited after setup
+  const installed = JSON.parse(readFileSync(manifestPath, 'utf8')).changes.filter(c => c.type === 'file-copy');
+  const editedProjectRule = installed.find(c => dirname(c.target) === join(repoClaude, 'rules')).target;
+  const editedUserRule = installed.find(c => dirname(c.target) === join(home, '.claude', 'rules')).target;
+  const PROJECT_EDIT = 'a line the user added to a project rule';
+  const USER_EDIT = 'a line the user added to a user rule';
+  appendFileSync(editedProjectRule, `\n${PROJECT_EDIT}\n`);
+  appendFileSync(editedUserRule, `\n${USER_EDIT}\n`);
+
+  const dryRun = JSON.parse(run('lib/manifest.mjs', ['revert', '--dry-run', 'true']));
+  const dryEntry = dryRun.find(c => c.type === 'file-copy' && c.target === editedProjectRule);
+  check('a dry run names an installed rule edited after setup, and leaves it in place',
+        String(dryEntry?.note).includes('edited after setup') &&
+          readFileSync(editedProjectRule, 'utf8').includes(PROJECT_EDIT),
+        String(dryEntry?.note));
+
   const revert = JSON.parse(run('lib/manifest.mjs', ['revert']));
   check('every recorded change reverses', revert.every(c => c.ok),
         `${revert.filter(c => c.ok).length}/${revert.length}`);
@@ -184,7 +215,20 @@ try {
         readFileSync(join(home, '.zshrc'), 'utf8') === MY_ZSHRC);
   check('the hook folder is removed', !existsSync(join(repo, '.githooks')));
   check('core.hooksPath is unset again', hooksPath() === undefined, String(hooksPath()));
-  check('uninstall empties the repository .claude folder', !existsSync(join(repo, '.claude', 'rules')));
+  check('uninstall keeps the user\'s own files in the repository .claude folder',
+        Object.entries(userFiles).every(([f, text]) => existsSync(f) && readFileSync(f, 'utf8') === text));
+  const backupsDir = join(home, '.claude', 'hean-harness', 'backups');
+  const backedUp = line => existsSync(backupsDir) &&
+    readdirSync(backupsDir).some(f => readFileSync(join(backupsDir, f), 'utf8').includes(line));
+  check('an edited project rule is removed after a copy is saved to the backups folder',
+        !existsSync(editedProjectRule) && backedUp(PROJECT_EDIT));
+  check('an edited user rule is removed after a copy is saved to the backups folder',
+        !existsSync(editedUserRule) && backedUp(USER_EDIT));
+  check('uninstall deletes the saved answers file', !existsSync(join(repoClaude, 'hean-harness.json')));
+  check('uninstall deletes the skill output', !existsSync(report));
+  const rulesLeft = existsSync(join(repoClaude, 'rules')) ? readdirSync(join(repoClaude, 'rules')) : [];
+  check('no plugin rule is left in the repository .claude/rules folder',
+        JSON.stringify(rulesLeft) === JSON.stringify(['my-own-rule.md']), JSON.stringify(rulesLeft));
   check('uninstall keeps the story manifests', existsSync(storyManifest));
   check('the repository .mcp.json is deleted', !existsSync(join(repo, '.mcp.json')));
   check('no folder setup created is left in the home directory',

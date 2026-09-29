@@ -27,13 +27,13 @@ const BACKUP_DIR = join(STATE_DIR, 'backups');
 
 /** Change types and how each one is reversed. */
 const REVERSIBLE = {
-  'file-copy':    'Restore the backup, or delete the file if it did not exist before.',
+  'file-copy':    'Restore the backup, or delete the file if it did not exist before. A file edited after setup is copied to the backups folder first.',
   'marker-block': 'Strip the marked block out of the file, leaving the rest untouched.',
   'index-lines':  'Remove the index lines linking to the recorded memories; delete the file only if we created it and just the heading is left.',
   'json-key':     'Restore the previous value, or remove the key if it was absent before.',
   'dir-create':   'Remove the directory, but only if it is still empty.',
   'git-config':   'Restore the previous value in the repository, or unset the key if it had none.',
-  'repo-folder':  'Empty the repository\'s .claude folder except .claude/manifest/ and files git tracks. Uninstall only.',
+  'repo-folder':  'Delete .claude/hean-harness.json and skill output in the repository\'s .claude folder unless git tracks them, then the folders left empty. Uninstall only.',
   'repo-file':    'Delete the repository\'s .mcp.json unless git tracks it. Uninstall only.',
   'external':     'Run the recorded plugin or marketplace removal on uninstall; anything else is reported.'
 };
@@ -360,8 +360,9 @@ export function category(c) {
 /**
  * Reverse every recorded change, newest first. Never throws on one failure.
  *
- * A repository's .claude folder is deleted after everything else, so a backup
- * restored into it earlier in the loop never fails for want of the folder.
+ * A repository's .claude folder is handled after everything else, so a backup
+ * restored into it earlier in the loop never fails for want of the folder, and
+ * the folders the rules and memories left empty are removed with it.
  *
  * keep is for the revert setup runs before reinstalling. Each category named in
  * it is skipped, and its entries stay in the manifest for uninstall:
@@ -403,6 +404,11 @@ export function revert({ dryRun = false, keep = [], only = null } = {}) {
         case 'file-copy':
           // A file git tracks belongs to the repository now, whoever wrote it first.
           if (tracked(c.target)) { r.action = 'kept'; r.note = 'git tracks this file; left as it is'; break; }
+          // A file edited after setup holds the user's work; copy it aside first.
+          if (((c.existedBefore && c.backup && existsSync(c.backup)) || !c.existedBefore) && editedAfterSetup(c)) {
+            r.note = dryRun ? 'edited after setup; a copy will be saved to the backups folder'
+                            : `edited after setup; copy saved to ${backup(c.target)}`;
+          }
           if (c.existedBefore && c.backup && existsSync(c.backup)) {
             r.action = 'restore backup';
             if (!dryRun) copyFileSync(c.backup, c.target);
@@ -505,11 +511,14 @@ export function revert({ dryRun = false, keep = [], only = null } = {}) {
           if (basename(c.target) !== '.claude' || resolve(c.target) === resolve(claudeDir())) {
             r.ok = false; r.note = 'refused: not a repository .claude folder'; break;
           }
-          r.action = 'delete everything in it except .claude/manifest/ and files git tracks';
+          r.action = 'delete the plugin\'s own files (.claude/hean-harness.json and skill output) and empty folders; keep everything else';
           if (!existsSync(c.target)) { r.note = 'already absent'; break; }
           {
-            const kept = clearRepoClaude(c.target, dryRun);
-            if (kept) r.note = `kept ${kept} file${kept > 1 ? 's' : ''}: .claude/manifest/ and files git tracks`;
+            const { kept, worktrees } = clearPluginFiles(c.target, dryRun);
+            if (kept || worktrees) {
+              r.note = `kept ${kept} file${kept === 1 ? '' : 's'} in the folder` +
+                       (worktrees ? ', and .claude/worktrees/ as it is' : '');
+            }
           }
           break;
         case 'repo-file': {
@@ -573,12 +582,19 @@ export function revert({ dryRun = false, keep = [], only = null } = {}) {
 }
 
 /**
- * Empty a repository's .claude folder of everything this plugin and its skills
- * wrote, keeping .claude/manifest/ — each story's deploy manifest, which the team
- * commits — and every file git tracks. Folders left empty are removed, the
- * .claude folder itself included. Returns how many files were kept.
+ * Delete the files this plugin generates in a repository's .claude folder —
+ * .claude/hean-harness.json and every file under .claude/skills/<skill>/output/ —
+ * unless git tracks them, then remove the folders left empty, deepest first, and
+ * the .claude folder itself when nothing is left in it. Every other file stays:
+ * the user keeps their own rules, memories, settings.local.json and Claude
+ * Code's worktrees there. The rules and memories setup copied are removed by
+ * their own file-copy entries before this runs. .claude/manifest/ and
+ * .claude/worktrees/ are never entered, and a symlink is never followed.
+ *
+ * Returns how many files are left outside .claude/worktrees/, and whether that
+ * folder is there; a worktree can hold a whole checkout, so it is not counted.
  */
-function clearRepoClaude(folder, dryRun) {
+function clearPluginFiles(folder, dryRun) {
   const repo = dirname(folder);
   let trackedFiles = new Set();
   try {
@@ -586,26 +602,62 @@ function clearRepoClaude(folder, dryRun) {
       { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\0').filter(Boolean)
       .map(f => join(repo, f)));
   } catch { /* not a git repository: nothing is tracked */ }
-  const manifestDir = join(folder, 'manifest');
-  let kept = 0;
-  const walk = dir => {
+  const isDir = p => { try { return lstatSync(p).isDirectory(); } catch { return false; } };
+  const exists = p => { try { lstatSync(p); return true; } catch { return false; } };
+
+  const ours = [];
+  const collect = dir => {
     for (const name of readdirSync(dir)) {
       const p = join(dir, name);
-      if (p === manifestDir) { kept += countFiles(p); continue; }
-      // lstat: a symlinked folder is removed as a link, never emptied through it
-      if (lstatSync(p).isDirectory()) {
-        walk(p);
+      if (isDir(p)) collect(p); else ours.push(p);
+    }
+  };
+  const own = join(folder, 'hean-harness.json');
+  if (exists(own) && !isDir(own)) ours.push(own);
+  const skills = join(folder, 'skills');
+  if (isDir(skills)) {
+    for (const s of readdirSync(skills)) {
+      const output = join(skills, s, 'output');
+      if (isDir(join(skills, s)) && isDir(output)) collect(output);
+    }
+  }
+  const doomed = new Set(ours.filter(p => !trackedFiles.has(p)));
+  if (!dryRun) for (const p of doomed) rmSync(p, { force: true });
+
+  const manifestDir = join(folder, 'manifest');
+  const worktreesDir = join(folder, 'worktrees');
+  const worktrees = exists(worktreesDir);
+  let kept = 0;
+  const prune = dir => {
+    for (const name of readdirSync(dir)) {
+      const p = join(dir, name);
+      if (p === worktreesDir) continue;
+      if (p === manifestDir) { kept += isDir(p) ? countFiles(p) : 1; continue; }
+      if (isDir(p)) {
+        prune(p);
         if (!dryRun && readdirSync(p).length === 0) rmdirSync(p);
-      } else if (trackedFiles.has(p)) {
+      } else if (!doomed.has(p)) {
         kept++;
-      } else if (!dryRun) {
-        rmSync(p, { force: true });
       }
     }
   };
-  walk(folder);
+  prune(folder);
   if (!dryRun && readdirSync(folder).length === 0) rmdirSync(folder);
-  return kept;
+  return { kept, worktrees };
+}
+
+/**
+ * Did the user edit an installed file after setup wrote it? Compared against
+ * the fingerprint setup recorded, or, for an entry an older version recorded
+ * without one, against the plugin's own copy of the file.
+ */
+function editedAfterSetup(c) {
+  if (!existsSync(c.target) || !statSync(c.target).isFile()) return false;
+  const current = readFileSync(c.target);
+  if (c.hash) return createHash('sha256').update(current).digest('hex') !== c.hash;
+  const source = c.source ? join(PLUGIN_ROOT, c.source) : null;
+  if (source && existsSync(source)) return !current.equals(readFileSync(source));
+  return false;
 }
 
 function countFiles(dir) {

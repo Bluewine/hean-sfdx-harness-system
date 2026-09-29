@@ -8,6 +8,7 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { basename, dirname, relative, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -49,13 +50,17 @@ export function installFile(source, dest) {
   // because the plugin's own folder moves whenever the plugin updates.
   const from = relative(PLUGIN_ROOT, source);
 
+  // A fingerprint of what setup writes, so uninstall can tell a file the user
+  // edited afterwards and copy it aside before deleting it.
+  const hash = createHash('sha256').update(readFileSync(source)).digest('hex');
+
   // Recorded before the write, not after. A run killed between the two would
   // otherwise leave the user's file overwritten with no entry to reverse it,
   // and the next setup would read our copy as though it were theirs. Reversing
   // an entry whose write never happened is harmless: it restores a backup
   // identical to what is already on disk.
   record({ type: 'file-copy', target: dest, backup: saved, existedBefore: existed,
-           source: from.startsWith('..') ? null : from });
+           source: from.startsWith('..') ? null : from, hash });
 
   copyFileSync(source, dest);
   return { existed, replaced: existed };
@@ -203,9 +208,10 @@ export function installGitConfig(repo, key, value) {
 }
 
 /**
- * Record the repository's .claude folder, so uninstall deletes it with
- * everything in it. The folder is ignored by git and holds nothing but what
- * setup and the skills wrote on this clone.
+ * Record the repository's .claude folder, so uninstall deletes the files the
+ * plugin generates there — .claude/hean-harness.json and skill output — and
+ * the folders left empty. Everything else in it stays: the user's own rules
+ * and memories, settings.local.json and Claude Code's worktrees live there too.
  *
  * Refuses when the repository is the home folder, because its .claude is
  * Claude Code's own configuration.

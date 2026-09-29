@@ -1,6 +1,6 @@
 ---
 name: uninstall
-description: Reverse every change setup made — strips only the marked alias block from the shell startup file, removes copied rules and memories, empties the repository's .claude folder except its manifests and tracked files, deletes .mcp.json, uninstalls the plugins setup added and then hean-harness itself
+description: Reverse every change setup made — strips only the marked alias block from the shell startup file, removes the rules and memories it copied (backing up edited ones), deletes the plugin's own files in the repository's .claude folder, deletes .mcp.json, uninstalls the plugins setup added and then hean-harness itself
 allowed-tools: ["Bash", "Read"]
 ---
 
@@ -22,9 +22,13 @@ left in place because it is theirs rather than ours.
      `.bash_profile`, `.profile`): the file, its `lines` value, and its `preview` text quoted in
      full. Say that only those lines and the one blank line above them are removed, and that the
      file is copied to `~/.claude/hean-harness/backups/` first.
-   - each `repo-folder` entry: everything in the `.claude` folder is deleted, including skill
-     output such as rendered pull request bodies and reports, except `.claude/manifest/` and any
-     file git tracks
+   - each `repo-folder` entry: uninstall deletes `.claude/hean-harness.json`, skill output under
+     `.claude/skills/*/output/` such as rendered pull request bodies and reports, the rules and
+     memories setup copied, and folders left empty. Everything else in `.claude` stays, including
+     the user's own rules and memories, `settings.local.json`, `.claude/worktrees/`,
+     `.claude/manifest/` and any file git tracks. A rule or memory edited after setup is copied to
+     `~/.claude/hean-harness/backups/` before it is deleted or restored; name each entry whose `note` says
+     `edited after setup`.
    - each `repo-file` entry: the repository's `.mcp.json` is deleted
    - each entry whose `action` starts with `run:`: the plugin or marketplace it removes
    - that hean-harness itself is uninstalled last, which removes its skills, agents and hooks
@@ -68,7 +72,11 @@ left in place because it is theirs rather than ours.
      say what it was and why it failed
    - each shell startup file edited, the result of the step 4 check, and its backup path
    - each `repo-folder` and `repo-file` entry, naming what was deleted and what its `note` says
-     was kept; a `.mcp.json` that git tracks is kept, so say so and name it
+     was kept: `.claude/hean-harness.json`, skill output under `.claude/skills/*/output/`, the
+     rules and memories setup copied, and folders left empty are deleted; the user's own rules and
+     memories, `settings.local.json` and `.claude/worktrees/` stay. A `.mcp.json` that git tracks
+     is kept, so say so and name it
+   - each entry whose `note` says `edited after setup`, with the backup path the `note` gives
    - each `run:` entry and whether the plugin or marketplace was removed
    - each remaining `external` entry with action `manual`, giving its `note`, which is the exact
      command that undoes it
@@ -87,7 +95,10 @@ left in place because it is theirs rather than ours.
   editor tool, or a rewrite of the whole file.
 - Lines a user added to a startup file after setup ran are left alone — only the marked block is
   removed, wherever it sits in the file.
-- The repository's `.claude` folder is emptied except `.claude/manifest/`, where each story's
-  deploy manifest is committed for the team, and any file git tracks. Everything else in it is
-  written by setup or the skills on each clone.
+- In the repository's `.claude` folder, uninstall deletes only `.claude/hean-harness.json`, skill
+  output under `.claude/skills/*/output/`, the rules and memories setup copied, and folders left
+  empty. Everything else stays, including the user's own rules and memories,
+  `settings.local.json`, `.claude/worktrees/`, `.claude/manifest/`, where each story's deploy
+  manifest is committed for the team, and any file git tracks. A rule or memory edited after
+  setup is copied to `~/.claude/hean-harness/backups/` before it is deleted or restored.
 - Never delete the backups folder. It holds copies of their own files.
