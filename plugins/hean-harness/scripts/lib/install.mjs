@@ -6,7 +6,7 @@
  * files themselves.
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, realpathSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { basename, dirname, relative, join, resolve } from 'node:path';
@@ -15,6 +15,9 @@ import { fileURLToPath } from 'node:url';
 import { record, backup, findBlock, block, setJsonKey, getJsonKey, missingParents, load, markers, note } from './manifest.mjs';
 import { claudeDir } from './paths.mjs';
 import { MARKER } from './shell.mjs';
+import { mainCheckout } from './settings.mjs';
+
+const realOrResolved = p => { try { return realpathSync(p); } catch { return resolve(p); } };
 import { indexLine, mergeIndex } from './memory-index.mjs';
 
 // <plugin>/scripts/lib/install.mjs -> <plugin>
@@ -214,12 +217,18 @@ export function installGitConfig(repo, key, value) {
  * and memories, settings.local.json and Claude Code's worktrees live there too.
  *
  * Refuses when the repository is the home folder, because its .claude is
- * Claude Code's own configuration.
+ * Claude Code's own configuration. For a linked worktree the main checkout's
+ * .claude folder is recorded too, because the saved answers file lives there.
  */
 export function installRepoFolder(repo) {
   const target = join(repo, '.claude');
   if (resolve(target) === resolve(claudeDir())) return { recorded: false, target };
   record({ type: 'repo-folder', target });
+  // In a linked worktree the saved answers live in the main checkout's .claude folder.
+  const mainTarget = join(mainCheckout(repo), '.claude');
+  if (realOrResolved(mainTarget) !== realOrResolved(target) && realOrResolved(mainTarget) !== realOrResolved(claudeDir())) {
+    record({ type: 'repo-folder', target: mainTarget });
+  }
   return { recorded: true, target };
 }
 
