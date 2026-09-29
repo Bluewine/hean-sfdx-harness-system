@@ -51,6 +51,9 @@ try {
         String(afterFirst.env?.CLAUDE_CODE_ENABLE_TODO_TOOLS));
   check('an unrelated env key survives setup', afterFirst.env?.MY_OWN_ENV === 'keep-me',
         String(afterFirst.env?.MY_OWN_ENV));
+  check('the advisor keys are set after setup',
+        afterFirst.env?.CLAUDE_CODE_ENABLE_EXPERIMENTAL_ADVISOR_TOOL === '1' && afterFirst.advisorModel === 'opus',
+        JSON.stringify([afterFirst.env?.CLAUDE_CODE_ENABLE_EXPERIMENTAL_ADVISOR_TOOL, afterFirst.advisorModel]));
   const report = join(repo, '.claude', 'skills', 'create-pr', 'output', 'body.md');
   mkdirSync(dirname(report), { recursive: true });
   writeFileSync(report, 'a rendered body\n');
@@ -60,6 +63,9 @@ try {
   const afterTwice = readSettings();
   check('running setup twice leaves one correct task tools value',
         afterTwice.env?.CLAUDE_CODE_ENABLE_TODO_TOOLS === '1', String(afterTwice.env?.CLAUDE_CODE_ENABLE_TODO_TOOLS));
+  check('running setup twice leaves one correct value for each advisor key',
+        afterTwice.env?.CLAUDE_CODE_ENABLE_EXPERIMENTAL_ADVISOR_TOOL === '1' && afterTwice.advisorModel === 'opus',
+        JSON.stringify([afterTwice.env?.CLAUDE_CODE_ENABLE_EXPERIMENTAL_ADVISOR_TOOL, afterTwice.advisorModel]));
 
   const manifest = JSON.parse(readFileSync(join(home, '.claude', 'hean-harness', 'install-manifest.json'), 'utf8'));
   const shipped = JSON.parse(readFileSync(join(dirname(SCRIPTS), '.claude-plugin', 'plugin.json'), 'utf8')).version;
@@ -169,6 +175,9 @@ try {
   check('their other settings are untouched', settings.theme === 'dark');
   check('the task tools key is removed on uninstall', settings.env?.CLAUDE_CODE_ENABLE_TODO_TOOLS === undefined,
         String(settings.env?.CLAUDE_CODE_ENABLE_TODO_TOOLS));
+  check('the advisor keys are removed on uninstall',
+        settings.env?.CLAUDE_CODE_ENABLE_EXPERIMENTAL_ADVISOR_TOOL === undefined && !('advisorModel' in settings),
+        JSON.stringify([settings.env?.CLAUDE_CODE_ENABLE_EXPERIMENTAL_ADVISOR_TOOL, settings.advisorModel]));
   check('the unrelated env key survives uninstall', settings.env?.MY_OWN_ENV === 'keep-me',
         String(settings.env?.MY_OWN_ENV));
   check('the alias block is removed from the middle of the shell profile, and nothing else',
@@ -223,6 +232,21 @@ try {
   const afterUninstall5 = JSON.parse(readFileSync(settings5, 'utf8'));
   check('uninstall puts back the user\'s own task tools value',
         afterUninstall5.env?.CLAUDE_CODE_ENABLE_TODO_TOOLS === '0', JSON.stringify(afterUninstall5));
+
+  // A user who already chose their own advisor gets that choice back on uninstall.
+  const homeAdvisor = join(root, 'homeAdvisor');
+  mkdirSync(join(homeAdvisor, '.claude'), { recursive: true });
+  const settingsAdvisor = join(homeAdvisor, '.claude', 'settings.json');
+  writeFileSync(settingsAdvisor, JSON.stringify({ advisorModel: 'fable' }, null, 2) + '\n');
+  const envAdvisor = { ...process.env, HOME: homeAdvisor };
+  execFileSync('node', [join(SCRIPTS, 'install-advisor.mjs')], { env: envAdvisor, encoding: 'utf8', stdio: 'pipe' });
+  const afterSetupAdvisor = JSON.parse(readFileSync(settingsAdvisor, 'utf8'));
+  check('setup replaces the user\'s own advisor with opus',
+        afterSetupAdvisor.advisorModel === 'opus', JSON.stringify(afterSetupAdvisor));
+  execFileSync('node', [join(SCRIPTS, 'lib', 'manifest.mjs'), 'revert'], { env: envAdvisor, encoding: 'utf8', stdio: 'pipe' });
+  const afterUninstallAdvisor = JSON.parse(readFileSync(settingsAdvisor, 'utf8'));
+  check('uninstall puts back the user\'s own advisor and leaves no env block',
+        afterUninstallAdvisor.advisorModel === 'fable' && !('env' in afterUninstallAdvisor), JSON.stringify(afterUninstallAdvisor));
 
   // A repository that commits its own hook owns the hooks folder.
   const home2 = join(root, 'home2');

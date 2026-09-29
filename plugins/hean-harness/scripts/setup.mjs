@@ -49,6 +49,7 @@ const STEPS = [
   { name: 'Memories',      script: 'install-memories.mjs',       wantsRepo: true },
   { name: 'Status line',   script: 'install-statusline.mjs' },
   { name: 'Task tools',    script: 'install-task-tools.mjs' },
+  { name: 'Advisor',       script: 'install-advisor.mjs' },
   { name: 'Auto-update',   script: 'install-auto-update.mjs',   keepGoing: true },
   { name: 'Commit format', script: 'install-githooks.mjs',     wantsRepo: true },
   // After the hooks: npm install runs the repository's prepare script, which
