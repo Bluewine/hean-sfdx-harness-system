@@ -54,7 +54,7 @@ const memoryDir = () => {
 
 try {
   // a rule the "previous version" shipped and the next one will not
-  copyFileSync(join(RULES_SRC, 'communication-protocol.md'), DROPPED);
+  copyFileSync(join(RULES_SRC, 'task-list.md'), DROPPED);
   setup();
   const userRules = join(home, '.claude', 'rules');
   check('the previous version installed its rule', existsSync(join(userRules, 'zz-test-dropped-rule.md')));
@@ -77,7 +77,7 @@ try {
   check('their .zshrc content survived',
         readFileSync(join(home, '.zshrc'), 'utf8').includes('keep me'));
   check('the current version is fully installed',
-        existsSync(join(userRules, 'communication-protocol.md')) &&
+        existsSync(join(userRules, 'task-list.md')) &&
         existsSync(join(repo, '.claude', 'rules')) &&
         readdirSync(join(repo, '.claude', 'rules')).length > 10);
 
