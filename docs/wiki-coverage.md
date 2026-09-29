@@ -56,7 +56,7 @@ Updated whenever a skill, agent, hook, or rule is added, removed, or renamed —
 | commit-approval-gate.mjs | Hooks | documented |
 | git-identity-guard.mjs | Hooks | documented |
 | commit-lifecycle-events.mjs | Hooks | documented |
-| worktree-share.mjs | Hooks | pending |
+| worktree-share.mjs | Hooks | documented |
 
 ## Rules
 
