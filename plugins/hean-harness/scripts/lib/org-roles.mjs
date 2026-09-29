@@ -78,9 +78,10 @@ export function projectRoot(dir) {
 }
 
 /**
- * The folder whose hean-harness.json holds the project's roles: the top of the
- * git repository, where setup saves its other answers, or the project itself
- * when it is not in one.
+ * The folder the project's roles are looked up from: the top of the git
+ * repository, or the project itself when it is not in one. settingsFile()
+ * then resolves that folder to the main checkout, so a linked worktree reads
+ * and writes the main checkout's hean-harness.json.
  */
 export function recordHome(root) {
   try {

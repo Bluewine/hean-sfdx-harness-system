@@ -5,8 +5,9 @@ between two orgs.
 
 ## Roles
 
-Every org connected to this project has exactly one role, saved per project in
-`.claude/hean-harness.json` under `orgs`, keyed by org ID:
+Every org connected to this project has exactly one role, saved per project in the main checkout's
+`.claude/hean-harness.json` under `orgs`, keyed by org ID. Every worktree of the repository reads
+and writes that same file:
 
 - **development** — the org developers deploy their own work to by hand. Nothing deploys to it
   automatically. Several developers may share it.

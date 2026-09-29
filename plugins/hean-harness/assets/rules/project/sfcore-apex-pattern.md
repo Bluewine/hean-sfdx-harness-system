@@ -12,7 +12,7 @@ Apply these rules **every time** an Apex class is created or edited — no excep
 
 ## Step 0 — Retrieve SFCORE classes (MANDATORY, always first)
 
-Read the `alias` of the org whose `role` is `development` in `.claude/hean-harness.json` (see `org-roles.md`). Run the retrieve with that alias written out as text, and wait for completion before any other action:
+Run `/hean-harness:org-roles` and read the `alias` of the org whose `role` is `development` (see `org-roles.md`); the roles are saved in the main checkout's `.claude/hean-harness.json`, which every worktree shares, so never look for that file inside a worktree. Run the retrieve with that alias written out as text, and wait for completion before any other action:
 
 ```bash
 sf project retrieve start --metadata "ApexClass:SFCORE*" --ignore-conflicts -o <alias>

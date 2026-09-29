@@ -10,13 +10,14 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const HOOKS = dirname(dirname(fileURLToPath(import.meta.url)));
 const HOOK = join(HOOKS, 'org-write-gate.mjs');
+const SETTINGS_LIB = join(dirname(HOOKS), 'scripts', 'lib', 'settings.mjs');
 const ROLES_SCRIPT = join(dirname(HOOKS), 'scripts', 'org-roles.mjs');
 
 const sandbox = mkdtempSync(join(tmpdir(), 'org-gate-'));
@@ -127,6 +128,26 @@ const keptFormat = JSON.parse(readFileSync(join(READY, '.claude', 'hean-harness.
 execFileSync('node', [ROLES_SCRIPT, 'set', 'other', '--role', 'research', '--deploy', 'no'], { cwd: READY, env });
 JSON.parse(readFileSync(join(READY, '.claude', 'hean-harness.json'), 'utf8')).commitFormat === keptFormat.commitFormat ? pass++
   : (fail++, console.log('  FAIL  saving a role dropped the commit format answer'));
+
+console.log('Linked worktree');
+const { mainCheckout, settingsFile, readSettings, writeSetting } = await import(SETTINGS_LIB);
+const git = (cwd, ...args) => execFileSync('git', args, { cwd, stdio: 'ignore', env: { ...env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.com', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.com' } });
+const MAIN = realpathSync(project('wt-main', null, null));
+git(MAIN, 'init', '-q');
+git(MAIN, 'add', 'sfdx-project.json');
+git(MAIN, 'commit', '-q', '-m', 'first');
+const TREE = join(sandbox, 'wt-linked');
+git(MAIN, 'worktree', 'add', '-q', TREE, '-b', 'other-branch');
+const okWt = (label, cond) => cond ? pass++ : (fail++, console.log(`  FAIL  ${label}`));
+writeSetting(TREE, 'someKey', 'fromWorktree');
+okWt('a worktree write reaches the main checkout', readSettings(MAIN).someKey === 'fromWorktree');
+okWt('both folders name the same settings file', settingsFile(TREE) === settingsFile(MAIN));
+writeSetting(MAIN, 'otherKey', 'fromMain');
+okWt('a main checkout write reaches the worktree', readSettings(TREE).otherKey === 'fromMain');
+okWt('no settings file inside the worktree', !existsSync(join(TREE, '.claude', 'hean-harness.json')));
+okWt('a folder outside any repository stays as given', mainCheckout(NOT_SFDX) === NOT_SFDX);
+execFileSync('node', [ROLES_SCRIPT, 'set', 'dev', '--role', 'development', '--deploy', 'yes'], { cwd: MAIN, env });
+allow('deploy from a worktree to the deploy target saved in the main checkout', 'sf project deploy start -x m.xml -o dev', TREE);
 
 rmSync(sandbox, { recursive: true, force: true });
 console.log(`\n  ${pass} passed, ${fail} failed, ${pass + fail} total`);
