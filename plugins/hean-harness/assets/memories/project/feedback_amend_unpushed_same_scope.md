@@ -15,4 +15,4 @@ When work is still unpushed and the new changes are refinements to something an 
 - Tag the tip first as a safety ref, and afterwards diff the new HEAD against that tag to prove only the intended files differ. Delete the tag once verified.
 - Amending rewrites SHAs. Tell anyone who has recorded the old ones — another session, a draft PR description — that they are stale.
 
-Related: [[feedback_commit_message_length]], [[feedback_no_coauthored_by]], [[feedback_merge_no_ff]].
+Related: [[feedback_commit_message_length]], `~/.claude/rules/no-commit-attribution-trailers.md`, [[feedback_merge_no_ff]].

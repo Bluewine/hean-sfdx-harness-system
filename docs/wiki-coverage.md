@@ -64,9 +64,9 @@ Updated whenever a skill, agent, hook, or rule is added, removed, or renamed —
 | agent-briefing-style.md | global | Global Rules | documented |
 | agent-writing-style.md | global | Global Rules | documented |
 | claude-md-authoring.md | global | Global Rules | documented |
-| communication-protocol.md | global | Global Rules | documented |
 | implementation-commits.md | global | Global Rules | documented |
 | no-body-separators-or-trailing-blanks.md | global | Global Rules | documented |
+| no-commit-attribution-trailers.md | global | Global Rules | pending |
 | skill-frontmatter-description-style.md | global | Global Rules | documented |
 | task-list.md | global | Global Rules | documented |
 | writing-style-meta-files.md | global | Global Rules | documented |
