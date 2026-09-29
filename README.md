@@ -68,6 +68,22 @@ shell's startup file and prints the command that loads it.
    /hean-harness:doctor
    ```
 
+## Commit setting
+
+Two answers decide how implementation work is committed: `Dev mode` (Subagent-driven or Main
+session) and `Commits` (Commit per task or No commits). They are asked once and saved for the whole
+machine in `~/.claude/hean-harness/implementation.json`, so they apply in every repository.
+
+- **Change it:** ask in a session, for example "switch to commit per task", and click the answer; or
+  type `/hean-harness:implementation-defaults` with `show`, `clear`, `commits on`, `commits off`,
+  `mode subagent` or `mode main`.
+- **What the commit check allows:** a `git commit` goes through when the setting is Commit per task,
+  when your latest message asks for a commit, or during an open subagent-driven No commits run, whose
+  task commits its reviewers read. Otherwise the commit is refused.
+- **During a No commits run:** `git push` and `git reset --hard` are refused until
+  `/hean-harness:finish-implementation` undoes the run's commits and leaves every change unstaged in
+  the working tree.
+
 ## Update and reinstall
 
 1. Update the marketplace and the plugin.
