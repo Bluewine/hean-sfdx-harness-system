@@ -93,3 +93,7 @@ Install the environment. Show the user what will change before changing it.
 - Never say setup succeeded without showing what the script printed.
 - The user has to reload the shell themselves. No script can do it for them.
 - To install into a repository other than the current one, pass `--repo <path>`.
+- Setup run inside a linked git worktree installs the project rules into the worktree's
+  `.claude/rules/`. Where the worktree's rule files are links to the main checkout's, setup writes
+  through them and updates the main checkout's rules too. When `git rev-parse --git-common-dir`
+  points outside the repository folder, tell the user this before running setup.

@@ -28,7 +28,9 @@ left in place because it is theirs rather than ours.
      the user's own rules and memories, `settings.local.json`, `.claude/worktrees/`,
      `.claude/manifest/` and any file git tracks. A rule or memory edited after setup is copied to
      `~/.claude/hean-harness/backups/` before it is deleted or restored; name each entry whose `note` says
-     `edited after setup`.
+     `edited after setup`. When setup was run from a git worktree, a second `repo-folder` entry
+     names the main checkout's `.claude` folder, because `.claude/hean-harness.json` lives there;
+     say that the main checkout's `hean-harness.json` is deleted too.
    - each `repo-file` entry: the repository's `.mcp.json` is deleted
    - each entry whose `action` starts with `run:`: the plugin or marketplace it removes
    - that hean-harness itself is uninstalled last, which removes its skills, agents and hooks
@@ -74,8 +76,9 @@ left in place because it is theirs rather than ours.
    - each `repo-folder` and `repo-file` entry, naming what was deleted and what its `note` says
      was kept: `.claude/hean-harness.json`, skill output under `.claude/skills/*/output/`, the
      rules and memories setup copied, and folders left empty are deleted; the user's own rules and
-     memories, `settings.local.json` and `.claude/worktrees/` stay. A `.mcp.json` that git tracks
-     is kept, so say so and name it
+     memories, `settings.local.json` and `.claude/worktrees/` stay. When there are two
+     `repo-folder` entries, say which one is the main checkout. A `.mcp.json` that git tracks is
+     kept, so say so and name it
    - each entry whose `note` says `edited after setup`, with the backup path the `note` gives
    - each `run:` entry and whether the plugin or marketplace was removed
    - each remaining `external` entry with action `manual`, giving its `note`, which is the exact
@@ -102,3 +105,6 @@ left in place because it is theirs rather than ours.
   manifest is committed for the team, and any file git tracks. A rule or memory edited after
   setup is copied to `~/.claude/hean-harness/backups/` before it is deleted or restored.
 - Never delete the backups folder. It holds copies of their own files.
+- `.claude/hean-harness.json` lives in the main checkout, and every git worktree of the
+  repository shares it. When setup was run from a worktree, uninstall also deletes the main
+  checkout's copy.

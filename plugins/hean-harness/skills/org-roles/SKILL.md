@@ -9,7 +9,8 @@ allowed-tools: ["Bash", "Read", "AskUserQuestion"]
 
 Show or save the role of each Salesforce org for the SFDX project in the current folder. The org
 write gate refuses every org write until the roles are saved, and allows writes only to an org
-saved as a deploy target.
+saved as a deploy target. The roles are saved in the main checkout's `.claude/hean-harness.json`,
+so every git worktree of the repository shows and saves the same roles.
 
 ## Steps
 
