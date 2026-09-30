@@ -151,6 +151,25 @@ Use CSS `@keyframes` with `animation-delay` and `animation-fill-mode: both` to s
 | `disconnectedCallback` timer cleanup | Not needed — CSS animations are browser-managed |
 | `jest.useFakeTimers()` in tests | Not needed — CSS animations are inert in jsdom |
 
+### Keyframes and shared CSS-only modules
+
+- **Keyframes stay with their animation**: Declare every `@keyframes` in the same CSS file as the `animation` or `animation-name` that uses it. Never move a `@keyframes` into a CSS-only module shared with `@import 'c/<module>'`.
+- **Reason**: The LWC style compiler compiles each CSS file on its own. It appends the rendering component's scope token to every `@keyframes` name, including one pulled in with `@import`, but it rewrites an `animation` reference only when the keyframe is declared in the same file. The imported keyframe is emitted as `fade-in-lwc-<token>` while the reference stays `fade-in`, so the animation never runs and nothing reports an error. Jest cannot detect it, because jsdom does not run CSS animations. A `@keyframes` block duplicated across components is the accepted cost.
+- **Other shared rules**: Class rules and `:host` custom properties in a CSS-only module apply to the importing component as if they were written in its own file.
+- **Jest mapping**: `sfdx-lwc-jest` resolves `c/<module>` to `<module>/<module>` with Jest's configured file extensions only, and those do not include `.css`. Give each CSS-only module its own `moduleNameMapper` entry in `jest.config.js`:
+
+  ```js
+  moduleNameMapper: {
+      '^c/<module>$': '<rootDir>/<path to the lwc folder>/<module>/<module>.css'
+  }
+  ```
+
+- **CSS-only means CSS-only**: A CSS-only module holds only `<module>.css` and `<module>.js-meta.xml`. Never `@import` a folder that also holds a `.js` file. It compiles and deploys, but Salesforce's documented CSS-only module is a `.css` file plus a `.js-meta.xml` file, and Jest resolves `c/<module>` to the `.js` file for every importer, so one mapping cannot serve both the CSS and the JavaScript importers.
+- **Checking an animation in the browser**: Jest passing proves nothing about an animation. On the running page:
+  1. Read the keyframe names from `document.styleSheets` (`CSSKeyframesRule` entries); they carry the `-lwc-<token>` suffix.
+  2. Compare them with `getComputedStyle(element).animationName` for the animated element.
+  3. Confirm the animation exists with `document.getAnimations({ subtree: true })`.
+
 ### Checklist
 
 - [ ] Never use `setTimeout`, `setInterval`, or `requestAnimationFrame` for visual sequencing
@@ -158,6 +177,7 @@ Use CSS `@keyframes` with `animation-delay` and `animation-fill-mode: both` to s
 - [ ] Always set `animation-fill-mode: both` (or the shorthand fourth value) on delayed animations
 - [ ] Calculate each delay as: previous element's `delay + duration`
 - [ ] Define keyframes at the top of the CSS file, before class rules
+- [ ] Keep every `@keyframes` in the same CSS file as the animation that uses it, never in a shared CSS-only module
 
 ## 5. LWC Jest — Async Flushing with `flushPromises`
 
