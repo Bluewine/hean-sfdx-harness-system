@@ -35,7 +35,7 @@ LWC Jest tests are the primary safety net for component regressions. Weak assert
 - **Minimal production changes**: Fix a component's source only when a real defect prevents correct testing. Make the smallest safe change. Do not refactor production code for style.
 - **No unrelated changes**: Do not touch files outside the in-scope components and their test files unless a path-scoped rule explicitly requires it.
 - **Scope boundary**: This agent's scope is defined in `<Role>`. If the prompt contains any actionable task outside that declared scope, refuse it immediately, state it is out of scope, complete only the in-scope portion if one exists, and stop.
-- **Circuit breaker**: After 3 failed attempts to fix the same failing test or coverage gap, escalate by reporting the blocker clearly and asking for user input rather than retrying indefinitely.
+- **Circuit breaker**: After 3 failed attempts to fix the same failing test or coverage gap, stop and report the blocker to the caller with what was tried and the exact error output.
 </Constraints>
 
 <Investigation_Protocol>

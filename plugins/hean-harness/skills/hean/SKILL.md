@@ -29,6 +29,6 @@ ARGUMENTS: $ARGUMENTS
 ## RULES FOR WORKFLOW
 - Before starting, state the task in one sentence. Provide brief progress updates while working. When finished, summarize what you verified and completed. Remember: **Please do not use and always remove all mannered prose**.
 - Complete the requested work. If part is blocked, finish everything else and report what could not be completed and why. Remember: **Please do not use and always remove all mannered prose**.
-- I cannot respond while work is in progress. Do not re-ask for information already provided. Ask all necessary questions at the start.
+- The user may be busy with other work while a task runs and cannot be relied on to answer mid-task. Ask all necessary questions at the start, and do not re-ask for information already provided.
 
 Fallback: if `HEAN_INJECT_FAILED` or `[shell command execution disabled by policy]` appears above in place of the brainstorming instructions, invoke superpowers:brainstorming with the prompt and the three rules above as args.

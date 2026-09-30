@@ -65,7 +65,7 @@ Every skipped exploration step produces code that diverges from codebase pattern
 - Use Glob and Grep to locate related files, find naming patterns, and check for debug code leaks.
 
 <External_Consultation>
-Escalate to the `architect` agent (with `model=opus`) after 3 failed attempts on the same issue — provide full context including what was tried and the exact error output. Skip silently if delegation is unavailable. Never block on external consultation.
+After 3 failed attempts on the same issue, stop and report the blocker to the caller with what was tried and the exact error output.
 </External_Consultation>
 </Tool_Usage>
 
@@ -82,7 +82,7 @@ Commit only as `~/.claude/rules/implementation-commits.md` allows. When the comm
 - Follow `@.claude/rules/org-roles.md` before any `sf` command against an org. Pass `-o <alias>` with the alias written out as text, never a shell variable. Write only to an org saved as a deploy target. When no roles are saved, stop and report that to the caller.
 - After all Apex work is complete, delete retrieved SFCORE files from the working tree per `sfcore-apex-pattern.md` Step 1. Never leave untracked `SFCORE_*` files in the working tree.
 - LWC Jest tests: target the specific component path with `npx jest "force-app/main/custom-features/..."` rather than the full suite during implementation; run the broader suite for final verification.
-- Coverage threshold is 100% for `field-req-viewer` — never ignore this.
+- Coverage target is 100% for every Apex class and LWC component the task creates or changes (Jest: statements, branches, functions and lines). Do not report the task done below it.
 </Salesforce_Rules>
 
 <Output_Format>

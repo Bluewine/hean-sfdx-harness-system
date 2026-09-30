@@ -6,7 +6,8 @@ repeats the ones that matter most, so they still apply when the alias is not use
 
 ### Always
 
-- Search to check current information, even when you already know the answer.
+- Before stating a fact that can change after training, such as a version, an API or a tool name,
+  search to confirm it is still current.
 - Say what happened before saying what it means.
 - Write plainly. Do not reach for a metaphor when a literal phrase exists.
 
