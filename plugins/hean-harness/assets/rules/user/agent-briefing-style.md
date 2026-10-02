@@ -1,6 +1,6 @@
 ---
 name: agent-briefing-style
-description: Conventions for briefing agents — goals only, never commands or pre-supplied scope
+description: Conventions for briefing agents — goal, identified targets and context; no commands or flags that override an agent's own protocol
 ---
 
 # Agent Briefing Style
@@ -9,29 +9,38 @@ Apply every time an agent is spawned via the Agent tool.
 
 ## Core Rule
 
-Provide the goal. Never provide the implementation.
+Provide the goal and the targets already identified. Leave the method to the agent.
 
-An agent with an `<Investigation_Protocol>` or `<Scope_Determination>` section owns its own discovery process. Pre-supplying a command, file path, or scope overrides that process and produces wrong results.
-
-## What to Omit from Every Agent Prompt
-
-- **No shell commands** — never write `npx jest ...`, `sf project retrieve ...`, `git diff ...`, or any other command. The agent selects its own commands.
-- **No pre-resolved scope** — never name specific files, components, or directories unless the user explicitly named them. Let the agent detect scope via its protocol.
-- **No coverage commands** — never pass `--coverage`, `--coverageReporters`, or path arguments to test runners. The agent constructs the correct invocation.
-- **No flags or options** — never add CLI flags that constrain what the agent runs.
+An agent with an `<Investigation_Protocol>` or `<Scope_Determination>` section runs its own commands and
+checks. A command or flag in the brief overrides that protocol and produces wrong results, for example a
+test-runner invocation that skips the agent's own coverage setup.
 
 ## What to Include
 
-- The goal: what outcome is expected (e.g. "reach 100% branch coverage", "deploy changed metadata", "fix failing tests")
-- User-specified names: if the user named a specific component, file, or artifact, pass it verbatim
-- Relevant context the agent cannot discover itself: error messages, constraint the user stated, prior decisions from this conversation
-- The reporting format if the agent's `<Output_Format>` needs to be overridden
+- **Goal:** the expected outcome (e.g. "reach 100% of every whole file in scope", "deploy changed metadata").
+- **Identified targets:** files, components, classes or directories already identified — named by the
+  user, found by earlier work in the session, or listed in an approved plan. Pass each by path, or by name when the agent's scope input takes
+  names (for example Apex class names).
+- **Context the agent cannot discover:** error messages, constraints the user stated, prior decisions.
+- **Prohibitions and required values:** a command named only to forbid it ("never run `git checkout`,
+  `git restore` or `git stash`") and a value a rule requires the agent to use, such as the target org
+  alias written as text, are context. Keep them.
+- **Reporting format:** only when the agent's `<Output_Format>` must be overridden.
 
-## Scope Supplied by the User vs. Inferred Scope
+## What to Omit
 
-- User named a specific target → pass it to the agent
-- User said "test lwc" or similar without naming a target → pass nothing; let the agent run its scope detection
+- **No shell commands:** never write `npx jest ...`, `sf project retrieve ...`, `git diff ...` or any other
+  command. The agent selects its own commands.
+- **No flags or options:** never pass CLI flags such as `--coverage` or `--coverageReporters`. The agent
+  builds its own invocation.
+- **No guessed scope:** when no target has been identified yet, pass none and let the agent run its own
+  scope detection. Never name a file only because it looks related.
 
 ## Violation Check
 
-Before submitting any agent prompt, scan it for shell commands, file paths, and CLI flags. Remove every one that was not explicitly given by the user.
+Before submitting any agent prompt, scan it for shell commands and CLI flags the agent is told to run and
+remove them; keep a command named only to forbid it. Keep a file path only when it names a target
+identified by the user, by earlier work in the session, or by an approved plan, or a hand-off file the
+session wrote for the agent to read or write (a task brief, a report file, a diff package). An approved
+plan that a rule says to pass verbatim, and a prompt template a dispatching skill supplies, are passed as
+written.

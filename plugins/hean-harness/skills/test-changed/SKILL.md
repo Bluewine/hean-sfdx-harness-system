@@ -126,11 +126,11 @@ Use a single message with multiple Agent tool calls so they run in parallel:
 - `runApex only` → spawn `apex-tester`
 - `runLwc only` → spawn `lwc-tester`
 
-Use `subagent_type: "hean-harness:apex-tester"` and `subagent_type: "hean-harness:lwc-tester"` respectively. Follow the agent briefing style rule: pass the goal and pre-resolved scope only — no shell commands, no CLI flags.
+Use `subagent_type: "hean-harness:apex-tester"` and `subagent_type: "hean-harness:lwc-tester"` respectively. Follow the agent briefing style rule: pass the goal and the scope this skill resolved — no shell commands, no CLI flags.
 
 ## Phase 8 — Whole-suite coverage split
 
-When `runLwc` was true, run the whole Jest suite once with coverage from the current files, then print the split. Run these lines as one command from the repository root:
+Wait until every agent spawned in Phase 7 has returned its report. When `runLwc` was true, run the whole Jest suite once with coverage from the current files, then print the split. Run these lines as one command from the repository root:
 
     start=$(date +%s)
     rm -f coverage/coverage-summary.json
