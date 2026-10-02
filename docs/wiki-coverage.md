@@ -83,7 +83,7 @@ Updated whenever a skill, agent, hook, or rule is added, removed, or renamed —
 | implementation-coverage.md | project | Global Rules | documented |
 | linear-story-resolution.md | project | Domain Conventions | pending |
 | local-static-analysis.md | project | Domain Conventions | pending |
-| lwc-conventions.md | project | Domain Conventions | pending |
+| lwc-conventions.md | project | Domain Conventions | documented |
 | lwc-css-placement.md | project | Domain Conventions | pending |
 | lwc-naming-conventions.md | project | Domain Conventions | pending |
 | lwc-wes-conventions.md | project | Domain Conventions | pending |

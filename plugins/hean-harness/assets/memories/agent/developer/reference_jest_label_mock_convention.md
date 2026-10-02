@@ -21,7 +21,8 @@ The exception is a label whose test depends on parsing real characters out of th
 an asterisk marking a required field. Mock that one with real text, and leave a comment saying why
 it differs from the others.
 
-**How to apply:** when adding a `@salesforce/label` import to a component whose tests already
-follow this, add a matching `jest.mock(...)` line in the same order as the imports, and assert
-against the label's own name. Forgetting it produces a misleading failure in which `textContent`
-shows the unresolved `c.<LABEL_NAME>` string.
+**How to apply:** when adding a `@salesforce/label` import to a component whose tests already follow
+this, add a matching `jest.mock(...)` line in the same order as the imports in the component's
+`labels.js`, or in the controller for a component not yet migrated, and assert against the label's
+own name. Forgetting it produces a misleading failure in which `textContent` shows the unresolved
+`c.<LABEL_NAME>` string.

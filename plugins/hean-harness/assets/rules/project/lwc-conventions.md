@@ -317,3 +317,58 @@ handleRowSelection(event) { ... }
 ## 9. LWC Jest — Run Jest with `npx jest`
 
 Run Jest as `npx jest`, never `npm run test:unit`. `test:unit` runs the `sfdx-lwc-jest` wrapper, which reads only its own flags (`--coverage`, `--updateSnapshot`, `--verbose`, `--watch`, `--debug`) and passes to Jest only what follows a second `--`. npm consumes the first `--`, so `npm run test:unit -- --coverage --collectCoverageFrom "<path>"` never hands `--collectCoverageFrom` to Jest and measures the whole repository instead of `<path>`, with no warning. `npx jest` takes every Jest option directly, with no second `--` to forget.
+
+## 10. Labels in `labels.js`
+
+Keep every `@salesforce/label` import of a component in its own bundle file `labels.js`. The file default-exports one label map and holds nothing else. A controller with dozens of label imports opens with them before any logic, so the move is for readability only. It is not lazy loading and gives no runtime gain: labels are static `@salesforce/label` imports either way.
+
+### Rules
+
+- Import the map once in the controller with `import LABELS from './labels';` and assign `label = LABELS;` for the template.
+- Read a label that JavaScript needs outside the template (a modal title, a toast message) from the same `LABELS` object.
+- Never re-list labels in the controller. Never add named exports to `labels.js`. Add new labels only to `labels.js`.
+- Use as map keys the keys the template already reads (`{label.save}`), so migrating changes no template.
+- When a story changes an LWC that imports labels and has no `labels.js`, moving that LWC's labels into `labels.js` is part of the story's scope. Plan it as its own task with its own commit, before the story's other changes to that LWC.
+- Migrate only LWCs the story already changes, never others. A migrated LWC is a touched file for every coverage and review rule.
+- An implementer that meets an LWC with label imports and no `labels.js`, and has no migration task for it, does not migrate it inside the current task. It stops and reports the missing migration task to its caller.
+- Keep existing `jest.mock('@salesforce/label/c.X', ..., { virtual: true })` lines unchanged. A test file's mocks apply to every module that test loads, including `labels.js`. After migrating, run the component's Jest suite to confirm.
+
+### Example
+
+```js
+// labels.js
+import title from '@salesforce/label/c.REWSFS_X_Title';
+import save from '@salesforce/label/c.REWSFS_X_Save';
+
+export default {
+    title,
+    save
+};
+```
+
+```js
+// controller
+import { LightningElement } from 'lwc';
+import LABELS from './labels';
+
+export default class Example extends LightningElement {
+    label = LABELS;
+
+    /**
+     * Opens the modal and sets its title from the label map.
+     * @return {void}
+     */
+    openModal() {
+        this.modalTitle = LABELS.title;
+    }
+}
+```
+
+### Checklist
+
+- [ ] Every `@salesforce/label` import of the component lives in `labels.js`
+- [ ] `labels.js` has one default export and no named exports
+- [ ] The controller assigns `label = LABELS` and reads other labels from `LABELS`
+- [ ] The template is unchanged
+- [ ] The migration is its own task and commit, and only for LWCs the story changes
+- [ ] The component's Jest suite passes after the move

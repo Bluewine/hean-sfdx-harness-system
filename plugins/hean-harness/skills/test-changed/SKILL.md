@@ -31,7 +31,7 @@ Assign each file to exactly one bucket:
 |---|---|
 | `apex_classes` | `*.cls` where the filename does NOT end in `Test.cls` |
 | `apex_test_classes` | `*Test.cls` |
-| `lwc_components` | `force-app/**/lwc/<name>/<name>.js` (non-test JS entry file) — record the component directory `force-app/**/lwc/<name>/` |
+| `lwc_components` | `force-app/**/lwc/<name>/*.js` or `force-app/**/lwc/<name>/*.html` (non-test files, for example `labels.js`) — record the component directory `force-app/**/lwc/<name>/` |
 | `lwc_test_files` | `force-app/**/lwc/<name>/__tests__/*.test.js` — record the component directory |
 | `flows` | `*.flow-meta.xml` |
 | `ignored` | everything else — no action |
