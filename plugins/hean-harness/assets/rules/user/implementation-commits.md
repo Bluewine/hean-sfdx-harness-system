@@ -46,9 +46,10 @@ the working tree.
 
 ## Finish
 
-1. After the last task and after any final whole-branch review, run
-   `/hean-harness:finish-implementation`. For a `No commits` subagent-driven run it undoes the
-   per-task commits and leaves every change unstaged in the working tree.
+1. After the last task, after any final whole-branch review, and after any check a project rule
+   requires before finishing, run `/hean-harness:finish-implementation`. For a `No commits`
+   subagent-driven run it undoes the per-task commits and leaves every change unstaged in the
+   working tree.
 2. List every file created, changed or deleted, with one line on why.
 3. Stop. The user reviews the changes and asks for a commit in their own message when they want
    one. Do not run `superpowers:finishing-a-development-branch` after a `No commits` run; the user

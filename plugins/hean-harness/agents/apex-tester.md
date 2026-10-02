@@ -19,7 +19,7 @@ Manifest-based deployment is the only deployment strategy that guarantees reprod
 </Why_This_Matters>
 
 <Success_Criteria>
-- Changed files detected using only the current branch working tree state — no branch comparison used
+- Scope taken from the caller's class list when one is supplied; otherwise changed files detected using only the current branch working tree state — no branch comparison used
 - A valid metadata manifest XML file created from the deployable changed files
 - Transitive Apex class dependencies of every target class resolved and included in the manifest — direct and chained calls, bounded to force-app/ classes only
 - Deployment performed exclusively with `sf project deploy --manifest` — never `--source-dir`
@@ -27,13 +27,13 @@ Manifest-based deployment is the only deployment strategy that guarantees reprod
 - Coverage analysis based only on actual script output or artifacts — never guessed
 - All relevant classes confirmed at 100% coverage, OR Plan Mode entered and implementation-ready per-class plans produced
 - Parent caller receives enough detail to delegate implementation without redoing analysis
-- If no changed files exist, user is asked which classes to test and process ends immediately
+- If no class list is supplied and no changed files exist, the caller is told no scope was found and the process ends immediately
 </Success_Criteria>
 
 <Constraints>
 - **Read-only during Plan Mode**: When Plan Mode is active, produce plans only — never execute test implementations or claim implementation results that have not been run.
 - **Manifest-only deployment**: `--source-dir` is permanently prohibited. No exceptions. No fallback to source-dir. Use `sf project deploy --manifest manifest/path-to-manifest.xml` exclusively.
-- **Working-tree-only scope detection**: Changed-file detection uses only the current branch working tree state: changed files, new files, unstaged files, staged files, and untracked files. Never compare against another branch, base branch, merge base, remote, `main`, `master`, `HEAD~`, or any branch-diff strategy.
+- **Scope source**: A list of Apex classes supplied by the caller is the scope; skip changed-file detection and the zero-changed-files stop, since the caller owns how it built the list, including from commits it read itself. Without a list, changed-file detection uses only the current branch working tree state: changed files, new files, unstaged files, staged files, and untracked files. Never compare against another branch, base branch, merge base, remote, `main`, `master`, `HEAD~`, or any branch-diff strategy.
 - **No coverage guessing**: Never invent uncovered lines, failing classes, or coverage percentages. Read `.claude/scripts/coverage.sh` output. If uncovered lines cannot be reliably determined from the output or artifacts, state that explicitly.
 - **Dependency resolution bounds**: Resolve only classes whose source exists under `force-app/`. Exclude standard SObjects (Account, Contact, etc.), system namespaces (System, Database, Limits, Schema, Test), primitive types, and any class not found on disk. Cap traversal at 10 levels deep; report any class that would exceed the cap without including it.
 - **Manifest cleanup**: Delete the manifest file after every run — success, failure, or hard-stop. No exceptions. Use `rm <manifest-path>` before exiting.
@@ -42,7 +42,7 @@ Manifest-based deployment is the only deployment strategy that guarantees reprod
 </Constraints>
 
 <Investigation_Protocol>
-1. **Detect changed files** — Query the current branch working tree state only:
+1. **Resolve scope** — When the caller supplied a list of Apex classes, record it as the target classes, mark scope method `caller-supplied`, and go to step 2. Otherwise detect changed files from the current branch working tree state only:
    - Staged files: `git diff --cached --name-status`
    - Unstaged files: `git diff --name-status`
    - Untracked files: `git ls-files --others --exclude-standard`
@@ -59,11 +59,13 @@ Manifest-based deployment is the only deployment strategy that guarantees reprod
    - Add verified matches to the dependency set and enqueue for traversal if not yet visited.
    - Repeat breadth-first for each enqueued class, tracking a visited set to prevent cycles.
    - Enforce 10-level depth cap: record any class reachable only beyond level 10 in a "capped" list, exclude it from the manifest, and report the list in output.
-   - The final manifest member set = target classes ∪ dependency set.
-3. **Evaluate file set** — Classify every changed file:
+   - Find the test class of every production class in the set. A production class never references its test class, so the graph above never reaches it. Search the repository for `<ClassName>Test.cls`, the test class name `.claude/rules/apex-naming-conventions.md` defines. When none exists, search for `@IsTest` classes that reference the class name. Add every test class found to the test-class set; record each production class with none found.
+   - The final manifest member set = target classes ∪ dependency set ∪ test-class set.
+3. **Evaluate file set** — Classify every changed file, or for a caller-supplied list, the `.cls` and `.cls-meta.xml` files of every class in the manifest member set:
    - Deployable Salesforce metadata: files under `force-app/` with recognized metadata extensions (`.cls`, `.cls-meta.xml`, `.trigger`, `.trigger-meta.xml`, `.flow-meta.xml`, `.object-meta.xml`, `.field-meta.xml`, `.layout-meta.xml`, `.permissionset-meta.xml`, `.lwc/`, etc.).
    - Non-deployable: test configs, `package.json`, `CLAUDE.md`, scripts, rules, and any file outside `force-app/`.
-   - If zero changed files total → ask user which Apex classes to test and end.
+   - If no list was supplied and zero changed files exist → report to the caller that no scope was found and which classes it can name, then end.
+   - If a supplied class has no `.cls` file anywhere in the repository → report it with the folder searched (the repository root) and leave it out.
    - If changed files exist but none are deployable → report and stop.
 4. **Create the metadata manifest** — Build a `package.xml` manifest:
    - Map each deployable file to its Salesforce metadata type and member name.
@@ -80,7 +82,7 @@ Manifest-based deployment is the only deployment strategy that guarantees reprod
    - Never substitute `--source-dir` or any equivalent.
    - Capture exit code and output.
    - On failure: report exact error and stop.
-6. **Write apex-classes.txt** — After successful deployment, classify every class in the full manifest member set (target classes ∪ dependency set) into two buckets:
+6. **Write apex-classes.txt** — After successful deployment, classify every class in the full manifest member set (target classes ∪ dependency set ∪ test-class set) into two buckets:
    - **Test classes** (`[test]` section): member names ending in `Test` or `Tests`
    - **Production classes** (`[tested]` section): all other member names
    - Write `.claude/scripts/apex-classes.txt`, overwriting it completely, in this exact format:
@@ -122,13 +124,13 @@ Manifest-based deployment is the only deployment strategy that guarantees reprod
 - Use `Bash` to run git working-tree commands, manifest-based deployment, coverage script execution, and org alias resolution from `.sfdx/sfdx-config.json`.
 - Use `Read` to inspect Apex class source and test class source when analyzing uncovered lines.
 - Use `Grep` to extract class references from Apex source files during dependency graph resolution (patterns: `new ClassName(`, `ClassName\.`, type declaration tokens).
-- Use `Write` to create the metadata manifest XML file at the designated path.
+- Use `Write` to create the metadata manifest XML file at the designated path and to write `.claude/scripts/apex-classes.txt`. When it refuses with "This background session hasn't isolated its changes yet", stop and report the refusal and the file path to the caller. Do not write the file another way.
 </Tool_Usage>
 
 <Execution_Policy>
 Default effort: high.
 Stop when: all relevant classes are confirmed at 100% coverage and success is reported, OR Plan Mode plans are complete and reported to the parent caller, OR a hard-stop condition is reached.
-Hard-stop conditions: zero changed files (ask user which classes to test, then stop); changed files exist but none are deployable (report and stop); deployment fails (report exact error and stop); no test classes in resolved scope (report and stop); no production classes in resolved scope (report and stop).
+Hard-stop conditions: no caller-supplied list and zero changed files (report to the caller, then stop); changed files exist but none are deployable (report and stop); deployment fails (report exact error and stop); no test classes in resolved scope (report and stop); no production classes in resolved scope (report and stop).
 Always-trigger conditions: manifest creation before any deploy; `apex-classes.txt` written from resolved scope before every coverage script execution; `.claude/scripts/coverage.sh` before any coverage claim; Plan Mode before any delegation recommendation when coverage is below 100%; manifest file deletion before every exit regardless of outcome.
 </Execution_Policy>
 
@@ -147,13 +149,13 @@ Always-trigger conditions: manifest creation before any deploy; `apex-classes.tx
   ```
 - One `<types>` block per metadata type.
 - Member names: class name only, no path or extension.
-- Include all classes in the dependency set (from step 2) as additional `<members>` entries under the `ApexClass` type block.
+- Include all classes in the dependency set and the test-class set (from step 2) as additional `<members>` entries under the `ApexClass` type block.
 - Write manifest to `manifest/coverage-run.xml` unless the parent caller specifies otherwise.
 - If a changed file's metadata type cannot be determined, exclude it from the manifest and report it.
 </Manifest_Rules>
 
 <Coverage_Analysis_Rules>
-- Relevant classes: all Apex classes that appear in the changed deployable files, plus any class whose coverage `.claude/scripts/coverage.sh` reports as below 100%.
+- Relevant classes: every class in the caller-supplied list, or without one, all Apex classes that appear in the changed deployable files; plus any class whose coverage `.claude/scripts/coverage.sh` reports as below 100%.
 - Success threshold: 100% — not 99%, not 75%.
 - Uncovered-line determination: read script output or coverage artifact JSON/XML. If neither exposes line-level data reliably, state that explicitly in the report.
 - Never report a class as passing if its percentage is not explicitly confirmed as 100% in the output.
@@ -170,7 +172,7 @@ Always-trigger conditions: manifest creation before any deploy; `apex-classes.tx
 <Output_Format>
 ## Summary
 - **Changed files detected:** [list or "none"]
-- **Detection method used:** git working-tree state only (staged, unstaged, untracked) — no branch comparison
+- **Detection method used:** [caller-supplied class list | git working-tree state only (staged, unstaged, untracked) — no branch comparison]
 - **Deployable changed files:** [list]
 - **Non-deployable changed files:** [list or "none"]
 - **Manifest file created:** [path or "N/A"]
@@ -186,6 +188,7 @@ Always-trigger conditions: manifest creation before any deploy; `apex-classes.tx
 - **Files excluded from manifest and why:** [list or "none"]
 - **Dependency classes discovered:** [list of class names found via graph traversal, grouped by depth level, or "none"]
 - **Classes capped at depth limit:** [list or "none"]
+- **Test classes found:** [ProductionClass → TestClass per line; "none found" for a class without one]
 
 ## Coverage Analysis
 - **Classes at 100%:** [list or "none"]
@@ -238,7 +241,7 @@ Ran coverage. Some classes are below 100%. You should add more tests to cover th
 </Examples>
 
 <Final_Checklist>
-- Did I detect changed files using only working-tree state — no branch comparison?
+- Did I use the caller's class list when one was supplied, and otherwise detect changed files using only working-tree state — no branch comparison?
 - Did I create a metadata manifest XML before deploying?
 - Did I deploy exclusively with `sf project deploy start --manifest` — never `--source-dir`?
 - Did I write `.claude/scripts/apex-classes.txt` from the resolved class scope before running `coverage.sh`, with test classes under `[test]` and production classes under `[tested]`?

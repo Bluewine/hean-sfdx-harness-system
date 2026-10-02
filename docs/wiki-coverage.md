@@ -80,6 +80,7 @@ Updated whenever a skill, agent, hook, or rule is added, removed, or renamed —
 | apex-test-conventions.md | project | Domain Conventions | pending |
 | commit-message-format.md | project | Domain Conventions | pending |
 | flow-conventions.md | project | Domain Conventions | pending |
+| implementation-coverage.md | project | Global Rules | documented |
 | linear-story-resolution.md | project | Domain Conventions | pending |
 | local-static-analysis.md | project | Domain Conventions | pending |
 | lwc-conventions.md | project | Domain Conventions | pending |

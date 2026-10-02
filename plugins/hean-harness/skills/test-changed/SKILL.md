@@ -1,9 +1,9 @@
 ---
 name: test-changed
-description: Post-dev test orchestration — resolves Apex + LWC test scope transitively from working tree changes, then spawns apex-tester and/or lwc-tester in parallel with pre-computed scope
+description: Post-dev test orchestration — resolves Apex + LWC test scope transitively from working tree changes and an open implementation run's commits, then spawns apex-tester and/or lwc-tester in parallel with pre-computed scope and a 100% whole-file coverage target
 ---
 
-You are executing the `/test-changed` skill. Work through the eight phases below in order. Do not spawn any agent until Phase 7.
+You are executing the `/test-changed` skill. Work through the nine phases below in order. Do not spawn any agent until Phase 7.
 
 ## Phase 1 — Collect modified files
 
@@ -11,6 +11,15 @@ Run all three commands and combine results:
 - `git diff --name-only` (unstaged changes)
 - `git diff --cached --name-only` (staged changes)
 - `git ls-files --others --exclude-standard force-app/` (untracked files)
+
+Then add the files an open implementation run has committed. A run that commits per task leaves
+nothing uncommitted, so the three commands above alone would find no changes. Run:
+
+    node "${CLAUDE_PLUGIN_ROOT}/scripts/implementation-run.mjs" status --session ${CLAUDE_SESSION_ID}
+
+When it prints a run with a `base` commit, also run
+`git diff --name-only --diff-filter=d <base> HEAD` with that commit. When it prints that no run is
+open, skip this step.
 
 Deduplicate. Keep only paths under `force-app/`. If the combined set is empty, report "No changes detected in force-app/ — nothing to test." and stop.
 
@@ -74,7 +83,7 @@ runApex = apex_scope is non-empty  OR  apex_test_classes is non-empty
 runLwc  = lwc_scope  is non-empty  OR  lwc_test_files    is non-empty
 ```
 
-If both false: report "No testable changes detected — no Apex classes, LWC components, flows, or test files found in working tree." and stop.
+If both false: report "No testable changes detected — no Apex classes, LWC components, flows, or test files found in the working tree or the open implementation run's commits." and stop.
 
 ## Phase 6 — Print scope summary and build agent prompts
 
@@ -97,6 +106,11 @@ Spawning: [apex-tester] [lwc-tester in parallel]
 ```
 
 Omit any section that has no entries.
+
+**Coverage target for both prompts:** 100% of each whole file in scope, including lines the
+change did not touch — never only the changed lines. Ask the agent to report every line it
+leaves uncovered with its file, line number, why no test can reach it, and the production-code
+change that would make it testable.
 
 **apex-tester prompt to use:**
 Tell the agent the scope was pre-resolved. Pass the explicit list of Apex class names from `apex_scope` union `apex_test_classes`. Instruct it to test those classes directly without re-running its own working-tree scope detection.
@@ -126,6 +140,31 @@ When `runLwc` was true, run the whole Jest suite once with coverage from the cur
 - **Delete the old summary first.** A Jest run that stops before writing coverage would otherwise leave the previous run's `coverage/coverage-summary.json` to be read. `--since` makes `coverage-split.mjs` refuse a summary older than this run's start.
 - **Skip `.claude/worktrees/`.** A plain `npx jest --coverage` also runs and measures the specs in other branches' checkouts under `.claude/worktrees/`. The two ignore patterns keep them out of the test run and the coverage; `coverage-split.mjs` also skips any path there.
 
-`coverage-split.mjs` computes its own "changed" set independently of Phase 1: it is not the uncommitted `force-app/` files Phase 1 collected, but every file that differs from the branch's merge-base (committed or not) plus every untracked file, repo-wide.
+`coverage-split.mjs` computes its own "changed" set independently of Phase 1: it is not the `force-app/` files Phase 1 collected, but every file that differs from the branch's merge-base (committed or not) plus every untracked file, repo-wide.
 
 Report its output as it is: three lines, or a line saying why the split or the numbers are missing. Skip this phase when no LWC was in scope.
+
+## Phase 9 — Coverage result
+
+Report one line per file in scope from the agents' reports: the file, its coverage, and one status:
+
+- `100%`
+- `below 100%`
+- `not measured — <reason>`, when no agent measured the file, for example no test class in scope,
+  no coverage script, or a refused or failed deploy
+
+Group the lines in two lists:
+
+- **Touched by this run:** the Apex classes and LWC components whose files Phase 1 collected.
+- **Not touched by this run — information only:** every other file in scope, such as callers added
+  in Phase 4 and classes the agents added themselves.
+
+Under the touched list, detail every file below 100% or not measured with:
+
+- **Uncovered lines:** the line numbers, or "not reported" when the agent gave none.
+- **Reason:** why each line cannot be covered, or the reason the file was not measured.
+- **Production change:** the change the agent names that would make each line testable.
+- **Plan:** whether the apex-tester produced a test plan for it.
+
+Never round a percentage up to 100%, and never drop a touched file below 100% or not measured from
+the list.

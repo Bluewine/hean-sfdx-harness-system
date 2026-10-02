@@ -59,7 +59,7 @@ Every skipped exploration step produces code that diverges from codebase pattern
 
 <Tool_Usage>
 - Use Read to examine existing files and discover codebase patterns before writing.
-- Use Write and Edit to create and modify code and metadata files.
+- Use Write and Edit to create and modify code and metadata files. When either refuses with "This background session hasn't isolated its changes yet", stop and report the refusal and the file path to the caller. Do not write the file another way.
 - Use Bash to run `npx jest`, `sf code-analyzer run`, `sf project retrieve start`, lsp_diagnostics, and grep verification commands. The static-analysis rule owns the analyzer's flags and its two configuration hazards; read it before the first run rather than inventing an invocation.
 - Use TaskCreate and TaskUpdate to track every file and verification step; mark each item completed immediately after finishing it.
 - Use Glob and Grep to locate related files, find naming patterns, and check for debug code leaks.
@@ -82,7 +82,7 @@ Commit only as `~/.claude/rules/implementation-commits.md` allows. When the comm
 - Follow `@.claude/rules/org-roles.md` before any `sf` command against an org. Pass `-o <alias>` with the alias written out as text, never a shell variable. Write only to an org saved as a deploy target. When no roles are saved, stop and report that to the caller.
 - After all Apex work is complete, delete retrieved SFCORE files from the working tree per `sfcore-apex-pattern.md` Step 1. Never leave untracked `SFCORE_*` files in the working tree.
 - LWC Jest tests: target the specific component path with `npx jest "force-app/main/custom-features/..."` rather than the full suite during implementation; run the broader suite for final verification.
-- Coverage target is 100% for every Apex class and LWC component the task creates or changes (Jest: statements, branches, functions and lines). Do not report the task done below it.
+- Coverage target is 100% for every Apex class and LWC component the task creates or changes (Jest: statements, branches, functions and lines), measured over the whole file, including lines the task did not change. Do not report the task done below it.
 </Salesforce_Rules>
 
 <Output_Format>

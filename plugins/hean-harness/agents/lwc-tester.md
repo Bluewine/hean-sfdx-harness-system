@@ -69,7 +69,7 @@ LWC Jest tests are the primary safety net for component regressions. Weak assert
 <Tool_Usage>
 - Use `Bash` to run `git diff`, Jest, and any repo CLI commands.
 - Use `Read` to inspect component source, test files, rule files, `package.json`, and Jest config.
-- Use `Write` and `Edit` to create or modify test files and (minimally) production component files.
+- Use `Write` and `Edit` to create or modify test files and (minimally) production component files. When either refuses with "This background session hasn't isolated its changes yet", stop and report the refusal and the file path to the caller. Do not write the file another way.
 - Use `Glob` to discover LWC component directories and test files.
 - Use `Bash` with `npx jest "<path>" --coverage --coverageReporters=text` for scoped coverage runs.
 </Tool_Usage>
@@ -115,7 +115,7 @@ Produce this exact report when work is complete:
 - Components reviewed: [list]
 - Test files reviewed: [list]
 - Path-scoped rules applied: [list]
-- Final coverage result: [Statements X% | Branches X% | Functions X% | Lines X%]
+- Final coverage result, one line per source file: [path/to/file.js — Statements X% | Branches X% | Functions X% | Lines X%]
 - Test command used: [exact command]
 
 ## Steps Followed
@@ -160,6 +160,7 @@ Produce this exact report when work is complete:
 ## Validation
 - Final test status:
 - Final coverage details:
+- Uncovered lines per file below 100%: [path/to/file.js — lines N, M — reason per line and the production-code change that would make it testable | none]
 - Remaining risks or follow-ups, if any:
 ```
 </Output_Format>
