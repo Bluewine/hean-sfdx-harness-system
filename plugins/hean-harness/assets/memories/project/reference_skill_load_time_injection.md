@@ -8,7 +8,7 @@ metadata:
   modified: 2026-09-19T00:00:00.000Z
 ---
 
-A skill can assemble its own prompt before the model sees anything: a ```! fenced block in `SKILL.md` runs a shell command while the skill loads, and its output replaces the block. Inlining another skill's body this way costs one model turn; telling the model to call that other skill costs two, plus a tool call. `.claude/skills/hean/` uses this to inline `superpowers:brainstorming` and append three fixed answer rules to the prompt.
+A skill can assemble its own prompt before the model sees anything: a ```! fenced block in `SKILL.md` runs a shell command while the skill loads, and its output replaces the block. Inlining another skill's body this way costs one model turn; telling the model to call that other skill costs two, plus a tool call. `.claude/skills/hean/` uses this to inline `superpowers:brainstorming` and append its answer rules to the prompt.
 
 **Verified by inspecting headless `claude -p` session transcripts:**
 
