@@ -25,7 +25,7 @@ Each of these adds at least one point; nesting one inside another adds an extra 
 ## How to stay under the threshold while writing new code
 
 - **One private helper method per logical step.** A method that gathers data, then processes it, then builds a result should be three named methods calling each other in sequence, not one method with three sections. A caller method that only calls other methods stays low-complexity regardless of how much work happens underneath it.
-- **Guard clauses over nested branches.** Return early for the exceptional/simple case instead of wrapping the main logic in `if`. Each avoided nesting level removes both the branch's own point and the extra per-nesting-level point every structure inside it would have paid.
+- **Guard clauses over nested branches.** Follow `~/.claude/rules/early-return.md`: each avoided nesting level removes both the branch's own point and the extra per-nesting-level point every structure inside it would have paid.
 - **One level of abstraction per method.** A method either orchestrates (calls other methods, no business logic of its own) or implements one specific piece of logic — never both. If a method mixes "what steps happen" with "how each step works," extract the "how" into its own method.
 - **Extract the inner block of a nested loop-inside-a-conditional-inside-a-loop.** That shape is the single most expensive pattern for this metric; pulling the innermost block into its own named method (passed the loop variable and whatever context it needs) collapses multiple nesting levels into one.
 

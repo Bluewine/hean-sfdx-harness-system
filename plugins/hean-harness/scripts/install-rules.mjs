@@ -6,7 +6,7 @@
  *   assets/rules/project/  ->  <repo>/.claude/rules/     this repository only
  *   assets/claude-md/      ->  a block in ~/.claude/CLAUDE.md
  *
- * The split matters. User-scope rules are about writing and apply anywhere.
+ * The split matters. User-scope rules are general conventions and apply anywhere.
  * Project-scope rules are Salesforce conventions, and installing those at user
  * scope would load them when someone opens an unrelated repository.
  */
@@ -80,7 +80,7 @@ function main() {
     process.exit(1);
   }
 
-  report('Writing rules', userFiles, USER_SRC, USER_DEST);
+  report('User rules', userFiles, USER_SRC, USER_DEST);
   log('');
   report('Project rules', projFiles, PROJ_SRC, projDest);
   log('');
@@ -93,7 +93,7 @@ function main() {
 
   installDir(USER_DEST);
   for (const f of userFiles) installFile(join(USER_SRC, f), join(USER_DEST, f));
-  log(`Installed ${userFiles.length} writing rules for every repository`);
+  log(`Installed ${userFiles.length} user rules for every repository`);
 
   const folder = installRepoFolder(repo);
   if (!folder.recorded) log(`Not recording ${folder.target} for uninstall — it is Claude Code's own configuration`);
