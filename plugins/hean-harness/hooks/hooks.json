@@ -43,6 +43,11 @@
           },
           {
             "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/runbook-compile-check.mjs\"",
+            "timeout": 10
+          },
+          {
+            "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/commit-message-gate.mjs\"",
             "timeout": 10
           },
@@ -65,6 +70,16 @@
       }
     ],
     "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/runbook-compile-check.mjs\"",
+            "timeout": 60
+          }
+        ]
+      },
       {
         "matcher": "AskUserQuestion",
         "hooks": [

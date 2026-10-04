@@ -57,6 +57,7 @@ Updated whenever a skill, agent, hook, or rule is added, removed, or renamed —
 | git-identity-guard.mjs | Hooks | documented |
 | commit-lifecycle-events.mjs | Hooks | documented |
 | worktree-share.mjs | Hooks | documented |
+| runbook-compile-check.mjs | Hooks | documented |
 
 ## Rules
 
@@ -65,6 +66,7 @@ Updated whenever a skill, agent, hook, or rule is added, removed, or renamed —
 | agent-briefing-style.md | global | Global Rules | documented |
 | agent-writing-style.md | global | Global Rules | documented |
 | claude-md-authoring.md | global | Global Rules | documented |
+| early-return.md | global | Global Rules | documented |
 | file-search.md | global | Global Rules | documented |
 | implementation-commits.md | global | Global Rules | documented |
 | no-body-separators-or-trailing-blanks.md | global | Global Rules | documented |

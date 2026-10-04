@@ -49,6 +49,15 @@ Apply this to every field the script touches that this release adds or removes â
 
 A field a `pre-deploy` script reads does not need to be deleted in `pre` too. The script only needs the field to still exist at the moment it runs, which holds regardless of which stage's destructive manifest eventually removes it â€” see Stage mechanics above for which stage that should be.
 
+A top-level `return;` stops an anonymous Apex script, also inside `try`; use it for the early return in `~/.claude/rules/early-return.md` (observed in a development org run on 2026-10-03; no Salesforce page states it).
+
+### Pipeline API version
+
+- **Compile version**: Jenkins runs each script as anonymous Apex at the default API version of the jsforce copy its pipeline libraries load. That version is older than the metadata deploy version.
+- **Requirement**: A script must compile at that version. A script that passes `sf apex run` locally can still fail in Jenkins with "No such column", "Invalid type" or "Variable does not exist". Dynamic SOQL does not avoid it.
+- **Newer elements**: Put logic that needs a field, type or method newer than that version into a `force-app` Apex class whose `apiVersion` is new enough, with its test class in the coverage target. The script only calls that class.
+- **Automatic check**: The plugin's `runbook-compile-check.mjs` hook compiles each script against the saved development org after every write, at the pipeline's version, running nothing. When the pipeline's version can be read, it refuses a commit until the staged content of every script compiled. Check a script written another way with `node <plugin>/hooks/runbook-compile-check.mjs --check <file>`.
+
 ## Automatic rows
 
 Derive one row per item the change touches. Every row's Mode is **Automatic**.

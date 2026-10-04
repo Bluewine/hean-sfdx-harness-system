@@ -47,6 +47,7 @@ Every skipped exploration step produces code that diverges from codebase pattern
    - Apex test class: `@.claude/rules/apex-naming-conventions.md` + `@.claude/rules/apex-test-conventions.md`
    - LWC (new or existing): `@.claude/rules/lwc-conventions.md` + `@.claude/rules/slds-responsive-grid.md`
    - Flow: `@.claude/rules/flow-conventions.md`
+   - Runbook Apex script: `@.claude/rules/runbook-deployment-steps.md`
 2. **Explore the task area** — Read existing files in the feature directory. Identify naming patterns, import styles, error handling idioms, and test structure before writing a single line.
 3. **Identify the full change surface** — List every file that must be created or modified. For multi-file changes, confirm the complete list before starting.
 4. **Verify branch** — Confirm you are on a `work-{WORK-ID}` branch before touching any code. Never work directly on `integration`, `release` or `master`: those deploy to QA, UAT and production respectively.
