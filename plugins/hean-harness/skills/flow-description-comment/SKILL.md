@@ -1,13 +1,13 @@
 ---
 name: flow-description-comment
-description: Dated change-log verifier for Flow metadata — reads each staged Flow against the top entry of its description, adds or sharpens that entry only when the staged change is not already covered, never touching the entries beneath it, then retries the blocked commit
+description: Dated change-log verifier for Flow metadata — reads each staged Flow this branch changes against the top entry of its description, adds or sharpens that entry only when the staged change is not already covered, never touching the entries beneath it, then retries the blocked commit
 ---
 
 # Flow Description Comment
 
 ## Overview
 
-`flow-description-gate.sh` blocks `git commit` whenever staged Flow metadata changes haven't
+`flow-description-gate.mjs` blocks `git commit` whenever staged Flow metadata changes haven't
 been verified for a dated description entry. This skill is the verification and remediation
 step it invokes. It never skips a genuinely unverified change and never touches a Flow that
 wasn't actually staged.
@@ -145,17 +145,20 @@ Create a task per phase below before starting.
 
 ```bash
 ROOT=$(git rev-parse --show-toplevel)
-git -C "$ROOT" diff --cached --name-only -- '*.flow-meta.xml'
+node "${CLAUDE_PLUGIN_ROOT}/hooks/flow-description-gate.mjs" --list-flows
 ```
 
-If this is empty, there is nothing to verify — skip directly to Phase 3.
+This prints the staged Flow files that need a check, one per line — the same list the gate hashes.
+If it prints nothing, there is nothing to verify — skip directly to Phase 3.
 
-**Never ask how a change arrived.** A Flow can be staged because work happened on this branch,
-because the merge-base was merged in, because a commit was cherry-picked, or because a rebase
-replayed it. None of that changes what Phase 2 does, because Phase 2 asks about the description's
-content rather than the change's origin. A Flow that arrived carrying an entry describing exactly
-this change is already correct, and Phase 2 leaves it alone — the answer the merge case needs,
-reached without detecting a merge.
+**Never listed:** runbook copies under `runbooks/pre-deploy/` and `runbooks/post-deploy/`, which
+are temporary deployment staging, and deleted Flow files, which carry no description to check.
+
+**A merge brings in only what was resolved by hand.** During a merge, a Flow taken unchanged from
+the other branch is not this branch's work, and the list leaves it out. A Flow edited by hand to
+resolve a conflict is listed and checked like any other. A Flow staged by a cherry-pick or a
+rebase is listed; when it arrived carrying an entry describing exactly this change, that entry is
+already correct, and Phase 2 leaves it alone.
 
 ## Phase 2 — Verify, adjust, or add an entry, per file
 
@@ -208,8 +211,8 @@ written; the newer entry supersedes them, and that is the point of keeping them.
 
 **Report per file which of the four outcomes applied** — first description written, entry added,
 top entry sharpened, or left as it was. When a Flow was left alone, say which entry already
-covered it. That is what shows a merge or a cherry-pick was handled correctly rather than skipped
-by accident.
+covered it. That is what shows a hand-resolved merge Flow or a cherry-pick was handled correctly
+rather than skipped by accident.
 
 ## Phase 3 — Write the verification marker
 

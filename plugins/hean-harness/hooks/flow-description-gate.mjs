@@ -7,6 +7,11 @@
  * the staged changes still hash the same, the commit goes through; when they
  * differ, it denies and points at the skill that adds the entries.
  *
+ * Only Flow files this branch actually changes count: runbook copies under
+ * runbooks/pre-deploy/ and runbooks/post-deploy/, deleted Flow files, and,
+ * during a merge, Flows taken unchanged from MERGE_HEAD are left out. The
+ * commit check, --mark-verified and --list-flows share one list (flowsToCheck).
+ *
  * The record lives under the home directory, keyed by repository, rather than
  * beside the skill. A plugin's own folder moves on every update, so state
  * written there is lost.
@@ -38,6 +43,56 @@ export const stateDirFor = repo =>
 const gitIn = (args) =>
   execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
 
+const lines = out => out.split('\n').map(l => l.trim()).filter(Boolean);
+const gitOut = (dir, args) => { try { return execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }); } catch { return ''; } };
+const nulSplit = out => out.split('\0').filter(Boolean);
+
+/** Runbook copies are temporary deployment staging, not this branch's Flow work. */
+const RUNBOOK = /^runbooks\/(pre|post)-deploy\//;
+
+/**
+ * The staged Flow files, repository-relative, that need a description check.
+ * Left out: runbook copies, files the index deletes, and — while a merge is in
+ * progress — files whose staged blob is the one MERGE_HEAD holds, because they
+ * were taken unchanged from the other branch. A Flow edited by hand to resolve
+ * a conflict has a different blob and stays in.
+ */
+export function flowsToCheck(root) {
+  let files = nulSplit(gitOut(root, ['diff', '--cached', '--name-only', '--no-renames', '--diff-filter=d',
+    '-z', '--', '*.flow-meta.xml'])).filter(f => !RUNBOOK.test(f));
+  if (files.length && gitOut(root, ['rev-parse', '-q', '--verify', 'MERGE_HEAD']).trim()) {
+    // ls-files -s: "<mode> <blob> <stage>\t<path>"; ls-tree: "<mode> <type> <blob>\t<path>"
+    const entries = out => nulSplit(out).map(e => { const t = e.indexOf('\t'); return [e.slice(t + 1), e.slice(0, t).split(' ')]; });
+    const staged = new Map(entries(gitOut(root, ['--literal-pathspecs', 'ls-files', '-s', '-z', '--', ...files]))
+      .filter(([, m]) => m[2] === '0').map(([p, m]) => [p, m[1]]));
+    const theirs = new Map(entries(gitOut(root, ['--literal-pathspecs', 'ls-tree', '-z', 'MERGE_HEAD', '--', ...files]))
+      .map(([p, m]) => [p, m[2]]));
+    files = files.filter(f => !staged.has(f) || staged.get(f) !== theirs.get(f));
+  }
+  return files.sort();
+}
+
+/** The staged diff of the files that need a check: the one input both hashes are taken from. */
+const checkedDiff = (root, files) =>
+  files.length ? gitOut(root, ['--literal-pathspecs', 'diff', '--cached', '--', ...files]) : '';
+
+/**
+ * Print the staged Flow files that need a check, one per line, so the skill
+ * works on exactly the list the gate hashes.
+ *
+ * Runs before anything reads standard input, because this mode has none.
+ */
+if (process.argv.includes('--list-flows')) {
+  try {
+    const root = gitIn(['rev-parse', '--show-toplevel']).trim();
+    for (const f of flowsToCheck(root)) console.log(f);
+  } catch (e) {
+    console.error(`Could not list the staged Flow files: ${e.message}`);
+    process.exit(1);
+  }
+  process.exit(0);
+}
+
 /**
  * Record the staged Flow changes as checked, so the retried commit goes
  * through. The skill that adds the dated entries calls this rather than
@@ -49,7 +104,9 @@ const gitIn = (args) =>
 if (process.argv.includes('--mark-verified')) {
   try {
     const root = gitIn(['rev-parse', '--show-toplevel']).trim();
-    const diff = gitIn(['-C', root, 'diff', '--cached', '--', '*.flow-meta.xml']);
+    // checkedDiff swallows git errors; this call throws, so a broken repository is not recorded as checked
+    gitIn(['-C', root, 'diff', '--cached', '--name-only']);
+    const diff = checkedDiff(root, flowsToCheck(root));
     const dir = stateDirFor(root);
     mkdirSync(dir, { recursive: true });
     const file = join(dir, 'last-verified-diff-hash');
@@ -114,17 +171,17 @@ export function stagingOf(sub, args) {
   return null;
 }
 
-const lines = out => out.split('\n').map(l => l.trim()).filter(Boolean);
-const gitOut = (dir, args) => { try { return execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }); } catch { return ''; } };
-
-/** The changed Flow files, repository-relative, that this staging would add to the index. */
+/**
+ * The changed Flow files, repository-relative, that this staging would add to
+ * the index. Deletions and runbook copies are left out, as in flowsToCheck.
+ */
 export function flowsStagedBy(staging, dir) {
   const spec = staging.scope === 'paths' ? ['--', ...staging.paths] : [];
-  const found = new Set(lines(gitOut(dir, ['diff', '--name-only', ...spec])));
+  const found = new Set(lines(gitOut(dir, ['diff', '--name-only', '--diff-filter=d', ...spec])));
   if (staging.scope !== 'tracked') {
     for (const f of lines(gitOut(dir, ['ls-files', '--others', '--exclude-standard', '--full-name', ...spec]))) found.add(f);
   }
-  return [...found].filter(f => FLOW.test(f)).sort();
+  return [...found].filter(f => FLOW.test(f) && !RUNBOOK.test(f)).sort();
 }
 
 const deny = reason => {
@@ -168,8 +225,8 @@ if (isMain) {
     const pending = [...new Set([...(stagedInCall.get(root) ?? []), ...(staging ? flowsStagedBy(staging, dir) : [])])].sort();
     if (pending.length) deny(SAME_CALL(pending));
 
-    // nothing staged that is a Flow? then this gate has no opinion on this commit
-    const staged = gitOut(root, ['diff', '--cached', '--', '*.flow-meta.xml']);
+    // no staged Flow that needs a check? then this gate has no opinion on this commit
+    const staged = checkedDiff(root, flowsToCheck(root));
     if (!staged.trim()) continue;
     const stateFile = join(stateDirFor(root), 'last-verified-diff-hash');
     const current = createHash('sha1').update(staged).digest('hex');

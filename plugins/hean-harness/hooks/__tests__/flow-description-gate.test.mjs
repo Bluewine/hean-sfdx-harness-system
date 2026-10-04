@@ -4,12 +4,12 @@
  * including commands that stage Flow files and commit them in the same call.
  *
  * Every run uses a throwaway CLAUDE_CONFIG_DIR for the verified-changes record,
- * and a throwaway git repository holding one Flow.
+ * and a throwaway git repository holding a few Flows.
  *
  * Run: node hooks/__tests__/flow-description-gate.test.mjs
  */
 
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -27,6 +27,8 @@ const git = (...args) => execFileSync('git', ['-C', REPO, ...args], { encoding: 
 const FLOWS = 'force-app/main/default/flows';
 const FLOW = `${FLOWS}/Account_After_Save.flow-meta.xml`;
 const NEW_FLOW = `${FLOWS}/Brand_New.flow-meta.xml`;
+const RUNBOOK_PRE = 'runbooks/pre-deploy/metaData/flows/Old_One.flow-meta.xml';
+const RUNBOOK_POST = 'runbooks/post-deploy/metaData/flows/Old_Two.flow-meta.xml';
 const write = (rel, text) => { mkdirSync(dirname(join(REPO, rel)), { recursive: true }); writeFileSync(join(REPO, rel), text); };
 
 mkdirSync(REPO);
@@ -35,6 +37,8 @@ git('config', 'user.email', 't@example.com');
 git('config', 'user.name', 'T');
 write(FLOW, '<Flow><description>2026-01-01: first</description></Flow>\n');
 write('notes.txt', 'one\n');
+write(RUNBOOK_PRE, '<Flow/>\n');
+write(RUNBOOK_POST, '<Flow/>\n');
 git('add', '.');
 git('commit', '-q', '-m', 'base');
 
@@ -106,6 +110,86 @@ expect('staged Flow, checked', refusal('git commit -m "x"'), null);
 expect('checked, and the add in the call stages nothing new', refusal(`git add ${FLOWS} && git commit -m "x"`), null);
 write(FLOW, '<Flow><description>2026-01-01: first</description><y/></Flow>\n');
 expect('checked, then changed again and staged in the call', refusal(`git add ${FLOWS} && git commit -m "x"`), SAME);
+
+const markVerified = () => execFileSync('node', [HOOK, '--mark-verified'], { cwd: REPO, env, encoding: 'utf8' });
+const listFlows = () => execFileSync('node', [HOOK, '--list-flows'], { cwd: REPO, env, encoding: 'utf8' }).trim();
+const same = (label, got, want) => {
+  const ok = got === want;
+  ok ? pass++ : fail++;
+  if (!ok) console.log(`  FAIL  ${label}\n        expected ${JSON.stringify(want)}, got ${JSON.stringify(got)}`);
+};
+
+console.log('Left out of the check');
+reset();
+write(RUNBOOK_PRE, '<Flow><z/></Flow>\n');
+git('add', '--', RUNBOOK_PRE);
+expect('a changed runbook Flow, staged', refusal('git commit -m "x"'), null);
+reset();
+write(RUNBOOK_PRE, '<Flow><z/></Flow>\n');
+expect('a changed runbook Flow, staged in the call', refusal('git add -A && git commit -m "x"'), null);
+reset();
+git('rm', '-q', '--', RUNBOOK_PRE, RUNBOOK_POST);
+expect('deleted runbook Flows, staged', refusal('git commit -m "x"'), null);
+same('--list-flows lists no deleted runbook Flow', listFlows(), '');
+reset();
+rmSync(join(REPO, RUNBOOK_PRE)); rmSync(join(REPO, RUNBOOK_POST));
+expect('deleted runbook Flows, staged in the call', refusal('git add -A && git commit -m "x"'), null);
+expect('deleted runbook Flows, commit -a', refusal('git commit -am "x"'), null);
+reset();
+git('rm', '-q', '--', FLOW);
+expect('a deleted force-app Flow, staged', refusal('git commit -m "x"'), null);
+reset();
+rmSync(join(REPO, FLOW));
+expect('a deleted force-app Flow, staged in the call', refusal(`git add -A ${FLOWS} && git commit -m "x"`), null);
+
+console.log('Filtered files staged beside a real change');
+reset();
+write(FLOW, '<Flow><description>2026-01-01: first</description><beside/></Flow>\n');
+git('add', '--', FLOW);
+write(RUNBOOK_PRE, '<Flow><w/></Flow>\n');
+git('add', '--', RUNBOOK_PRE);
+git('rm', '-q', '--', RUNBOOK_POST);
+same('--list-flows prints only the file that needs a check', listFlows(), FLOW);
+expect('an ordinary changed Flow is still refused', refusal('git commit -m "x"'), UNCHECKED);
+markVerified();
+expect('--mark-verified and the commit check agree', refusal('git commit -m "x"'), null);
+
+console.log('A folder that is not a repository');
+const notRepo = spawnSync('node', [HOOK, '--mark-verified'], { cwd: ELSEWHERE, env: { ...env, GIT_CEILING_DIRECTORIES: sandbox }, encoding: 'utf8' });
+same('--mark-verified outside a repository exits 1', notRepo.status, 1);
+same('--mark-verified outside a repository says why', notRepo.stderr.includes('Could not record the Flow check:'), true);
+
+console.log('Merges');
+reset();
+git('checkout', '-q', '-b', 'theirs');
+write(FLOW, '<Flow><description>2026-01-01: first</description><theirs/></Flow>\n');
+git('commit', '-q', '-am', 'theirs');
+git('checkout', '-q', 'main');
+write('notes.txt', 'ours\n');
+git('commit', '-q', '-am', 'ours');
+execFileSync('git', ['-C', REPO, 'merge', '-q', '--no-ff', '--no-commit', 'theirs'], { env, stdio: 'ignore' });
+expect('a Flow taken unchanged from the other branch', refusal('git commit -m "x"'), null);
+same('--list-flows leaves out the unchanged merge Flow', listFlows(), '');
+git('merge', '--abort');
+git('checkout', '-q', '-b', 'conflict', 'main~1');
+write(FLOW, '<Flow><description>2026-01-01: first</description><conflict/></Flow>\n');
+git('commit', '-q', '-am', 'conflict');
+git('checkout', '-q', 'theirs');
+try { execFileSync('git', ['-C', REPO, 'merge', '-q', '--no-commit', 'conflict'], { env, stdio: 'ignore' }); } catch { /* the conflict is the point */ }
+write(FLOW, '<Flow><description>2026-01-01: first</description><theirs/><conflict/></Flow>\n');
+git('add', '--', FLOW);
+same('--list-flows lists the hand-resolved Flow', listFlows(), FLOW);
+expect('a Flow edited by hand to resolve a conflict', refusal('git commit -m "x"'), UNCHECKED);
+markVerified();
+expect('the hand-resolved Flow, checked', refusal('git commit -m "x"'), null);
+git('merge', '--abort');
+git('checkout', '-q', 'main');
+
+console.log('Unreadable index');
+writeFileSync(join(REPO, '.git', 'index'), 'garbage');
+const brokenIndex = spawnSync('node', [HOOK, '--mark-verified'], { cwd: REPO, env, encoding: 'utf8' });
+same('--mark-verified with an unreadable index exits 1', brokenIndex.status, 1);
+same('--mark-verified with an unreadable index says why', brokenIndex.stderr.includes('Could not record the Flow check:'), true);
 
 rmSync(sandbox, { recursive: true, force: true });
 console.log(`\n  ${pass} passed, ${fail} failed, ${pass + fail} total`);
