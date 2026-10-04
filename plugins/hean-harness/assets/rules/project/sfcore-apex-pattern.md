@@ -10,7 +10,7 @@ paths:
 
 Apply these rules **every time** an Apex class is created or edited — no exceptions.
 
-## Step 0 — Retrieve SFCORE classes (MANDATORY, always first)
+## Step 0 — Retrieve SFCORE classes before any Apex work
 
 Run `/hean-harness:org-roles` and read the `alias` of the org whose `role` is `development` (see `org-roles.md`); the roles are saved in the main checkout's `.claude/hean-harness.json`, which every worktree shares, so never look for that file inside a worktree. Run the retrieve with that alias written out as text, and wait for completion before any other action:
 
@@ -22,7 +22,7 @@ When no org is saved with the `development` role, stop and report that to the us
 
 Skip only if SFCORE classes were already retrieved earlier in the same session.
 
-## Step 1 — Delete SFCORE classes after task completion (MANDATORY, always last)
+## Step 1 — Delete SFCORE classes after the Apex work
 
 Once all Apex work is complete and verified, delete all retrieved SFCORE files from the working tree:
 
