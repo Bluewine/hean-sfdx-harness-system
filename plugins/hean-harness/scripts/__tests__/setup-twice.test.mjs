@@ -12,7 +12,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, statSync, chmodSync,
-         readdirSync, appendFileSync } from 'node:fs';
+         readdirSync, appendFileSync, symlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
@@ -58,9 +58,15 @@ try {
   const report = join(repo, '.claude', 'skills', 'create-pr', 'output', 'body.md');
   mkdirSync(dirname(report), { recursive: true });
   writeFileSync(report, 'a rendered body\n');
+  const apexInput = join(repo, '.claude', 'inputs', 'apex-classes.txt');
+  const ownInput = join(repo, '.claude', 'inputs', 'my-own-input.txt');
+  mkdirSync(dirname(apexInput), { recursive: true });
+  writeFileSync(apexInput, '[test]\nFooTest\n');
+  writeFileSync(ownInput, 'mine\n');
   // no flag this time: the answer saved by the first run is used
   run('setup.mjs', ['--repo', repo]);
   check('a second setup keeps skill output in the repository .claude folder', existsSync(report));
+  check('a second setup keeps the Apex class list in .claude/inputs', existsSync(apexInput));
   const afterTwice = readSettings();
   check('running setup twice leaves one correct task tools value',
         afterTwice.env?.CLAUDE_CODE_ENABLE_TODO_TOOLS === '1', String(afterTwice.env?.CLAUDE_CODE_ENABLE_TODO_TOOLS));
@@ -226,6 +232,8 @@ try {
         !existsSync(editedUserRule) && backedUp(USER_EDIT));
   check('uninstall deletes the saved answers file', !existsSync(join(repoClaude, 'hean-harness.json')));
   check('uninstall deletes the skill output', !existsSync(report));
+  check('uninstall deletes the Apex class list', !existsSync(apexInput));
+  check('uninstall keeps a user file in .claude/inputs', existsSync(ownInput));
   const rulesLeft = existsSync(join(repoClaude, 'rules')) ? readdirSync(join(repoClaude, 'rules')) : [];
   check('no plugin rule is left in the repository .claude/rules folder',
         JSON.stringify(rulesLeft) === JSON.stringify(['my-own-rule.md']), JSON.stringify(rulesLeft));
@@ -235,6 +243,23 @@ try {
         !existsSync(join(home, '.claude', 'projects')) && !existsSync(join(home, '.claude', 'rules')));
   check('nothing of the plugin is left in the home directory',
         !existsSync(join(home, '.claude', 'hean-harness', 'install-manifest.json')));
+
+  // A .claude/inputs that is a symlink is never followed: the file in its target stays.
+  const homeLink = join(root, 'homeLink');
+  const repoLink = join(root, 'repoLink');
+  const linkTarget = join(root, 'linkTarget');
+  mkdirSync(join(homeLink, '.claude'), { recursive: true });
+  mkdirSync(repoLink, { recursive: true });
+  mkdirSync(linkTarget, { recursive: true });
+  execFileSync('git', ['-C', repoLink, 'init', '-q', '-b', 'main']);
+  const envLink = { ...process.env, HOME: homeLink, SHELL: '/bin/zsh' };
+  execFileSync('node', [join(SCRIPTS, 'setup.mjs'), '--repo', repoLink, '--commit-format', 'on'],
+    { env: envLink, encoding: 'utf8', stdio: 'pipe' });
+  writeFileSync(join(linkTarget, 'apex-classes.txt'), '[test]\nFooTest\n');
+  symlinkSync(linkTarget, join(repoLink, '.claude', 'inputs'));
+  execFileSync('node', [join(SCRIPTS, 'lib', 'manifest.mjs'), 'revert'], { env: envLink, encoding: 'utf8', stdio: 'pipe' });
+  check('uninstall leaves a file behind a symlinked .claude/inputs in place',
+        existsSync(join(linkTarget, 'apex-classes.txt')));
 
   // A settings.json this plugin created from nothing must not survive uninstall
   // as an empty shell of the parent objects (env: {}) it created along the way.

@@ -22,11 +22,12 @@ left in place because it is theirs rather than ours.
      `.bash_profile`, `.profile`): the file, its `lines` value, and its `preview` text quoted in
      full. Say that only those lines and the one blank line above them are removed, and that the
      file is copied to `~/.claude/hean-harness/backups/` first.
-   - each `repo-folder` entry: uninstall deletes `.claude/hean-harness.json`, skill output under
-     `.claude/skills/*/output/` such as rendered pull request bodies and reports, the rules and
-     memories setup copied, and folders left empty. Everything else in `.claude` stays, including
-     the user's own rules and memories, `settings.local.json`, `.claude/worktrees/`,
-     `.claude/manifest/` and any file git tracks. A rule or memory edited after setup is copied to
+   - each `repo-folder` entry: uninstall deletes `.claude/hean-harness.json`,
+     `.claude/inputs/apex-classes.txt`, skill output under `.claude/skills/*/output/` such as
+     rendered pull request bodies and reports, the rules and memories setup copied, and folders
+     left empty. Everything else in `.claude` stays, including the user's own rules and memories,
+     `settings.local.json`, `.claude/worktrees/`, `.claude/manifest/`
+     and any file git tracks. A rule or memory edited after setup is copied to
      `~/.claude/hean-harness/backups/` before it is deleted or restored; name each entry whose `note` says
      `edited after setup`. When setup was run from a git worktree, a second `repo-folder` entry
      names the main checkout's `.claude` folder, because `.claude/hean-harness.json` lives there;
@@ -74,9 +75,10 @@ left in place because it is theirs rather than ours.
      say what it was and why it failed
    - each shell startup file edited, the result of the step 4 check, and its backup path
    - each `repo-folder` and `repo-file` entry, naming what was deleted and what its `note` says
-     was kept: `.claude/hean-harness.json`, skill output under `.claude/skills/*/output/`, the
-     rules and memories setup copied, and folders left empty are deleted; the user's own rules and
-     memories, `settings.local.json` and `.claude/worktrees/` stay. When there are two
+     was kept: `.claude/hean-harness.json`, `.claude/inputs/apex-classes.txt`, skill output under
+     `.claude/skills/*/output/`, the rules and memories setup copied, and folders left empty are
+     deleted; the user's own rules and memories, `settings.local.json` and `.claude/worktrees/`
+     stay. When there are two
      `repo-folder` entries, say which one is the main checkout. A `.mcp.json` that git tracks is
      kept, so say so and name it
    - each entry whose `note` says `edited after setup`, with the backup path the `note` gives
@@ -98,11 +100,11 @@ left in place because it is theirs rather than ours.
   editor tool, or a rewrite of the whole file.
 - Lines a user added to a startup file after setup ran are left alone — only the marked block is
   removed, wherever it sits in the file.
-- In the repository's `.claude` folder, uninstall deletes only `.claude/hean-harness.json`, skill
-  output under `.claude/skills/*/output/`, the rules and memories setup copied, and folders left
-  empty. Everything else stays, including the user's own rules and memories,
-  `settings.local.json`, `.claude/worktrees/`, `.claude/manifest/`, where each story's deploy
-  manifest is committed for the team, and any file git tracks. A rule or memory edited after
+- In the repository's `.claude` folder, uninstall deletes only `.claude/hean-harness.json`,
+  `.claude/inputs/apex-classes.txt`, skill output under `.claude/skills/*/output/`, the rules and
+  memories setup copied, and folders left empty. Everything else stays, including the user's own
+  rules and memories, `settings.local.json`, `.claude/worktrees/`, `.claude/manifest/`, where each
+  story's deploy manifest is committed for the team, and any file git tracks. A rule or memory edited after
   setup is copied to `~/.claude/hean-harness/backups/` before it is deleted or restored.
 - Never delete the backups folder. It holds copies of their own files.
 - `.claude/hean-harness.json` lives in the main checkout, and every git worktree of the

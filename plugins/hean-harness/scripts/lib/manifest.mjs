@@ -583,7 +583,8 @@ export function revert({ dryRun = false, keep = [], only = null } = {}) {
 
 /**
  * Delete the files this plugin generates in a repository's .claude folder —
- * .claude/hean-harness.json and every file under .claude/skills/<skill>/output/ —
+ * .claude/hean-harness.json, .claude/inputs/apex-classes.txt (that one file, not
+ * the folder's others) and every file under .claude/skills/<skill>/output/ —
  * unless git tracks them, then remove the folders left empty, deepest first, and
  * the .claude folder itself when nothing is left in it. Every other file stays:
  * the user keeps their own rules, memories, settings.local.json and Claude
@@ -614,6 +615,8 @@ function clearPluginFiles(folder, dryRun) {
   };
   const own = join(folder, 'hean-harness.json');
   if (exists(own) && !isDir(own)) ours.push(own);
+  const apexClasses = join(folder, 'inputs', 'apex-classes.txt');
+  if (isDir(join(folder, 'inputs')) && exists(apexClasses) && !isDir(apexClasses)) ours.push(apexClasses);
   const skills = join(folder, 'skills');
   if (isDir(skills)) {
     for (const s of readdirSync(skills)) {

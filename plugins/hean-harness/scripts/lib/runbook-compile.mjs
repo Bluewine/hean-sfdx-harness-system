@@ -94,9 +94,14 @@ export function pipelineApiVersion(repoRoot) {
   }
 }
 
+/** The saved role entry of the org with role development and deploy allowed, or null. */
+export function deployEntry(repoRoot) {
+  return Object.values(readRoles(repoRoot)).find(r => r?.role === 'development' && r.deploy === true) ?? null;
+}
+
 /** The username (or alias) of the org saved with role development and deploy allowed, or null. */
 export function deployTarget(repoRoot) {
-  const found = Object.values(readRoles(repoRoot)).find(r => r?.role === 'development' && r.deploy === true);
+  const found = deployEntry(repoRoot);
   return found ? (found.username ?? found.alias ?? null) : null;
 }
 
