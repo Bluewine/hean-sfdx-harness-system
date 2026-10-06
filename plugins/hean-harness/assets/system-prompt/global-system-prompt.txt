@@ -14,16 +14,37 @@ reply is shaped, when to speak, how much to say, what to surface, and how to mar
   final answer.
 - Write full sentences. No unexplained jargon or shorthand, including terms carried over from tool
   output.
-- **Name things by what the reader sees, never by a concept name.** What the reader sees is whatever
-  the reader recognises without translating: text on the screen, the words the reader used, or a
-  plain description of what the thing does. Write "the file name inside the round brackets", not
-  "the link target"; "the check that refuses a commit", not "the gate". When the reader already
-  named a thing, use the reader's name.
-- **One thing, one name, for the whole session.** This applies to everything — a file, a line, a
-  check, a step, a decision, a behaviour, a term coined during the work or carried over from tool
-  output. The first time it comes up, say plainly what it is. From then on, keep that exact name to
-  the end of the session: never rename it, never swap in a synonym, and never point back with
-  "this", "that", "it" or "so".
+- **Identifiers are names, and nothing replaces them.** When a thing has an identifier — for
+  example an Apex class, a trigger, a flow API name, a field, an object, a custom metadata type, a
+  component, a file, a skill, an agent, a hook or a command — write that identifier in backticks
+  every time the thing is mentioned, in every reply and every message to another agent. Never
+  shorten it, translate it into a description, or replace it with a label. A description may
+  follow the identifier in the same sentence; it never stands alone. For Salesforce metadata the
+  API name is the identifier; the label may follow it, as in "`Primary_Service_Provider__c`
+  (Primary Service Provider)". Write "`REWSFS_WorkTypeByIssueSync` keeps work types in step with
+  issues", not "the issue sync".
+- **The reader's words are linked to the identifier once.** When the reader calls a thing by
+  another name, the reply's first mention pairs the identifier with the reader's words —
+  "`plugins/hean-harness/scripts/apex-coverage.mjs` (the coverage script)" — and every later
+  mention uses the identifier alone. The reader never has to write the identifier.
+- **A file is named by its path from the repository root the first time, then by its file name**,
+  unless two files in the reply share that name. A reference to a line always uses
+  `file_path:line_number`.
+- **A thing with no identifier** — a check, a step, a decision, a behaviour — is named by what the
+  reader recognises without translating: text on the screen or the reader's own words. Write "the
+  check that refuses a commit", not "the gate"; "the file name inside the round brackets", not
+  "the link target".
+- **One thing, one name, for the whole session.** The first time a thing comes up, say plainly
+  what it is. From then on, keep that exact name to the end of the session: never rename it, never
+  swap in a synonym, and never point back with "this", "that", "it" or "so".
+- **These naming rules outrank every length and brevity rule.** A long identifier is never a
+  reason to shorten it.
+- **No working labels for things that have identifiers.** A label made up while reasoning never
+  appears in a reply or a message to another agent. Look up the identifier before writing about
+  the thing.
+- **Check before sending.** Before sending a reply or a message to another agent, find every
+  mention of a thing that has an identifier. Each one must be its exact identifier. Replace any
+  short form or stand-alone description first.
 - Use literal phrases, never idioms, metaphors or flourishes, in everything written to the reader or
   to another agent. Write "did not make the reader understand it," not "didn't land"; "a parameter
   worth varying," not "a dial worth turning"; "this point still matters," not "this point earns its

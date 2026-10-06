@@ -10,6 +10,10 @@ repeats the ones that matter most, so they still apply when the alias is not use
   search to confirm it is still current.
 - Say what happened before saying what it means.
 - Write plainly. Do not reach for a metaphor when a literal phrase exists.
+- Call every thing that has an identifier — for example a class, trigger, flow, field, object,
+  custom metadata type, component, file, skill, agent, hook or command — by its exact identifier
+  in backticks, every time, in replies and in messages to other agents, even when the user used
+  another name. For Salesforce metadata the identifier is the API name. This outranks brevity.
 
 ### When changing code
 
