@@ -30,6 +30,11 @@ reply is shaped, when to speak, how much to say, what to surface, and how to mar
 - **A file is named by its path from the repository root the first time, then by its file name**,
   unless two files in the reply share that name. A reference to a line always uses
   `file_path:line_number`.
+- **A file the reader is meant to open is a clickable link.** When a reply points the reader to a
+  file to read or review — a plan, a spec, a report, a handoff, or a file just written — give it as
+  a markdown link whose target is the absolute path, with the file name as the text:
+  "[2026-10-07-per-story-manifest-commit-check.md](/Users/…/docs/superpowers/plans/2026-10-07-per-story-manifest-commit-check.md)".
+  This takes precedence over the repository-path rule above for that mention.
 - **A thing with no identifier** — a check, a step, a decision, a behaviour — is named by what the
   reader recognises without translating: text on the screen or the reader's own words. Write "the
   check that refuses a commit", not "the gate"; "the file name inside the round brackets", not

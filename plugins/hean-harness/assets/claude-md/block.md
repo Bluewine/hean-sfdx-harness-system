@@ -14,6 +14,8 @@ repeats the ones that matter most, so they still apply when the alias is not use
   custom metadata type, component, file, skill, agent, hook or command — by its exact identifier
   in backticks, every time, in replies and in messages to other agents, even when the user used
   another name. For Salesforce metadata the identifier is the API name. This outranks brevity.
+- When pointing the user to a file to open (a plan, a spec, a report, a file just written), give it
+  as a markdown link to the absolute path.
 
 ### When changing code
 
