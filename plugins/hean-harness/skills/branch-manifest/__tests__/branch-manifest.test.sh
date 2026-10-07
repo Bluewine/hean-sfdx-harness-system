@@ -236,6 +236,98 @@ CustomLabel: Legacy" \
 check "labels: a type sorting before CustomLabel survives the rewrite" "yes" "$(has "$OUT" 'ApexClass: Cls')"
 check "labels: identical rerun leaves the file unchanged" "yes" "$(has "$(node "$SCRIPT")" 'LBL-1.xml unchanged')"
 
+# --from-index: only what the index records counts. Committed and staged changes are listed; an unstaged
+# edit and an untracked file are not; labels are read from the index; GIT_INDEX_FILE names another index,
+# and a relative one is read from the folder it was given in.
+new_repo index integration
+for c in Base Edit; do put $D/classes/$c.cls "public class $c {}"; put $D/classes/$c.cls-meta.xml; done
+putlabels $D/labels/CustomLabels.labels-meta.xml <<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomLabels xmlns="http://soap.sforce.com/2006/04/metadata">
+    <labels>
+        <fullName>BaseLabel</fullName>
+        <categories>Cat</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Base desc</shortDescription>
+        <value>Base value</value>
+    </labels>
+</CustomLabels>
+XML
+commit "base"
+git checkout -q -b work-IDX-1_fixture integration
+put $D/classes/Done.cls "public class Done {}"; put $D/classes/Done.cls-meta.xml; commit "committed"
+put $D/classes/Staged.cls "public class Staged {}"; put $D/classes/Staged.cls-meta.xml
+putlabels $D/labels/CustomLabels.labels-meta.xml <<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomLabels xmlns="http://soap.sforce.com/2006/04/metadata">
+    <labels>
+        <fullName>BaseLabel</fullName>
+        <categories>Cat</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Base desc</shortDescription>
+        <value>Base value</value>
+    </labels>
+    <labels>
+        <fullName>StagedLabel</fullName>
+        <categories>Cat</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Staged desc</shortDescription>
+        <value>Staged value</value>
+    </labels>
+</CustomLabels>
+XML
+git add $D/classes/Staged.cls $D/classes/Staged.cls-meta.xml $D/labels/CustomLabels.labels-meta.xml
+echo "// unstaged" >> $D/classes/Edit.cls
+putlabels $D/labels/CustomLabels.labels-meta.xml <<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomLabels xmlns="http://soap.sforce.com/2006/04/metadata">
+    <labels>
+        <fullName>BaseLabel</fullName>
+        <categories>Cat</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Base desc</shortDescription>
+        <value>Base value</value>
+    </labels>
+    <labels>
+        <fullName>StagedLabel</fullName>
+        <categories>Cat</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Staged desc</shortDescription>
+        <value>Staged value</value>
+    </labels>
+    <labels>
+        <fullName>UnstagedLabel</fullName>
+        <categories>Cat</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Unstaged desc</shortDescription>
+        <value>Unstaged value</value>
+    </labels>
+</CustomLabels>
+XML
+put $D/classes/Loose.cls "public class Loose {}"; put $D/classes/Loose.cls-meta.xml
+
+OUT="$(node "$SCRIPT" --from-index --output-dir "$ROOT/idx-out")"
+check "from-index: committed and staged components only" "ApexClass:Done ApexClass:Staged CustomLabel:StagedLabel" \
+  "$(members "$ROOT/idx-out/IDX-1.xml")"
+check "from-index: the unstaged edit is absent" "no" "$(has "$OUT" 'ApexClass: Edit')"
+check "from-index: the untracked file is absent" "no" "$(has "$OUT" 'ApexClass: Loose')"
+node "$SCRIPT" --output-dir "$ROOT/tree-out" >/dev/null
+check "without --from-index the working tree still counts" \
+  "ApexClass:Done ApexClass:Edit ApexClass:Loose ApexClass:Staged CustomLabel:StagedLabel CustomLabel:UnstagedLabel" \
+  "$(members "$ROOT/tree-out/IDX-1.xml")"
+cp "$(git rev-parse --git-path index)" "$ROOT/alt-index"
+GIT_INDEX_FILE="$ROOT/alt-index" git add $D/classes/Loose.cls $D/classes/Loose.cls-meta.xml
+(cd force-app && GIT_INDEX_FILE=../../alt-index node "$SCRIPT" --from-index --output-dir "$ROOT/alt-out" >/dev/null)
+check "a relative GIT_INDEX_FILE is read from the folder it was given in" \
+  "ApexClass:Done ApexClass:Loose ApexClass:Staged CustomLabel:StagedLabel" "$(members "$ROOT/alt-out/IDX-1.xml")"
+check "the repository's own index is untouched" "no" "$(has "$(git diff --cached --name-only)" 'Loose.cls')"
+
 # Another project: trunk named main, branch created from HEAD, no work ID, no origin.
 new_repo other main
 put $D/classes/A.cls "public class A {}" && put $D/classes/A.cls-meta.xml && commit "base"

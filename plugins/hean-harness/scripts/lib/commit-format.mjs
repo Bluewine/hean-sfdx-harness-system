@@ -15,26 +15,29 @@
  *   off  the gate lets every subject through, and the hook is removed when
  *        this plugin put it there
  *
- * A hook the repository had before is never removed or overwritten without
- * --replace-githook, because the repository may rely on it. A repository that
+ * A hook setup did not write, or the plugin's copy edited since setup wrote
+ * it, is never removed or overwritten without --replace-githook, because the
+ * repository may rely on it. The plugin's copy unchanged since setup is updated
+ * when the plugin ships a new one (scripts/lib/githooks.mjs). A repository that
  * tracks its own hooks in git owns them outright: the plugin installs no hook
  * there, leaves core.hooksPath to the repository, and ignores --replace-githook.
  */
 
-import { readFileSync, existsSync, chmodSync, realpathSync } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { existsSync, chmodSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { load, revert, category, init } from './manifest.mjs';
 import { installDir, installFile, installGitConfig, getGitConfig } from './install.mjs';
 import { repoTracksHooks } from './gitignore.mjs';
 import { settingsFile, readSettings, writeSetting } from './settings.mjs';
+import { HOOKS_DIR, realPath, hookState, writesHook, describeHook, keptLines, wroteLine,
+         liveGitHooks, hooksPathKeptLines } from './githooks.mjs';
 
-export { settingsFile };
+export { settingsFile, realPath, HOOKS_DIR };
 
 const PLUGIN_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 export const HOOK_SOURCE = join(PLUGIN_ROOT, 'assets', 'githooks', 'commit-msg');
-export const HOOKS_DIR = '.githooks';
 
 /** 'on', 'off', or null when setup has not asked in this repository. */
 export function readChoice(repo) {
@@ -45,22 +48,6 @@ export function readChoice(repo) {
 export const writeChoice = (repo, value) => writeSetting(repo, 'commitFormat', value);
 
 /**
- * A path with symlinks resolved, including for a file that no longer exists:
- * the nearest existing parent is resolved and the rest appended. The same
- * folder can be recorded as /var/... and reported by git as /private/var/...
- */
-export function realPath(p) {
-  const rest = [];
-  let cur = resolve(p);
-  while (!existsSync(cur) && dirname(cur) !== cur) { rest.unshift(basename(cur)); cur = dirname(cur); }
-  try { return join(realpathSync(cur), ...rest); } catch { return resolve(p); }
-}
-
-/** Is the hook at this path the plugin's own copy? */
-const isOurs = hook =>
-  existsSync(hook) && readFileSync(hook, 'utf8') === readFileSync(HOOK_SOURCE, 'utf8');
-
-/**
  * Describe what applying a choice would do, and do it unless dryRun.
  * Returns the lines to print. Lines starting "!! " must reach the user.
  */
@@ -68,7 +55,6 @@ export function applyChoice(repo, choice, { replace = false, dryRun = false } = 
   const out = [];
   const hook = join(repo, HOOKS_DIR, 'commit-msg');
   const hookExists = existsSync(hook);
-  const ours = isOurs(hook);
   const hooksPath = getGitConfig(repo, 'core.hooksPath');
 
   out.push(`Commit format  ${choice}  (${settingsFile(repo)})`);
@@ -88,22 +74,20 @@ export function applyChoice(repo, choice, { replace = false, dryRun = false } = 
   }
 
   if (choice === 'on') {
-    const write = !hookExists || (replace && !ours);
+    const state = hookState(hook, HOOK_SOURCE);
+    const write = writesHook(state, replace);
     out.push(`Hook           ${hook}`);
-    out.push(`               ${!hookExists ? 'to add'
-      : ours ? 'the plugin\'s copy, already in place'
-      : replace ? 'present, to replace with the plugin\'s copy (a backup is kept)'
-      : 'present, left as it is'}`);
+    out.push(`               ${describeHook(state, replace)}`);
     out.push(`core.hooksPath ${hooksPath ?? 'unset'}`);
-    const setPath = hooksPath === undefined;
-    const otherPath = !setPath && hooksPath !== HOOKS_DIR;
-    out.push(`               ${setPath ? `to set to ${HOOKS_DIR}` : otherPath ? 'points elsewhere, left as it is' : 'already correct'}`);
-    if (hookExists && !ours && !replace) {
-      out.push('');
-      out.push(`!! KEPT — NOT CHANGED: ${hook}`);
-      out.push('!! The hook is already there, so setup leaves it as it is.');
-      out.push('!! To replace it with the plugin\'s copy, run setup again with --replace-githook.');
-    }
+    const unset = hooksPath === undefined;
+    // core.hooksPath replaces $GIT_DIR/hooks, so it stays unset while git runs hooks there
+    const live = unset ? liveGitHooks(repo) : [];
+    const setPath = unset && !live.length;
+    const otherPath = !unset && hooksPath !== HOOKS_DIR;
+    out.push(`               ${setPath ? `to set to ${HOOKS_DIR}` : live.length ? 'left unset: git runs hooks in its own folder'
+      : otherPath ? 'points elsewhere, left as it is' : 'already correct'}`);
+    if (!write && state !== 'current' && state !== 'missing') out.push(...keptLines(hook, state));
+    if (live.length) out.push(...hooksPathKeptLines(repo, live, 'commit format check'));
     if (dryRun) return out;
 
     init();
@@ -112,7 +96,7 @@ export function applyChoice(repo, choice, { replace = false, dryRun = false } = 
       installDir(join(repo, HOOKS_DIR));
       installFile(HOOK_SOURCE, hook);
       chmodSync(hook, 0o755);
-      out.push(`${hookExists ? 'Replaced' : 'Added'} ${hook}`);
+      out.push(wroteLine(state, hook));
     }
     if (setPath) {
       installGitConfig(repo, 'core.hooksPath', HOOKS_DIR);
@@ -125,10 +109,14 @@ export function applyChoice(repo, choice, { replace = false, dryRun = false } = 
     return out;
   }
 
-  // off: undo only what this plugin recorded for this repository's hook
+  // off: undo only what this plugin recorded for this repository's commit-msg hook. While its
+  // pre-commit hook is recorded there, core.hooksPath and the folder stay, because that hook needs them.
   const top = realPath(repo);
-  const mine = c => category(c) === 'githooks' &&
-    (realPath(c.target) === top || realPath(c.target).startsWith(join(top, HOOKS_DIR)));
+  const preCommit = realPath(join(repo, HOOKS_DIR, 'pre-commit'));
+  const preCommitRecorded = load().changes.some(c => c.type === 'file-copy' && realPath(c.target) === preCommit);
+  const mine = c => category(c) === 'githooks' && (
+    (c.type === 'file-copy' && realPath(c.target) === realPath(hook)) ||
+    (!preCommitRecorded && (realPath(c.target) === top || realPath(c.target).startsWith(join(top, HOOKS_DIR)))));
   const recorded = load().changes.filter(mine);
   const hookRecorded = recorded.some(c => c.type === 'file-copy');
   const pathRecorded = recorded.find(c => c.type === 'git-config');
@@ -139,6 +127,8 @@ export function applyChoice(repo, choice, { replace = false, dryRun = false } = 
     : 'present, left as it is'}`);
   if (pathRecorded) {
     out.push(`core.hooksPath to go back to ${pathRecorded.existedBefore ? pathRecorded.previousValue : 'unset'}`);
+  } else if (preCommitRecorded) {
+    out.push(`core.hooksPath stays ${HOOKS_DIR}: the plugin's pre-commit hook there still needs it`);
   }
   if (hookExists && !hookRecorded) {
     out.push('');

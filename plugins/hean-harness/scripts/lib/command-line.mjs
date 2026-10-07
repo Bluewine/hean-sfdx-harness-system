@@ -109,16 +109,17 @@ export function* commandsIn(script, cwd) {
 }
 
 // git's own options that come before the subcommand and take the next word as a value
-const GIT_VALUE_OPTS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env', '--exec-path', '--super-prefix']);
+export const GIT_VALUE_OPTS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env', '--exec-path', '--super-prefix']);
 
 /**
  * Every git command in the script, with where it runs.
  *
- * Yields { sub, args, dir, gitDir, workTree }: the subcommand, the words after
- * it, and the folder the command acts on. dir follows a `cd` earlier in the
- * script and `git -C`; it is null when the text cannot say which folder.
- * gitDir and workTree come from --git-dir, --work-tree, GIT_DIR and
- * GIT_WORK_TREE, and are undefined when none is given.
+ * Yields { sub, args, dir, gitDir, workTree, globals }: the subcommand, the
+ * words after it, and the folder the command acts on. dir follows a `cd`
+ * earlier in the script and `git -C`; it is null when the text cannot say which
+ * folder. gitDir and workTree come from --git-dir, --work-tree, GIT_DIR and
+ * GIT_WORK_TREE, and are undefined when none is given. globals is the words
+ * between `git` and the subcommand, as written.
  */
 export function* gitCommands(script, cwd) {
   for (const { words: w, env, dir } of commandsIn(script, cwd)) {
@@ -138,7 +139,7 @@ export function* gitCommands(script, cwd) {
       else if (name === '--work-tree') workTree = folder(value, here);
     }
     if (w[j] === undefined) continue;
-    yield { sub: w[j], args: w.slice(j + 1), dir: here, gitDir, workTree };
+    yield { sub: w[j], args: w.slice(j + 1), dir: here, gitDir, workTree, globals: w.slice(1, j) };
   }
 }
 

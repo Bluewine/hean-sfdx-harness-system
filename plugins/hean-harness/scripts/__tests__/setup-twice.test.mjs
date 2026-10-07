@@ -11,6 +11,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, statSync, chmodSync,
          readdirSync, appendFileSync, symlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -347,6 +348,185 @@ try {
   execFileSync('node', [join(SCRIPTS, 'lib', 'manifest.mjs'), 'revert'], { env: env2, encoding: 'utf8', stdio: 'pipe' });
   check('uninstall leaves the tracked hook in place',
         readFileSync(join(own, '.githooks', 'commit-msg'), 'utf8') === TEAM_HOOK);
+
+  // --- Git hooks recognised by the hash setup recorded ----------------------
+
+  const shippedHook = name => readFileSync(join(dirname(SCRIPTS), 'assets', 'githooks', name), 'utf8');
+  /** Make an installed hook look like an earlier plugin version's copy that setup wrote and nobody changed. */
+  const olderCopy = (homeDir, repoName, hookName, text) => {
+    const file = join(homeDir, '.claude', 'hean-harness', 'install-manifest.json');
+    const m = JSON.parse(readFileSync(file, 'utf8'));
+    const entry = m.changes.find(c => c.type === 'file-copy' && c.target.endsWith(`/${repoName}/.githooks/${hookName}`));
+    writeFileSync(entry.target, text);
+    entry.hash = createHash('sha256').update(text).digest('hex');
+    writeFileSync(file, JSON.stringify(m, null, 2) + '\n');
+  };
+  const backedUpIn = (homeDir, line) => {
+    const dir = join(homeDir, '.claude', 'hean-harness', 'backups');
+    return existsSync(dir) && readdirSync(dir).some(f => readFileSync(join(dir, f), 'utf8').includes(line));
+  };
+  const OLD_HOOK = '#!/bin/sh\n# an earlier version of the plugin hook\nexit 0\n';
+  const USER_LINE = '# a line the user added\n';
+
+  const homeH = join(root, 'homeH');
+  const repoH = join(root, 'repoH');
+  mkdirSync(join(homeH, '.claude'), { recursive: true });
+  mkdirSync(repoH, { recursive: true });
+  execFileSync('git', ['-C', repoH, 'init', '-q', '-b', 'main']);
+  const envH = { ...process.env, HOME: homeH };
+  const runHooks = (repoDir, args) => execFileSync('node', [join(SCRIPTS, 'install-githooks.mjs'), '--repo', repoDir, ...args],
+    { env: envH, encoding: 'utf8', stdio: 'pipe' });
+  const msgH = join(repoH, '.githooks', 'commit-msg');
+  runHooks(repoH, ['--commit-format', 'on']);
+  olderCopy(homeH, 'repoH', 'commit-msg', OLD_HOOK);
+  let outH = runHooks(repoH, []);
+  check('an unchanged commit-msg copy from an earlier version is updated',
+        readFileSync(msgH, 'utf8') === shippedHook('commit-msg') && outH.includes('Updated ') && !outH.includes('!! KEPT'), outH);
+  const recordOf = () => JSON.parse(readFileSync(join(homeH, '.claude', 'hean-harness', 'install-manifest.json'), 'utf8'))
+    .changes.find(c => c.type === 'file-copy' && c.target.endsWith('/repoH/.githooks/commit-msg'));
+  check('after an update the record holds the hash of the shipped hook',
+        recordOf().hash === createHash('sha256').update(shippedHook('commit-msg')).digest('hex'));
+  appendFileSync(msgH, USER_LINE);
+  outH = runHooks(repoH, []);
+  check('an edited plugin copy of commit-msg is kept, and says so',
+        readFileSync(msgH, 'utf8').includes(USER_LINE) &&
+          outH.includes('!! This is the plugin\'s copy, edited since setup installed it'), outH);
+  runHooks(repoH, ['--replace-githook']);
+  check('--replace-githook replaces an edited plugin copy and keeps a backup',
+        readFileSync(msgH, 'utf8') === shippedHook('commit-msg') && backedUpIn(homeH, USER_LINE));
+  const repoK = join(root, 'repoK');
+  mkdirSync(join(repoK, '.githooks'), { recursive: true });
+  execFileSync('git', ['-C', repoK, 'init', '-q', '-b', 'main']);
+  const THEIR_HOOK = '#!/bin/sh\n# someone else\'s hook\nexit 0\n';
+  writeFileSync(join(repoK, '.githooks', 'commit-msg'), THEIR_HOOK);
+  const outK = runHooks(repoK, ['--commit-format', 'on']);
+  check('someone else\'s untracked commit-msg is still kept',
+        readFileSync(join(repoK, '.githooks', 'commit-msg'), 'utf8') === THEIR_HOOK &&
+          outK.includes('!! The hook is already there, so setup leaves it as it is.'), outK);
+  const dropHash = () => {
+    const file = join(homeH, '.claude', 'hean-harness', 'install-manifest.json');
+    const m = JSON.parse(readFileSync(file, 'utf8'));
+    delete m.changes.find(c => c.type === 'file-copy' && c.target.endsWith('/repoH/.githooks/commit-msg')).hash;
+    writeFileSync(file, JSON.stringify(m, null, 2) + '\n');
+  };
+  dropHash();
+  outH = runHooks(repoH, []);
+  check('a record without a hash and a hook equal to the plugin\'s copy is current, nothing kept',
+        !outH.includes('!! KEPT') && outH.includes('already in place'), outH);
+  writeFileSync(msgH, OLD_HOOK);
+  outH = runHooks(repoH, []);
+  check('a record without a hash and a different hook is kept with an honest line',
+        readFileSync(msgH, 'utf8') === OLD_HOOK && outH.includes('before it recorded hashes') &&
+          !outH.includes('edited since setup installed it') && outH.includes('--replace-githook'), outH);
+  runHooks(repoH, ['--replace-githook']);
+  check('--replace-githook replaces it, keeps a backup and records the hash',
+        readFileSync(msgH, 'utf8') === shippedHook('commit-msg') && backedUpIn(homeH, 'an earlier version of the plugin hook') &&
+          recordOf().hash === createHash('sha256').update(shippedHook('commit-msg')).digest('hex'));
+  execFileSync('node', [join(SCRIPTS, 'lib', 'manifest.mjs'), 'revert'], { env: envH, encoding: 'utf8', stdio: 'pipe' });
+  check('uninstall deletes the updated commit-msg', !existsSync(msgH));
+
+  // --- The pre-commit hook that checks the per-story manifest ----------------
+
+  const homeP = join(root, 'homeP');
+  mkdirSync(join(homeP, '.claude'), { recursive: true });
+  const envP = { ...process.env, HOME: homeP, CLAUDE_CONFIG_DIR: join(homeP, '.claude') };
+  const sfdxRepo = name => {
+    const dir = join(root, name);
+    mkdirSync(dir, { recursive: true });
+    execFileSync('git', ['-C', dir, 'init', '-q', '-b', 'main']);
+    writeFileSync(join(dir, 'sfdx-project.json'), '{"packageDirectories":[{"path":"force-app","default":true}]}\n');
+    return dir;
+  };
+  const runP = (repoDir, args) => execFileSync('node', [join(SCRIPTS, 'install-githooks.mjs'), '--repo', repoDir, ...args],
+    { env: envP, encoding: 'utf8', stdio: 'pipe' });
+  const hooksPathOf = repoDir => {
+    try { return execFileSync('git', ['-C', repoDir, 'config', '--get', 'core.hooksPath'], { encoding: 'utf8' }).trim(); }
+    catch { return undefined; }
+  };
+
+  const repoP = sfdxRepo('repoP');
+  const preP = join(repoP, '.githooks', 'pre-commit');
+  let outP = runP(repoP, ['--commit-format', 'on']);
+  check('the pre-commit hook is installed, executable, in an SFDX repository',
+        existsSync(preP) && (statSync(preP).mode & 0o111) !== 0 && readFileSync(preP, 'utf8') === shippedHook('pre-commit'), outP);
+  check('a repository without sfdx-project.json gets no pre-commit hook', !existsSync(join(repoH, '.githooks', 'pre-commit')));
+  runP(repoP, ['--commit-format', 'off']);
+  check('switching the commit format off keeps pre-commit and core.hooksPath',
+        !existsSync(join(repoP, '.githooks', 'commit-msg')) && existsSync(preP) && hooksPathOf(repoP) === '.githooks',
+        String(hooksPathOf(repoP)));
+  runP(repoP, ['--commit-format', 'on']);
+  olderCopy(homeP, 'repoP', 'pre-commit', OLD_HOOK);
+  outP = runP(repoP, []);
+  check('an unchanged pre-commit copy from an earlier version is updated',
+        readFileSync(preP, 'utf8') === shippedHook('pre-commit') && outP.includes('Updated '), outP);
+  appendFileSync(preP, USER_LINE);
+  outP = runP(repoP, []);
+  check('an edited plugin copy of pre-commit is kept, and says so',
+        readFileSync(preP, 'utf8').includes(USER_LINE) && outP.includes('edited since setup installed it'), outP);
+
+  const repoT = sfdxRepo('repoT');
+  mkdirSync(join(repoT, '.githooks'), { recursive: true });
+  writeFileSync(join(repoT, '.githooks', 'commit-msg'), '#!/bin/sh\nexit 0\n');
+  execFileSync('git', ['-C', repoT, 'add', '.githooks/commit-msg']);
+  runP(repoT, ['--commit-format', 'on']);
+  check('a tracked .githooks/ folder gets no pre-commit hook', !existsSync(join(repoT, '.githooks', 'pre-commit')));
+
+  const repoF = sfdxRepo('repoF');
+  mkdirSync(join(repoF, '.githooks'), { recursive: true });
+  const THEIR_PRE = '#!/bin/sh\n# the team\'s own pre-commit\nexit 0\n';
+  writeFileSync(join(repoF, '.githooks', 'pre-commit'), THEIR_PRE);
+  const outF = runP(repoF, ['--commit-format', 'on']);
+  check('someone else\'s untracked pre-commit is kept, with a !! line',
+        readFileSync(join(repoF, '.githooks', 'pre-commit'), 'utf8') === THEIR_PRE && outF.includes('!! KEPT — NOT CHANGED'), outF);
+  runP(repoF, ['--replace-githook']);
+  check('--replace-githook replaces someone else\'s pre-commit',
+        readFileSync(join(repoF, '.githooks', 'pre-commit'), 'utf8') === shippedHook('pre-commit'));
+
+  const repoO = sfdxRepo('repoO');
+  mkdirSync(join(repoO, '.githooks'), { recursive: true });
+  writeFileSync(join(repoO, '.githooks', 'pre-commit'), THEIR_PRE);
+  const outO = runP(repoO, ['--commit-format', 'off']);
+  check('someone else\'s pre-commit with core.hooksPath unset is kept, and the path stays unset',
+        readFileSync(join(repoO, '.githooks', 'pre-commit'), 'utf8') === THEIR_PRE && hooksPathOf(repoO) === undefined &&
+          outO.includes('!! KEPT — NOT CHANGED') && !outO.includes('core.hooksPath is undefined'), outO);
+
+  const repoU = sfdxRepo('repoU');
+  runP(repoU, ['--commit-format', 'off']);
+  check('the pre-commit hook does not depend on the commit format',
+        existsSync(join(repoU, '.githooks', 'pre-commit')) && hooksPathOf(repoU) === '.githooks');
+
+  // core.hooksPath replaces .git/hooks, so setting it would switch off a hook already working there (Git LFS)
+  const repoL = sfdxRepo('repoL');
+  const lfsHook = join(repoL, '.git', 'hooks', 'post-checkout');
+  writeFileSync(lfsHook, '#!/bin/sh\ngit lfs post-checkout "$@"\n');
+  chmodSync(lfsHook, 0o755);
+  const outL = runP(repoL, ['--commit-format', 'on']);
+  check('a working hook in .git/hooks keeps core.hooksPath unset', hooksPathOf(repoL) === undefined, String(hooksPathOf(repoL)));
+  check('the hooks left working are named on a !! line, with the manifest check for terminal commits off',
+        outL.split('\n').some(l => l.startsWith('!! ') && l.includes('post-checkout')) &&
+          outL.includes('manifest check for terminal commits is off'), outL);
+  check('the commit-msg hook says the commit format check for terminal commits is off too',
+        outL.includes('commit format check for terminal commits is off') && !outL.includes('Set core.hooksPath'), outL);
+
+  execFileSync('node', [join(SCRIPTS, 'install-manifest-check.mjs')], { env: envP, encoding: 'utf8', stdio: 'pipe' });
+  const checkDir = join(homeP, '.claude', 'hean-harness', 'hooks');
+  check('the manifest check and branch-manifest are copied to the fixed folder',
+        existsSync(join(checkDir, 'scripts', 'lib', 'manifest-check.mjs')) &&
+          existsSync(join(checkDir, 'skills', 'branch-manifest', 'scripts', 'branch-manifest.mjs')));
+  // outside a repository both scripts stop early; an import the copy lacks would fail instead
+  const copied = execFileSync('node', [join(checkDir, 'scripts', 'lib', 'manifest-check.mjs'), '--git-hook'],
+    { env: envP, encoding: 'utf8', stdio: 'pipe', cwd: root }) +
+    execFileSync('node', [join(checkDir, 'skills', 'branch-manifest', 'scripts', 'branch-manifest.mjs')],
+      { env: envP, encoding: 'utf8', stdio: 'pipe', cwd: root });
+  check('the fixed copy runs with only the files copied', copied.startsWith('Error: ') && !copied.includes('Cannot find'), copied);
+
+  execFileSync('node', [join(SCRIPTS, 'lib', 'manifest.mjs'), 'revert'], { env: envP, encoding: 'utf8', stdio: 'pipe' });
+  check('uninstall deletes an unchanged pre-commit and unsets core.hooksPath',
+        !existsSync(join(repoU, '.githooks', 'pre-commit')) && hooksPathOf(repoU) === undefined, String(hooksPathOf(repoU)));
+  check('uninstall copies an edited pre-commit aside before deleting it', !existsSync(preP) && backedUpIn(homeP, USER_LINE));
+  check('uninstall puts back the pre-commit it replaced',
+        readFileSync(join(repoF, '.githooks', 'pre-commit'), 'utf8') === THEIR_PRE);
+  check('uninstall deletes the fixed copy of the manifest check', !existsSync(checkDir));
 
   // --- Auto-update ---------------------------------------------------------
 

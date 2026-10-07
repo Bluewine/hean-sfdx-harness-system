@@ -17,7 +17,7 @@
  *                             line, for a script not written through Write or Edit.
  *
  * Same-call staging (`git add f && git commit`, `git commit -a`, `git commit
- * <paths>`) is read with the Flow gate's parser: the script content that call
+ * <paths>`) is read with the shared staging parser (scripts/lib/staging.mjs): the script content that call
  * stages is the working-tree file, so that content is what must have passed.
  */
 
@@ -26,7 +26,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { gitCommands, repoOf, tryGit } from '../scripts/lib/command-line.mjs';
-import { stagingOf } from './flow-description-gate.mjs';
+import { stagingOf, stagesInteractively } from '../scripts/lib/staging.mjs';
 import {
   RUNBOOK_SCRIPT, compileScript, isVersionGap, readRecord, recordCompiled, isRecorded, pipelineApiVersion
 } from '../scripts/lib/runbook-compile.mjs';
@@ -97,25 +97,6 @@ function stagedScripts(root) {
   const names = (tryGit(root, 'diff', '--cached', '--name-only', '--no-renames', '--diff-filter=d', '-z') ?? '')
     .split('\0').filter(f => RUNBOOK_SCRIPT.test(f));
   return new Map(names.map(f => [f, tryGit(root, 'rev-parse', `:${f}`)]));
-}
-
-/**
- * Whether a `git add` or `git commit` picks hunks interactively (-p, --patch,
- * -i, --interactive). The staged content then differs from the working tree in
- * a way the text cannot say, so it counts as unknown staging.
- */
-export function stagesInteractively(sub, args) {
-  if (sub !== 'add' && sub !== 'stage' && sub !== 'commit') return false;
-  for (const a of args) {
-    if (a === '--') break;
-    if (a === '--patch' || a === '--interactive') return true;
-    if (/^-[A-Za-z]+$/.test(a)) {
-      // a commit's -m/-F/-c/-C/-t take a value: letters after one of them are that value
-      const flags = sub === 'commit' ? a.slice(1).split(/[mFcCt]/)[0] : a.slice(1);
-      if (/[pi]/.test(flags)) return true;
-    }
-  }
-  return false;
 }
 
 const INTERACTIVE = files =>

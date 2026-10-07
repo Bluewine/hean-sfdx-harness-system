@@ -48,6 +48,11 @@
           },
           {
             "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/manifest-commit-check.mjs\"",
+            "timeout": 60
+          },
+          {
+            "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/commit-message-gate.mjs\"",
             "timeout": 10
           },

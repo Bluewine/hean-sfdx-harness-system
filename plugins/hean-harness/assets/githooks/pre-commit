@@ -1,0 +1,25 @@
+#!/bin/sh
+#
+# Refuses a commit whose per-story manifest, .claude/manifest/<WORK-ID>.xml,
+# does not list what the commit records, and prints the command that copies
+# the rebuilt file into place. Installed by hean-harness setup in an SFDX
+# repository whose .githooks/ folder git does not track.
+#
+# The check lives in a fixed folder setup refreshes on every run, because the
+# plugin's own folder moves when the plugin updates. When it is missing, the
+# plugin was uninstalled, and this hook does nothing. Only the check's
+# refusal, exit 3, refuses the commit: a crash in node (a partial copy, an
+# unsupported node) lets it through, as every other "cannot run" case does.
+#
+# Claude Code sets CLAUDE_CODE_CHILD_SESSION only in commands it runs itself,
+# not in IDE terminals, and its own hook has already checked those commits.
+
+[ "${CLAUDE_CODE_CHILD_SESSION:-}" = 1 ] && exit 0
+config="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+case "$config" in "~") config="$HOME" ;; "~/"*) config="$HOME/${config#\~/}" ;; esac
+check="$config/hean-harness/hooks/scripts/lib/manifest-check.mjs"
+[ -f "$check" ] || exit 0
+command -v node >/dev/null 2>&1 || exit 0
+node "$check" --git-hook
+[ $? -eq 3 ] && exit 1
+exit 0

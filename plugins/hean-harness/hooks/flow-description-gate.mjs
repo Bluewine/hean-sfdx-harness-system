@@ -31,7 +31,8 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { claudeDir } from '../scripts/lib/paths.mjs';
-import { gitCommands, repoOf, isLiteral } from '../scripts/lib/command-line.mjs';
+import { gitCommands, repoOf } from '../scripts/lib/command-line.mjs';
+import { stagingOf } from '../scripts/lib/staging.mjs';
 
 const ok = () => { process.stdout.write('{}'); process.exit(0); };
 
@@ -120,56 +121,6 @@ if (process.argv.includes('--mark-verified')) {
 }
 
 const FLOW = /\.flow-meta\.xml$/;
-
-// options that take the next word as their value, so it is not a path
-const ADD_VALUE_OPTS = new Set(['--chmod', '--pathspec-from-file']);
-const COMMIT_VALUE_OPTS = new Set(['-m', '--message', '-F', '--file', '-c', '--reedit-message',
-  '-C', '--reuse-message', '-t', '--template', '--author', '--date', '--cleanup', '--fixup',
-  '--squash', '--trailer']);
-const COMMIT_VALUE_SHORT = 'mFcCt';
-
-/**
- * What a `git add` or `git commit` stages as it runs, or null when it stages
- * nothing: { scope: 'paths'|'tracked'|'all', paths }. 'all' also stands for
- * anything the text cannot say, such as a pathspec file or a variable.
- */
-export function stagingOf(sub, args) {
-  if (sub !== 'add' && sub !== 'stage' && sub !== 'commit') return null;
-  const isAdd = sub !== 'commit';
-  const paths = [];
-  let scope = null, unknown = false, dryRun = false;
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === '--') { paths.push(...args.slice(i + 1)); break; }
-    if (a.startsWith('--')) {
-      const name = a.split('=')[0];
-      if (name === '--dry-run') dryRun = true;
-      else if (name === '--pathspec-from-file') unknown = true;
-      else if (isAdd && name === '--all') scope = 'all';
-      else if (isAdd && (name === '--update' || name === '--renormalize')) scope ??= 'tracked';
-      else if (!isAdd && name === '--all') scope = 'tracked';
-      if (!a.includes('=') && (isAdd ? ADD_VALUE_OPTS : COMMIT_VALUE_OPTS).has(name)) i++;
-      continue;
-    }
-    if (a.startsWith('-') && a.length > 1) {
-      for (let k = 1; k < a.length; k++) {
-        const ch = a[k];
-        if (isAdd && ch === 'A') scope = 'all';
-        else if (isAdd && ch === 'u') scope ??= 'tracked';
-        else if (isAdd && ch === 'n') dryRun = true;
-        else if (!isAdd && ch === 'a') scope = 'tracked';
-        else if (!isAdd && COMMIT_VALUE_SHORT.includes(ch)) { if (k === a.length - 1) i++; break; }
-      }
-      continue;
-    }
-    paths.push(a);
-  }
-  if (dryRun) return null;
-  if (unknown || paths.some(p => !isLiteral(p))) return { scope: 'all', paths: [] };
-  if (paths.length) return { scope: 'paths', paths };
-  if (scope) return { scope, paths: [] };
-  return null;
-}
 
 /**
  * The changed Flow files, repository-relative, that this staging would add to

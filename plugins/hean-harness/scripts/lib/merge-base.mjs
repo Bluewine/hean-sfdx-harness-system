@@ -6,6 +6,9 @@ import { spawnSync } from "node:child_process";
 export const MAX_BUFFER = 64 * 1024 * 1024;
 // Base branch names tried after the branch's recorded creation source and origin's default branch.
 export const COMMON_BASES = ["integration", "develop", "main", "master"];
+// Work IDs such as ABC-123; the first one in a branch name names the story. branch-manifest and the
+// per-story manifest commit check both read it from here, so both name the same file.
+export const WORK_ID = /[A-Z][A-Z0-9]*-\d+/;
 
 export function git(args, input) {
   return spawnSync("git", args, {

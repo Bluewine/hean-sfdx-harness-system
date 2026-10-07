@@ -48,6 +48,7 @@ const STEPS = [
   { name: 'Rule files',    script: 'install-rules.mjs',        wantsRepo: true },
   { name: 'Memories',      script: 'install-memories.mjs',       wantsRepo: true },
   { name: 'Status line',   script: 'install-statusline.mjs' },
+  { name: 'Manifest check', script: 'install-manifest-check.mjs' },
   { name: 'Task tools',    script: 'install-task-tools.mjs' },
   { name: 'Advisor',       script: 'install-advisor.mjs' },
   { name: 'Auto-update',   script: 'install-auto-update.mjs',   keepGoing: true },

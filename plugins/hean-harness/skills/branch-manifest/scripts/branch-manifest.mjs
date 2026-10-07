@@ -10,6 +10,9 @@
 //   as CustomLabel members; it never gets the whole-file CustomLabels member, which would deploy every
 //   label in the file. A label removed since the merge-base is reported separately, not listed.
 // - Files the Salesforce CLI cannot map to a metadata type are reported as skipped.
+// - With --from-index, only what the index records counts: the change list is the index against the
+//   merge-base, untracked files are not read, and custom labels are read from the index. The index is
+//   the repository's, or the one GIT_INDEX_FILE names, so a caller can check a commit before git makes it.
 // Every outcome, errors included, is printed to stdout with exit code 0, so the skill that injects this
 // output always receives it. Tests: bash <skill-dir>/__tests__/branch-manifest.test.sh
 import { spawnSync } from "node:child_process";
@@ -23,10 +26,11 @@ import {
   writeFileSync
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, sep } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
 import {
   MAX_BUFFER,
+  WORK_ID,
   git,
   gitOut,
   nulList,
@@ -34,9 +38,7 @@ import {
 } from "../../../scripts/lib/merge-base.mjs";
 
 const USAGE =
-  "Usage: branch-manifest.mjs [--base <branch>] [--name <manifest-name>] [--output-dir <dir>] [--args-stdin]";
-// Work IDs such as ABC-123; the first one in the branch name names the manifest.
-const WORK_ID = /[A-Z][A-Z0-9]*-\d+/;
+  "Usage: branch-manifest.mjs [--base <branch>] [--name <manifest-name>] [--output-dir <dir>] [--from-index] [--args-stdin]";
 const UNINFERABLE = /^(.*): Could not infer a metadata type$/;
 // Folders whose components are directories: deleting one file inside still changes the component.
 const BUNDLE_FOLDERS = new Set(["lwc", "aura", "staticresources"]);
@@ -55,6 +57,7 @@ function readOptions() {
         base: { type: "string" },
         name: { type: "string" },
         "output-dir": { type: "string", default: join(".claude", "manifest") },
+        "from-index": { type: "boolean", default: false },
         "args-stdin": { type: "boolean", default: false }
       }
     }).values;
@@ -102,20 +105,23 @@ function forceIgnored(paths) {
   return new Set(nulList(result.stdout));
 }
 
-function bundleDirectory(file) {
+// A bundle survives a deleted file when the bundle folder still holds files: on disk, or in the index.
+function bundleDirectory(file, fromIndex) {
   const parts = file.split("/");
   for (let i = parts.length - 3; i >= 0; i--) {
     if (!BUNDLE_FOLDERS.has(parts[i])) continue;
     const dir = parts.slice(0, i + 2).join("/");
+    if (fromIndex) return gitOut(["ls-files", "-z", "--", dir]) ? dir : null;
     return existsSync(dir) && statSync(dir).isDirectory() ? dir : null;
   }
   return null;
 }
 
-function changedPaths(mergeBase, filter, dirs) {
+function changedPaths(mergeBase, filter, dirs, fromIndex) {
   return nulList(
     gitOut([
       "diff",
+      ...(fromIndex ? ["--cached"] : []),
       "--name-only",
       "--no-renames",
       `--diff-filter=${filter}`,
@@ -127,16 +133,16 @@ function changedPaths(mergeBase, filter, dirs) {
   );
 }
 
-function sourcePaths(mergeBase, dirs) {
-  const changed = changedPaths(mergeBase, "ACMT", dirs);
-  const untracked = nulList(
-    gitOut(["ls-files", "--others", "--exclude-standard", "-z", "--", ...dirs])
-  );
-  const deleted = changedPaths(mergeBase, "D", dirs);
+function sourcePaths(mergeBase, dirs, fromIndex) {
+  const changed = changedPaths(mergeBase, "ACMT", dirs, fromIndex);
+  const untracked = fromIndex
+    ? []
+    : nulList(gitOut(["ls-files", "--others", "--exclude-standard", "-z", "--", ...dirs]));
+  const deleted = changedPaths(mergeBase, "D", dirs, fromIndex);
   const ignored = forceIgnored(deleted);
   const bundles = deleted
     .filter((file) => !ignored.has(file))
-    .map(bundleDirectory)
+    .map((file) => bundleDirectory(file, fromIndex))
     .filter(Boolean);
   return [...new Set([...changed, ...untracked, ...bundles])].sort();
 }
@@ -166,14 +172,17 @@ function parseLabels(xml) {
   return labels;
 }
 
-// Compares each labels file's merge-base version against its current version (or absence, for a file
-// deleted outright) so the manifest can list individual labels instead of the whole file.
-function labelChanges(mergeBase, files) {
+// Compares each labels file's merge-base version against its current version — the working tree, or the
+// index with --from-index — or its absence, for a file deleted outright, so the manifest can list
+// individual labels instead of the whole file.
+function labelChanges(mergeBase, files, fromIndex) {
   const changed = new Set();
   const deleted = [];
   for (const file of files) {
     const before = parseLabels(atRef(mergeBase, file));
-    const after = parseLabels(existsSync(file) ? readFileSync(file, "utf8") : null);
+    const after = parseLabels(
+      fromIndex ? atRef("", file) : existsSync(file) ? readFileSync(file, "utf8") : null
+    );
     for (const [fullName, value] of after)
       if (before.get(fullName) !== value) changed.add(fullName);
     for (const fullName of before.keys())
@@ -271,20 +280,24 @@ function section(title, items, note = "") {
 
 function run() {
   const options = readOptions();
+  const fromIndex = options["from-index"];
+  // git reads a relative GIT_INDEX_FILE against its working folder, which the chdir below changes
+  if (process.env.GIT_INDEX_FILE)
+    process.env.GIT_INDEX_FILE = resolve(process.env.GIT_INDEX_FILE);
   process.chdir(gitOut(["rev-parse", "--show-toplevel"]).trim());
   const branch = gitOut(["branch", "--show-current"]).trim();
   const name = manifestName(options.name, branch);
   const mergeBase = resolveMergeBase(options.base, branch);
   const target = join(options["output-dir"], `${name}.xml`);
   const dirs = packageDirectories();
-  const paths = sourcePaths(mergeBase.sha, dirs);
-  const deletedLabelFiles = changedPaths(mergeBase.sha, "D", dirs).filter((file) =>
+  const paths = sourcePaths(mergeBase.sha, dirs, fromIndex);
+  const deletedLabelFiles = changedPaths(mergeBase.sha, "D", dirs, fromIndex).filter((file) =>
     LABELS_FILE.test(file)
   );
   const labelFiles = [
     ...new Set([...paths.filter((file) => LABELS_FILE.test(file)), ...deletedLabelFiles])
   ];
-  const labels = labelChanges(mergeBase.sha, labelFiles);
+  const labels = labelChanges(mergeBase.sha, labelFiles, fromIndex);
   const scratch = mkdtempSync(join(tmpdir(), "branch-manifest-"));
   let generated;
   try {

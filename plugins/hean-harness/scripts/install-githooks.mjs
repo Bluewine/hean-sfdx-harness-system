@@ -23,11 +23,16 @@
  * install put it there, because the repository may rely on it. --replace-githook
  * replaces it, keeping a backup. A core.hooksPath pointing somewhere else is
  * always left alone, because another tool may own it.
+ *
+ * In an SFDX repository it also puts a pre-commit hook there that checks the
+ * per-story manifest (scripts/lib/githooks.mjs), whatever the commit format
+ * choice. The same keep and replace rules apply to it.
  */
 
 import { execFileSync } from 'node:child_process';
 
 import { readChoice, applyChoice, settingsFile } from './lib/commit-format.mjs';
+import { applyPreCommit } from './lib/githooks.mjs';
 
 const argv = process.argv.slice(2);
 const dryRun = argv.includes('--dry-run');
@@ -59,14 +64,14 @@ function main() {
     log('!! ASK — COMMIT FORMAT NOT CHOSEN for this repository.');
     log('!! Enforce the "@WORK-ID: Summary" commit subject format here? Run setup with');
     log('!! --commit-format on or --commit-format off. Nothing is enforced until then.');
-    log('');
-    if (dryRun) log('Dry run. Nothing was changed.');
-    return;
+  } else {
+    if (!given) log(`Using the answer saved in ${settingsFile(repo)}`);
+    for (const line of applyChoice(repo, choice, { replace, dryRun })) log(line);
   }
-  if (!given) log(`Using the answer saved in ${settingsFile(repo)}`);
-
-  for (const line of applyChoice(repo, choice, { replace, dryRun })) log(line);
   log('');
+  const preCommit = applyPreCommit(repo, { replace, dryRun });
+  for (const line of preCommit) log(line);
+  if (preCommit.length) log('');
   if (dryRun) log('Dry run. Nothing was changed.');
 }
 
