@@ -18,8 +18,10 @@ Install the environment. Show the user what will change before changing it.
 
 2. Show that output to the user and ask whether to go ahead. Wait for an answer. When the output
    has a line starting `!! KEPT`, quote each one in the question and ask about each separately:
-   - an existing `.githooks/commit-msg` that git does not track: keep it, or replace it with the
-     plugin's copy (`--replace-githook`, a backup is kept). A hooks folder git tracks belongs to
+   - an existing `.githooks/commit-msg` or `.githooks/pre-commit` that git does not track — someone
+     else's hook, or the plugin's copy edited since setup installed it: keep it, or replace it with
+     the plugin's copy (`--replace-githook`, a backup is kept). A plugin copy unchanged since setup
+     is updated without asking. A hooks folder git tracks belongs to
      the repository; setup never changes it, so do not ask about it.
    - an existing `.mcp.json`: keep it unchanged, or add the Linear server to it (`--edit-mcp`)
 
@@ -62,6 +64,13 @@ Install the environment. Show the user what will change before changing it.
      already in place. Repeat every `!! KEPT` line from the output under its own heading, so a
      kept hook or `.mcp.json` is not missed. When the step says `core.hooksPath` points
      elsewhere, repeat the command it printed.
+   - whether the `Manifest hook` lines say `.githooks/pre-commit` was added, updated, replaced or
+     kept. That hook checks the per-story manifest for commits typed in a terminal. It is installed
+     only in a repository with `sfdx-project.json` whose `.githooks/` git does not track; say that a
+     tracked `.githooks/` leaves terminal commits unchecked, while commits made in Claude Code are
+     still checked. Repeat every `!! KEPT` line for it too.
+   - that the `Manifest check` step copied the check to `~/.claude/hean-harness/hooks/`, where the
+     pre-commit hook runs it from
    - whether `npm install` ran, was skipped because `node_modules` was already there or the
      repository has no `package.json`, or failed. When it failed, quote the reason the step printed.
    - whether a Linear MCP server was added, or one was already there. When one was added, say that

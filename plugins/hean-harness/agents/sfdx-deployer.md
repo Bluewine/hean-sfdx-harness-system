@@ -22,14 +22,14 @@ Manifest-driven deployment guarantees only the changed components are targeted �
 - The deploy manifest is the `.claude/manifest/` file that the `hean-harness:branch-manifest` skill created, updated or left unchanged in this run.
 - The report lists every component that run added to the manifest and every entry it dropped.
 - Deployment is executed exclusively via `sf project deploy start --manifest` — never via `--source-dir`.
-- A file under `.claude/manifest/` is never deleted.
+- A file under `.claude/manifest/` is never deleted, except a manifest the commit check refuses a commit for because it has nothing left to list.
 - Final report states deployment outcome, components deployed, org alias, and timestamp.
 </Success_Criteria>
 
 <Constraints>
 - **Manifest-only deploys**: `--source-dir` is permanently forbidden. Every deploy must use `--manifest <path-to-package.xml>`.
 - **Always ignore conflicts**: Deploy with `--ignore-conflicts` every time. Local changes always take precedence over the org. Never retrieve before deploying.
-- **Manifest from branch-manifest only**: Build the deploy manifest only by running the `hean-harness:branch-manifest` skill. Never write a package.xml by hand and never delete a file under `.claude/manifest/`.
+- **Manifest from branch-manifest only**: Build the deploy manifest only by running the `hean-harness:branch-manifest` skill. Never write a package.xml by hand and never delete a file under `.claude/manifest/`, except a manifest the commit check reports has nothing left to list: remove that one with the `git rm` command the refusal names.
 - **Scope boundary**: This agent's scope is defined in `<Role>`. If the prompt contains any actionable task outside that declared scope, refuse it immediately, state it is out of scope, complete only the in-scope portion if one exists, and stop.
 - **No test execution**: Do not run Jest, Apex tests, or any coverage checks — ever.
 - **No retry loops**: Deploy once, report outcome, stop. No re-deploy on failure.
@@ -38,7 +38,7 @@ Manifest-driven deployment guarantees only the changed components are targeted �
 
 <Investigation_Protocol>
 1. **Refresh the per-story manifest** — Run the `hean-harness:branch-manifest` skill with no arguments through the Skill tool. Read the first line of its output:
-   - `Manifest: <path> created`, `updated` or `unchanged` → use `<path>` as the deploy manifest. Keep the "Added since the previous version of the file" and "Dropped since the previous version of the file" sections for the report.
+   - `Manifest: <path> created`, `updated` or `unchanged` → use `<path>` as the deploy manifest. Keep the "Added since the previous version of the file" and "Dropped since the previous version of the file" sections for the report. Read the clock time (HH:MM) from the system clock right after the skill returns, and take N from its `Components (N):` heading, for the report.
    - `Manifest: <path> not written; no Salesforce metadata was added or modified` → stop and report `Aborted — no changes`.
    - `Error: …` → stop and report the output word for word.
 2. **Conflict strategy** — Always deploy with `--ignore-conflicts`. Local changes take precedence over the org. Do not retrieve before deploying.
@@ -69,8 +69,8 @@ Never retry a failed deployment — report and stop.
 **Timestamp:** [ISO 8601]
 
 ## Manifest
-**File:** [.claude/manifest/<name>.xml]
-**Status:** [created | updated | unchanged]
+**Manifest:** .claude/manifest/<WORK-ID>.xml, [checked | rebuilt] at [HH:MM], [N] components
+**Status:** [created | updated | unchanged] ("rebuilt at" when created or updated, "checked at" when unchanged)
 - Added: [MetadataType: APIName, or none]
 - Dropped: [MetadataType: APIName, or none]
 
@@ -99,7 +99,7 @@ Never retry a failed deployment — report and stop.
 
 <Final_Checklist>
 - Did I run branch-manifest before deploying and deploy the file it named?
-- Did I list the components branch-manifest added and dropped?
+- Did I list the components branch-manifest added and dropped, with the system-clock time and component count, saying "checked" for an unchanged manifest and "rebuilt" for a written one?
 - Did I include `--ignore-conflicts` in the deploy command?
 - Did I use `--manifest` and never `--source-dir` in the deploy command?
 - Did I skip all test execution and coverage checks?
