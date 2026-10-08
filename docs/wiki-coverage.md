@@ -58,6 +58,7 @@ Updated whenever a skill, agent, hook, or rule is added, removed, or renamed —
 | commit-lifecycle-events.mjs | Hooks | documented |
 | worktree-share.mjs | Hooks | documented |
 | runbook-compile-check.mjs | Hooks | documented |
+| manifest-commit-check.mjs | Hooks | documented |
 
 ## Rules
 
