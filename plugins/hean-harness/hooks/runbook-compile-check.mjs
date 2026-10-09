@@ -8,7 +8,11 @@
  *                             compiles the file (scripts/lib/runbook-compile.mjs).
  *                             A compile error is returned as context starting
  *                             with "!! " and says what to fix; a pass records
- *                             the file's git object id. Nothing here blocks.
+ *                             the file's git object id. A write to a stage
+ *                             folder whose step deploy.yml does not list
+ *                             (scripts/lib/deploy-steps.mjs) adds a "!! "
+ *                             warning instead, and such a script is not
+ *                             compiled. Nothing here blocks.
  *   PreToolUse, Bash          a `git commit` with a staged script whose content
  *                             has no recorded pass is denied. When the
  *                             pipeline's version cannot be read, the commit is
@@ -30,6 +34,7 @@ import { stagingOf, stagesInteractively } from '../scripts/lib/staging.mjs';
 import {
   RUNBOOK_SCRIPT, compileScript, isVersionGap, readRecord, recordCompiled, isRecorded, pipelineApiVersion
 } from '../scripts/lib/runbook-compile.mjs';
+import { readDeploySteps, requiredStep, stepPresent, missingStep } from '../scripts/lib/deploy-steps.mjs';
 
 const HOOK = `node "${fileURLToPath(import.meta.url)}" --check <file>`;
 
@@ -75,6 +80,29 @@ export async function check(root, rel) {
       `the script again so this check re-runs.`
     : 'This is a compile error in the script. Fix it in the script; the check re-runs on the next edit.';
   return { kind: 'fail', text: `${head}\n\n${fix}` };
+}
+
+/**
+ * The stage warning for one written file, { text, skipCompile }, or null when
+ * it needs no step, its stage runs the step, or the repository has no
+ * deploy.yml. skipCompile is set for a runbook script whose stage runs no
+ * anonymous Apex: compiling a script Jenkins never runs checks nothing.
+ */
+export function stageWarning(root, rel) {
+  if (!requiredStep(rel)) return null;
+  const deploy = readDeploySteps(root);
+  if (deploy.missing) return null;
+  if (deploy.error) return { text: `!! The runbook stage check did not run for ${rel}: ${deploy.error}.`, skipCompile: false };
+  const line = missingStep(rel, deploy.steps, {
+    content: f => { try { return readFileSync(join(root, f), 'utf8'); } catch { return null; } },
+    head: f => tryGit(root, 'show', `HEAD:${f}`)
+  });
+  if (!line) return null;
+  return {
+    text: `!! ${line}\n\nMove the file to a stage that runs this step, or ask the user whether to add the step to ` +
+          'deploy.yml. A commit of it is refused until one of the two is done.',
+    skipCompile: RUNBOOK_SCRIPT.test(rel)
+  };
 }
 
 /** The git object id of the working-tree file as it would be staged, line-ending filters applied; null on failure. */
@@ -136,6 +164,9 @@ export function commitRefusal(command, sessionCwd) {
     if (inCall.length && interactiveIn.has(root)) return { deny: INTERACTIVE(inCall) };
     const ids = stagedScripts(root);
     for (const f of inCall) ids.set(f, existsSync(join(root, f)) ? objectId(root, f) : null);
+    // a script whose stage runs no anonymous Apex is never compiled; the runbook stage gate refuses its commit
+    const { steps } = readDeploySteps(root);
+    if (steps) for (const f of [...ids.keys()]) if (!stepPresent(steps, requiredStep(f))) ids.delete(f);
     if (!ids.size) continue;
     const pipeline = pipelineApiVersion(root);
     if (pipeline.error) {
@@ -161,6 +192,8 @@ if (isMain) {
       console.error(`Not a runbook Apex script in a git repository: ${target ?? '(no file given)'}`);
       process.exit(1);
     }
+    const stage = stageWarning(where.root, where.rel);
+    if (stage?.skipCompile) { console.error(stage.text); process.exit(1); }
     const r = await check(where.root, where.rel);
     (r.kind === 'pass' ? console.log : console.error)(r.text);
     process.exit(r.kind === 'pass' ? 0 : 1);
@@ -181,9 +214,15 @@ if (isMain) {
     const raw = input?.tool_input?.file_path;
     if (!raw) process.exit(0);
     const where = locate(resolve(input.cwd || process.cwd(), raw));
-    if (!where || !RUNBOOK_SCRIPT.test(where.rel)) process.exit(0);
+    if (!where) process.exit(0);
+    const stage = stageWarning(where.root, where.rel);
+    if (!RUNBOOK_SCRIPT.test(where.rel) || stage?.skipCompile) {
+      if (stage) context(stage.text);
+      process.exit(0);
+    }
     // a failed compile is context, not a block: a block stops Claude's loop, and the commit gate enforces the fix
-    context((await check(where.root, where.rel)).text);
+    const compiled = (await check(where.root, where.rel)).text;
+    context(stage ? `${stage.text}\n\n${compiled}` : compiled);
   }
   process.exit(0);
 }

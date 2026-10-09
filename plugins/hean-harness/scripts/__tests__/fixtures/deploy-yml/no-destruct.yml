@@ -1,0 +1,14 @@
+pre:
+  metadata:
+    - sourceFolder: ./runbooks/pre-deploy/metaData/
+  runAnonymousScriptFromDir: "runbooks/pre-deploy/apex"
+  runSFDXCommandFromFile: "runbooks/pre-deploy/sf/commands.txt"
+deploy:
+  sourceFormat: sfdx
+  type: tag
+  format: custom
+post:
+  metadata:
+    - sourceFolder: ./runbooks/post-deploy/metaData/
+  runAnonymousScriptFromDir: "runbooks/post-deploy/apex"
+  runSFDXCommandFromFile: "runbooks/post-deploy/sf/commands.txt"

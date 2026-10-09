@@ -53,6 +53,11 @@
           },
           {
             "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/runbook-stage-gate.mjs\"",
+            "timeout": 30
+          },
+          {
+            "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/commit-message-gate.mjs\"",
             "timeout": 10
           },

@@ -44,6 +44,14 @@ const SKIPPED_BRANCH = /-(HF|BM)$|^hotfix-/;
 // A commit made while one of these is in progress records work taken from elsewhere, not this story's.
 const IN_PROGRESS = ['MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'rebase-merge', 'rebase-apply'];
 
+/** Whether a merge, cherry-pick, revert or rebase is in progress, so a commit records work taken from elsewhere. */
+export function operationInProgress(root) {
+  return IN_PROGRESS.some(name => {
+    const p = tryGit(root, 'rev-parse', '--git-path', name);
+    return !!p && existsSync(resolve(root, p));
+  });
+}
+
 /** How long the check may take. Claude Code stops the hook at 60 seconds; this ends first and says so. Tests shorten it. */
 export const DEADLINE_MS = Number(process.env.HEAN_MANIFEST_CHECK_DEADLINE_MS) || 50_000;
 
@@ -82,10 +90,7 @@ export function manifestTarget(root) {
   const branch = tryGit(root, 'branch', '--show-current');
   const id = branch ? WORK_ID.exec(branch)?.[0] : null;
   if (!id || SKIPPED_BRANCH.test(branch)) return null;
-  for (const name of IN_PROGRESS) {
-    const p = tryGit(root, 'rev-parse', '--git-path', name);
-    if (p && existsSync(resolve(root, p))) return null;
-  }
+  if (operationInProgress(root)) return null;
   const rel = `.claude/manifest/${id}.xml`;
   // check-ignore exits 0 when ignored, which tryGit returns as ''; --no-index so a tracked manifest counts too
   if (tryGit(root, 'check-ignore', '-q', '--no-index', rel) !== null) return null;

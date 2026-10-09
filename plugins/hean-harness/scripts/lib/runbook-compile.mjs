@@ -14,17 +14,21 @@
  * way Node resolves it from the repository's own node_modules, never assumed. When it cannot be read, the
  * check is skipped with a warning rather than run at a guessed version.
  *
+ * The compile goes through `sf apex run --api-version <pipeline version>`.
+ * The CLI authenticates itself, so no access token is read or passed on (the
+ * CLI redacts it from `sf org display`).
+ *
  * The script is compiled behind `if (true) { return; } else {}`: anonymous Apex
  * compiles the whole block before running any of it, so the compile result is
- * the script's, and nothing after the first line runs. The empty else keeps a
- * script that starts with `else` from attaching to the guard. No other call is made
- * to the org.
+ * the script's, and the guard keeps anything after the first line from running.
+ * The empty else keeps a script that starts with `else` from attaching to the guard.
+ * No other call is made to the org.
  */
 
-import { execFileSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { claudeDir } from './paths.mjs';
@@ -107,10 +111,16 @@ export function deployTarget(repoRoot) {
 
 export const NO_TARGET = `No development deploy target is saved for this project; run ${SKILL} to save one.`;
 
-const withTimeout = (promise, ms, what) => Promise.race([
-  promise,
-  new Promise((_, reject) => setTimeout(() => reject(new Error(`${what} did not answer within ${ms / 1000} s`)), ms).unref())
-]);
+const ANSI = /\u001b\[[0-9;?]*[ -/]*[@-~]/g;
+
+/** What `sf apex run --json` printed, parsed whatever the exit code, or null when it is not JSON. */
+function parseCliJson(stdout) {
+  const text = String(stdout ?? '').replace(ANSI, '').trim();
+  for (const candidate of [text, text.slice(text.indexOf('{'))]) {
+    try { return JSON.parse(candidate); } catch { /* try the next form */ }
+  }
+  return null;
+}
 
 /**
  * Compile one script against the saved development org at the pipeline's API
@@ -127,22 +137,34 @@ export async function compileScript({ repoRoot, file, alias }) {
   if (!target) return { skipped: 'target', reason: NO_TARGET };
 
   const source = GUARD + readFileSync(file, 'utf8');
-  const display = JSON.parse(execFileSync('sf', ['org', 'display', '--target-org', target, '--json'],
-    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 20000, cwd: repoRoot }));
-  const { instanceUrl, accessToken } = display?.result ?? {};
-  if (!instanceUrl || !accessToken) throw new Error(`sf org display gave no instance URL and access token for ${target}`);
+  const dir = mkdtempSync(join(tmpdir(), 'runbook-compile-'));
+  let run;
+  try {
+    const tmp = join(dir, 'script.apex');
+    writeFileSync(tmp, source);
+    run = spawnSync('sf', ['apex', 'run', '--file', tmp, '--api-version', pipeline.version, '--target-org', target, '--json'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 45000, cwd: repoRoot,
+        env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0' } });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  if (run.error) throw new Error(`sf apex run did not finish for ${target}: ${run.error.message}`);
 
-  const jsforce = createRequire(import.meta.url)(pipeline.jsforceDir);
-  const conn = new jsforce.Connection({ instanceUrl, accessToken, version: pipeline.version });
-  const result = await withTimeout(conn.tooling.executeAnonymous(source), 35000, `The org ${target}`);
+  // A compile failure exits non-zero and still prints JSON, with the result under `data`.
+  const json = parseCliJson(run.stdout);
+  const body = [json?.result, json?.data].find(b => b && typeof b === 'object' && typeof b.compiled === 'boolean');
+  if (!body) {
+    const said = json?.message ?? String(run.stderr || run.stdout || '').replace(ANSI, '').trim();
+    throw new Error(`sf apex run gave no compile result for ${target}: ${said || `exit ${run.status}`}`);
+  }
 
   const at = n => (Number.isFinite(Number(n)) && Number(n) > 0 ? Number(n) : null);
-  const rawLine = at(result?.line);
+  const rawLine = at(body.line);
   return {
-    compiled: result?.compiled === true,
+    compiled: body.compiled === true,
     line: rawLine === null ? null : Math.max(1, rawLine - 1),
-    column: at(result?.column),
-    problem: result?.compileProblem ?? null,
+    column: at(body.column),
+    problem: body.compileProblem || null,
     version: pipeline.version,
     alias: target
   };

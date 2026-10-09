@@ -3,9 +3,9 @@
  * text before the command does.
  *
  * Shared by the hooks that check a commit before git makes it: the Flow
- * description gate, the runbook compile check and the per-story manifest
- * check. All need the same answer to "what does this call stage", and copies
- * of a parser drift.
+ * description gate, the runbook compile check, and, through commit-index.mjs,
+ * the per-story manifest check and the runbook stage gate. All need the same
+ * answer to "what does this call stage", and copies of a parser drift.
  */
 
 import { isLiteral } from './command-line.mjs';

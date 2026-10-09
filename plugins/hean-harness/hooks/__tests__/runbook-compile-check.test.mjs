@@ -5,10 +5,10 @@
  *
  * No org is called. Each throwaway repository gets a fake node_modules holding
  * @store-sfdcbt-net/CICD_node-run-list-exec-lib,
- * @store-sfdcbt-net/CICD_node-jsforce-util and a fake jsforce whose
- * tooling.executeAnonymous() answers from the source it is given, and PATH
- * starts with a fake `sf` that prints an org display result. The record lives
- * in a throwaway CLAUDE_CONFIG_DIR.
+ * @store-sfdcbt-net/CICD_node-jsforce-util and a jsforce copy that only declares
+ * a default API version, and PATH starts with a fake `sf` that answers
+ * `apex run` from the source file it is given and records its arguments. The
+ * record lives in a throwaway CLAUDE_CONFIG_DIR.
  *
  * Run: node hooks/__tests__/runbook-compile-check.test.mjs
  */
@@ -28,33 +28,45 @@ const BIN = join(sandbox, 'bin');
 const CALLS = join(sandbox, 'calls.log');
 mkdirSync(BIN);
 const SF_ARGS = join(sandbox, 'sf-args.log');
-writeFileSync(join(BIN, 'sf'), `#!/bin/sh\necho "$*" >> '${SF_ARGS}'\necho \'{"status":0,"result":{"instanceUrl":"https://fake.example.com","accessToken":"fake-token"}}\'\n`);
+// FAKE_SF_MODE: unset = JSON like the real CLI; 'color' = JSON wrapped in ANSI codes; 'auth' = CLI error JSON; 'runtime' = compiled but threw; 'text' = no JSON.
+const FAKE_SF = `#!/usr/bin/env node
+const fs = require('fs');
+const args = process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(SF_ARGS)}, args.join(' ') + '\\n');
+const arg = n => args[args.indexOf(n) + 1];
+if (args[0] !== 'apex' || args[1] !== 'run') { console.log(JSON.stringify({ status: 1, name: 'UnexpectedCommand', message: args.join(' ') })); process.exit(1); }
+const body = fs.readFileSync(arg('--file'), 'utf8');
+fs.appendFileSync(process.env.FAKE_SF_LOG, JSON.stringify({ args, version: arg('--api-version'), target: arg('--target-org'), body, env: { NO_COLOR: process.env.NO_COLOR, FORCE_COLOR: process.env.FORCE_COLOR } }) + '\\n');
+const mode = process.env.FAKE_SF_MODE;
+if (mode === 'auth') { console.log(JSON.stringify({ status: 1, name: 'NamedOrgNotFoundError', message: 'No authorization information found for ' + arg('--target-org') + '.' })); process.exit(1); }
+if (mode === 'runtime') { console.log(JSON.stringify({ status: 1, data: { compiled: true, success: false, exceptionMessage: 'x' } })); process.exit(1); }
+if (mode === 'text') { console.error('Error: something went wrong'); process.exit(1); }
+const lines = body.split('\\n');
+const hit = (word, problem) => { const i = lines.findIndex(l => l.includes(word)); return i < 0 ? null :
+  { success: false, compiled: false, compileProblem: problem, exceptionMessage: '', exceptionStackTrace: '', line: i + 1, column: lines[i].indexOf(word) + 1, logs: '' }; };
+const failure = hit('New_Field__c', "No such column 'New_Field__c' on entity 'Account'.") ?? hit('oops', "Unexpected token 'oops'.");
+const out = failure
+  ? { status: 1, name: 'executeCompileFailure', message: 'Compilation failed', data: failure, exitCode: 1, warnings: [] }
+  : { status: 0, result: { success: true, compiled: true, compileProblem: '', exceptionMessage: '', exceptionStackTrace: '', line: -1, column: -1, logs: '' }, warnings: [] };
+const text = JSON.stringify(out, null, 2);
+console.log(mode === 'color' ? '\\u001b[1m' + text.replace(/"(\\w+)":/g, '\\u001b[34m"$1"\\u001b[39m:') + '\\u001b[22m' : text);
+process.exit(failure ? 1 : 0);
+`;
+writeFileSync(join(BIN, 'sf'), FAKE_SF);
 chmodSync(join(BIN, 'sf'), 0o755);
-const env = { ...process.env, CLAUDE_CONFIG_DIR: join(sandbox, 'config'), PATH: `${BIN}:${process.env.PATH}`, FAKE_JSFORCE_LOG: CALLS };
+const HOME = join(sandbox, 'home');
+mkdirSync(HOME);
+const env = { ...process.env, HOME, CLAUDE_CONFIG_DIR: join(sandbox, 'config'), PATH: `${BIN}:${process.env.PATH}`, FAKE_SF_LOG: CALLS };
+delete env.CLAUDE_CODE_CHILD_SESSION;
 
 const RUNNER = 'node_modules/@store-sfdcbt-net/CICD_node-run-list-exec-lib';
 const UTIL = 'node_modules/@store-sfdcbt-net/CICD_node-jsforce-util';
 const pkg = (repo, folder, name) => { mkdirSync(join(repo, folder), { recursive: true }); writeFileSync(join(repo, folder, 'package.json'), JSON.stringify({ name, version: '1.0.0' })); };
-const FAKE_JSFORCE = `
-const fs = require('fs');
-class Connection {
-  constructor(o) { this.version = o.version; this.tooling = { executeAnonymous: async body => {
-    fs.appendFileSync(process.env.FAKE_JSFORCE_LOG, JSON.stringify({ version: this.version, body }) + '\\n');
-    const lines = body.split('\\n');
-    const hit = (word, problem) => { const i = lines.findIndex(l => l.includes(word)); return i < 0 ? null :
-      { compiled: false, success: false, line: i + 1, column: lines[i].indexOf(word) + 1, compileProblem: problem }; };
-    return hit('New_Field__c', "No such column 'New_Field__c' on entity 'Account'.")
-      ?? hit('oops', "Unexpected token 'oops'.")
-      ?? { compiled: true, success: true, line: -1, column: -1, compileProblem: null };
-  } }; }
-}
-module.exports = { Connection };`;
-
 function jsforceAt(repo, folder, version) {
   const dir = join(repo, folder);
   mkdirSync(join(dir, 'lib'), { recursive: true });
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'jsforce', version: '1.11.1', main: './index' }));
-  writeFileSync(join(dir, 'index.js'), FAKE_JSFORCE);
+  writeFileSync(join(dir, 'index.js'), 'module.exports = {};\n');
   writeFileSync(join(dir, 'lib', 'connection.js'), `var defaults = {\n  loginUrl: "https://login.salesforce.com",\n  instanceUrl: "",\n  version: "${version}"\n};\n`);
 }
 
@@ -62,9 +74,9 @@ function jsforceAt(repo, folder, version) {
 function makeRepo(name, { modules = true } = {}) {
   const repo = join(sandbox, name);
   mkdirSync(join(repo, '.claude'), { recursive: true });
-  execFileSync('git', ['init', '-q', '-b', 'main', repo]);
-  execFileSync('git', ['-C', repo, 'config', 'user.email', 't@example.com']);
-  execFileSync('git', ['-C', repo, 'config', 'user.name', 'T']);
+  execFileSync('git', ['init', '-q', '-b', 'main', repo], { env });
+  execFileSync('git', ['-C', repo, 'config', 'user.email', 't@example.com'], { env });
+  execFileSync('git', ['-C', repo, 'config', 'user.name', 'T'], { env });
   writeFileSync(join(repo, '.gitignore'), '.claude/\nnode_modules/\n');
   writeFileSync(join(repo, '.claude', 'hean-harness.json'), JSON.stringify({ orgs: {
     '00D000000000001': { alias: 'dev-sandbox', username: 'dev@example.com', role: 'development', deploy: true, branch: null } } }));
@@ -74,8 +86,8 @@ function makeRepo(name, { modules = true } = {}) {
     jsforceAt(repo, 'node_modules/jsforce', '42.0');
   }
   writeFileSync(join(repo, 'notes.txt'), 'one\n');
-  execFileSync('git', ['-C', repo, 'add', '.']);
-  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'base']);
+  execFileSync('git', ['-C', repo, 'add', '.'], { env });
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'base'], { env });
   return repo;
 }
 
@@ -177,6 +189,11 @@ const call = calls().at(-1);
 check('the compile ran at the pipeline version behind the guard',
   call?.version === '42.0' && call.body === `if (true) { return; } else {}\n${GOOD}`, JSON.stringify(call));
 has('sf is asked for the saved username', readFileSync(SF_ARGS, 'utf8'), '--target-org dev@example.com');
+check('sf receives apex run with the pipeline version, the saved username and a --file',
+  call?.args.slice(0, 2).join(' ') === 'apex run' && call.version === pipelineApiVersion(repo).version
+  && call.target === 'dev@example.com' && call.args.includes('--json') && !call.args.includes('org'), JSON.stringify(call));
+check('sf runs with colour off', call?.env.NO_COLOR === '1' && call.env.FORCE_COLOR === '0', JSON.stringify(call?.env));
+check('the temporary script file is removed', !existsSync(call?.args[call.args.indexOf('--file') + 1] ?? ''));
 
 write(repo, POST, GAP);
 out = afterWrite(repo, POST);
@@ -194,6 +211,31 @@ ctx = out.hookSpecificOutput?.additionalContext;
 check('another compile error does not block', out.decision === undefined, JSON.stringify(out));
 has('another compile error is plain context', ctx, '!! ', `${POST} line 2`, "Unexpected token 'oops'", 'compile error in the script');
 check('another compile error has no redirect', !ctx?.includes('force-app Apex class'));
+
+{
+  env.FAKE_SF_MODE = 'color';
+  write(repo, POST, GAP);
+  const colored = afterWrite(repo, POST).hookSpecificOutput?.additionalContext;
+  has('coloured CLI JSON still parses', colored, `${POST} line 3`, "No such column 'New_Field__c'");
+  write(repo, PRE, GOOD);
+  has('coloured CLI JSON of a pass still parses', afterWrite(repo, PRE).hookSpecificOutput?.additionalContext, `${PRE} compiles at API 42.0`);
+  env.FAKE_SF_MODE = 'auth';
+  const auth = afterWrite(repo, POST);
+  has('a CLI error says the check could not run', auth.hookSpecificOutput?.additionalContext,
+    `The runbook compile check could not run for ${POST}`, 'No authorization information found for dev@example.com', 'was not compiled');
+  check('a CLI error does not block', auth.decision === undefined);
+  env.FAKE_SF_MODE = 'text';
+  has('a CLI failure without JSON says the check could not run', afterWrite(repo, POST).hookSpecificOutput?.additionalContext,
+    `The runbook compile check could not run for ${POST}`, 'something went wrong');
+  env.FAKE_SF_MODE = 'runtime';
+  write(repo, PRE, GOOD);
+  const rt = afterWrite(repo, PRE).hookSpecificOutput?.additionalContext;
+  check('a script that compiled but threw at run time counts as compiled',
+    rt === `${PRE} compiles at API 42.0 on dev@example.com (the pipeline's anonymous Apex version).` && !rt.includes('does not compile'), rt);
+  delete env.FAKE_SF_MODE;
+  write(repo, POST, BROKEN);
+  afterWrite(repo, POST);
+}
 
 console.log('Commit gate');
 git(repo, 'add', '--', PRE);
@@ -241,6 +283,72 @@ console.log('Line endings');
   check('a CRLF script staged after its check is allowed', refusal(crlf, `git add -- ${PRE} && git commit -m "x"`) === null);
   git(crlf, 'add', '--', PRE);
   check('a CRLF script already staged is allowed', refusal(crlf, 'git commit -m "x"') === null);
+}
+
+console.log('Stage check');
+const FIXTURES = join(dirname(HOOKS), 'scripts', '__tests__', 'fixtures', 'deploy-yml');
+/** A repository from makeRepo with one deploy.yml fixture committed. */
+function shapedRepo(name, shape) {
+  const r = makeRepo(name);
+  write(r, 'deploy.yml', readFileSync(join(FIXTURES, `${shape}.yml`), 'utf8'));
+  git(r, 'add', 'deploy.yml');
+  git(r, 'commit', '-q', '-m', 'deploy.yml');
+  return r;
+}
+const POST_META = 'runbooks/post-deploy/metaData/flowDefinitions/Old_Flow.flowDefinition-meta.xml';
+const POST_DESTRUCT = 'deletePackage/post/destructiveChangesPost.xml';
+const destructive = members => '<?xml version="1.0" encoding="UTF-8"?>\n<Package xmlns="http://soap.sforce.com/2006/04/metadata">\n' +
+  (members.length ? `    <types>\n${members.map(m => `        <members>${m}</members>\n`).join('')}        <name>Flow</name>\n    </types>\n` : '') +
+  '    <version>63.0</version>\n</Package>\n';
+{
+  // a pre-only shape: the post stage runs a commands file and nothing else
+  const preOnly = shapedRepo('pre-only', 'pre-only-no-destruct');
+  const before = calls().length;
+  write(preOnly, POST, GOOD);
+  let out = afterWrite(preOnly, POST);
+  let ctx = out.hookSpecificOutput?.additionalContext;
+  check('a stage warning does not block', out.decision === undefined, JSON.stringify(out));
+  has('pre-only: a post script is warned', ctx, '!! ', POST, '`post.runAnonymousScriptFromDir`', '`pre` runs this step; `post` does not', 'ask the user');
+  check('pre-only: that script is not compiled', calls().length === before && !ctx?.includes('compiles at API'), ctx);
+  write(preOnly, PRE, GOOD);
+  ctx = afterWrite(preOnly, PRE).hookSpecificOutput?.additionalContext;
+  check('pre-only: a pre script compiles with no stage warning', ctx === `${PRE} compiles at API 42.0 on dev@example.com (the pipeline's anonymous Apex version).`, ctx);
+  write(preOnly, POST_META, '<FlowDefinition/>\n');
+  has('pre-only: a post metaData file is warned', afterWrite(preOnly, POST_META).hookSpecificOutput?.additionalContext, '!! ', POST_META, '`post.metadata[].sourceFolder`');
+  write(preOnly, 'runbooks/post-deploy/metaData/.keep', '');
+  check('pre-only: .keep is silent', JSON.stringify(afterWrite(preOnly, 'runbooks/post-deploy/metaData/.keep')) === '{}');
+  write(preOnly, POST_DESTRUCT, destructive([]));
+  check('pre-only: a placeholder destructive manifest is silent', JSON.stringify(afterWrite(preOnly, POST_DESTRUCT)) === '{}');
+  write(preOnly, POST_DESTRUCT, destructive(['Old_Flow-1']));
+  has('pre-only: an added destructive member is warned', afterWrite(preOnly, POST_DESTRUCT).hookSpecificOutput?.additionalContext,
+    '!! ', POST_DESTRUCT, '`post.metadata-destruct[].destructiveChangesXml`');
+  write(preOnly, 'runbooks/post-deploy/sf/commands.txt', 'version\napex run --file x\n');
+  check('pre-only: a post command is silent (post runs its commands file)', JSON.stringify(afterWrite(preOnly, 'runbooks/post-deploy/sf/commands.txt')) === '{}');
+  git(preOnly, 'add', '--', POST);
+  check('the compile gate leaves a script its stage never runs to the stage gate', refusal(preOnly, 'git commit -m "x"') === null);
+  const beforeCheck = calls().length;
+  const run = spawnSync('node', [HOOK, '--check', join(preOnly, POST)], { env, encoding: 'utf8' });
+  check('--check on such a script exits 1 without compiling',
+    run.status === 1 && run.stderr.includes('`post.runAnonymousScriptFromDir`') && calls().length === beforeCheck, run.stderr);
+}
+{
+  const full = shapedRepo('all-steps', 'all-steps-sf');
+  write(full, POST, GOOD);
+  check('all-steps: a post script compiles with no stage warning',
+    afterWrite(full, POST).hookSpecificOutput?.additionalContext === `${POST} compiles at API 42.0 on dev@example.com (the pipeline's anonymous Apex version).`);
+  write(full, POST_META, '<FlowDefinition/>\n');
+  check('all-steps: a post metaData file is silent', JSON.stringify(afterWrite(full, POST_META)) === '{}');
+  write(full, POST, GOOD + '// later\n');
+  git(full, 'add', '--', POST);
+  has('all-steps: an unchecked post script is still refused', refusal(full, 'git commit -m "x"'), POST);
+}
+{
+  const broken = makeRepo('broken-yml');
+  write(broken, 'deploy.yml', 'pre:\n\tmetadata:\n');
+  write(broken, POST, GOOD);
+  has('an unreadable deploy.yml adds one !! line, and the script still compiles', afterWrite(broken, POST).hookSpecificOutput?.additionalContext,
+    `!! The runbook stage check did not run for ${POST}: deploy.yml could not be read`, `${POST} compiles at API 42.0`);
+  check('an unreadable deploy.yml says nothing for a file outside the stage folders', JSON.stringify(afterWrite(broken, 'notes.txt')) === '{}');
 }
 
 rmSync(sandbox, { recursive: true, force: true });
