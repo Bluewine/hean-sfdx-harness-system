@@ -59,6 +59,7 @@ Updated whenever a skill, agent, hook, or rule is added, removed, or renamed —
 | worktree-share.mjs | Hooks | documented |
 | runbook-compile-check.mjs | Hooks | documented |
 | manifest-commit-check.mjs | Hooks | documented |
+| runbook-stage-gate.mjs | Hooks | documented |
 
 ## Rules
 
