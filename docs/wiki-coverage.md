@@ -20,6 +20,7 @@ Updated whenever a skill, agent, hook, or rule is added, removed, or renamed —
 | finish-implementation | Skills | documented |
 | flow-description-comment | Skills | documented |
 | flow-trigger-order | Skills | documented |
+| flow-version-cleanup | — | pending |
 | linear-start-issue | Skills | documented |
 | memory-review | — | pending (exists, not in original scope) |
 | open-work-report | — | pending (exists, not in original scope) |
