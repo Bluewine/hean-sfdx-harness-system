@@ -294,14 +294,16 @@ Loop back to Step 1 while yes; otherwise continue.
 Screenshots stay local and uncommitted. In a private repository they have to: `raw.githubusercontent.com` 404s on anonymous fetch and GitHub's PR-body image proxy fetches anonymously, so a committed image can never render. In a public one it would render, but the image then outlives the PR in the repository's history for no benefit. Copy each captured/provided file into the skill's dedicated, gitignored directory, keyed by this group's own work ID (not the root's):
 
 ```bash
-REPO_ROOT=$(git rev-parse --show-toplevel)
-mkdir -p "$REPO_ROOT/.claude/skills/update-pr/output/screenshots/{WORK-ID}"
+SHOTS_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+mkdir -p "$SHOTS_ROOT/.claude/skills/update-pr/output/screenshots/{WORK-ID}"
 # copy each captured/provided file into that directory as {WORK-ID}-{index}.{ext}
 ```
 
+In a linked worktree `git rev-parse --show-toplevel` is the worktree folder, which makes the saved path long. The parent of `--git-common-dir` is the main checkout, so the path stays short. Outside a worktree both are the same folder.
+
 For each screenshot, build one line:
 ```
-- **{CAPTION}** — `{REPO_ROOT}/.claude/skills/update-pr/output/screenshots/{WORK-ID}/{filename}`
+- **{CAPTION}** — `{SHOTS_ROOT}/.claude/skills/update-pr/output/screenshots/{WORK-ID}/{filename}`
 ```
 Concatenate these lines, then append one closing line: "Drag the file(s) above into this PR's description on GitHub to embed them — `gh` CLI can't embed local images directly." Together this is that group's `SCREENSHOTS`, wholesale-replacing that group's `EXISTING_SCREENSHOTS_BY_ID` entry.
 
@@ -422,14 +424,15 @@ Skip this phase entirely if no group saved new screenshots in Phase 8 (all decli
 
 For each group that saved new screenshots this run, after Phase 10 reports the PR URL, tell the user:
 ```
-Screenshots for Story {N} ({WORK-ID}) saved at: {REPO_ROOT}/.claude/skills/update-pr/output/screenshots/{WORK-ID}/
+Screenshots for Story {N} ({WORK-ID}) saved at: {SHOTS_ROOT}/.claude/skills/update-pr/output/screenshots/{WORK-ID}/
 Drag them into the PR description at {PR_URL} to embed them.
 Type `done` once added, or `skip` to leave the files in place.
 ```
 
 If the user replies `done` (or equivalent confirmation) for that group:
 ```bash
-rm -rf "$REPO_ROOT/.claude/skills/update-pr/output/screenshots/{WORK-ID}"
+SHOTS_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+rm -rf "$SHOTS_ROOT/.claude/skills/update-pr/output/screenshots/{WORK-ID}"
 ```
 
 If the user replies `skip` for that group, leave its directory in place and tell them where it is for later manual cleanup. Repeat for every group that saved new screenshots, in story order.
