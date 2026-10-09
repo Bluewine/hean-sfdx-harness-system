@@ -337,8 +337,8 @@ Keep every `@salesforce/label` import of a component in its own bundle file `lab
 
 ```js
 // labels.js
-import title from '@salesforce/label/c.REWSFS_X_Title';
-import save from '@salesforce/label/c.REWSFS_X_Save';
+import title from '@salesforce/label/c.X_Title';
+import save from '@salesforce/label/c.X_Save';
 
 export default {
     title,

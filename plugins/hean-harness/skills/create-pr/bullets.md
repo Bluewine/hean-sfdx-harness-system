@@ -41,8 +41,8 @@ These rules apply to every main bullet under "What was Done?", new or kept.
 
 Wrong — each bullet describes how the code changed:
 
-- Removed the `slds-scrollable_none` class from the `rewsfsMyWorkDetailPage` content container, whose overflow clip cut off the open Status dropdown at the footer's top edge; the inner line-clamp usage of that class is unchanged
-- Added a `save-changes-button` class to the service appointment Save Changes `c-wes-button` and an `.action-button, .save-changes-button { display: inline-block; }` rule
+- Removed the `slds-scrollable_none` class from the `mycustomWorkDetailPage` content container, whose overflow clip cut off the open Status dropdown at the footer's top edge; the inner line-clamp usage of that class is unchanged
+- Added a `save-changes-button` class to the service appointment Save Changes `c-mycustom-button` and an `.action-button, .save-changes-button { display: inline-block; }` rule
 
 Right — each bullet states the problem that was fixed:
 

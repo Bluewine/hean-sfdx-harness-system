@@ -54,7 +54,7 @@ function scenario({ input, roles = true, apex, query, apexCode, files = {}, apex
   }
   if (roles) {
     writeFileSync(join(repo, '.claude', 'hean-harness.json'), JSON.stringify({ orgs: {
-      '00D000000000001': { alias: 'rewsdev', username: 'dev@example.com', role: 'development', deploy: true, branch: null } } }));
+      '00D000000000001': { alias: 'devorg', username: 'dev@example.com', role: 'development', deploy: true, branch: null } } }));
   }
   if (input !== null) writeFileSync(join(repo, '.claude', 'inputs', 'apex-classes.txt'), input);
   if (apex) writeFileSync(join(fake, 'apex.json'), JSON.stringify(apex));
@@ -85,7 +85,7 @@ try {
     check('all at 100% exits 0', r.status === 0, `status ${r.status}`);
     check('all at 100% prints the RESULT line', r.stdout.includes('RESULT: 100% — all 2 classes fully covered'), r.stdout);
     check('all at 100% prints the header and test summary',
-      r.stdout.startsWith('Apex coverage — org rewsdev (development)\nTests run: 1 class, 2 methods — 2 passed, 0 failed'), r.stdout);
+      r.stdout.startsWith('Apex coverage — org devorg (development)\nTests run: 1 class, 2 methods — 2 passed, 0 failed'), r.stdout);
   }
 
   // 2. Overlapping rows from two test methods; one class below 100%.

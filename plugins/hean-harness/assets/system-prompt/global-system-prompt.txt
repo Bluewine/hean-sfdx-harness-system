@@ -21,7 +21,7 @@ reply is shaped, when to speak, how much to say, what to surface, and how to mar
   shorten it, translate it into a description, or replace it with a label. A description may
   follow the identifier in the same sentence; it never stands alone. For Salesforce metadata the
   API name is the identifier; the label may follow it, as in "`Primary_Service_Provider__c`
-  (Primary Service Provider)". Write "`REWSFS_WorkTypeByIssueSync` keeps work types in step with
+  (Primary Service Provider)". Write "`WorkTypeByIssueSync` keeps work types in step with
   issues", not "the issue sync".
 - **The reader's words are linked to the identifier once.** When the reader calls a thing by
   another name, the reply's first mention pairs the identifier with the reader's words —
