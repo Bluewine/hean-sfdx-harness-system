@@ -310,7 +310,31 @@ git push -u origin work-{ID}-BM
 
 ## Opening a PR
 
-All three PRs follow the same shape. Write the body to `.claude/skills/uat-hotfix/output/{ID}.md` first so the user can review it before anything reaches GitHub, then submit with an explicit head and base:
+All three PRs follow the same shape and build their body from create-pr's own files, rules and checks. Write the body to `.claude/skills/uat-hotfix/output/{ID}.md` first so the user can review it before anything reaches GitHub.
+
+| PR | Head | Base | Body content |
+|---|---|---|---|
+| 1 | `work-{ID}-HF` | `hotfix-{ID}` | the story bullets for the fix and its deployment steps |
+| 2 | `hotfix-{ID}` | `release` | the same story bullets and deployment steps, because it carries the same fix to UAT |
+| 3 | `work-{ID}-BM` | `integration` | the same story bullets and deployment steps, plus one bullet for the config reset: "The QA swimlane builds from `integration` again" |
+
+Build each body in this order. The commit range for a PR is `git merge-base origin/<base> <head>` to `<head>`.
+
+1. **Story lookup.** Resolve `TITLE`, `LINEAR_URL` and `ISSUE_DESCRIPTION` for `{ID}` as create-pr's Phase 3 does, including the manual fallback. The PR title is `@{ID}: <Summary>` from `TITLE`, 77 characters or fewer.
+2. **Template.** Read `${CLAUDE_PLUGIN_ROOT}/skills/create-pr/templates/pr-body.md`. Replace `{WORK-ID}` with `{ID}`, `{TITLE}` and `{LINEAR_URL}` with the story values.
+3. **Bullets.** Read `${CLAUDE_PLUGIN_ROOT}/skills/create-pr/bullets.md`. Write the "What was Done?" bullets from `ISSUE_DESCRIPTION` and the PR's commits. Sort the commits into the main, Sonar and Framework buckets as create-pr's Phase 4 does, and fill `{BULLETS}`, `{SONAR_BULLETS}` and `{FRAMEWORK_BULLETS}`. Remove each empty section as create-pr's Phase 7 does. PR 3 adds its config-reset bullet to `{BULLETS}`.
+4. **Deployment steps.** Fill `{DEPLOYMENT_STEPS}` as create-pr's Phase 5 does, from the files the PR's commit range changes. Follow `.claude/rules/runbook-deployment-steps.md` and read the repository's `deploy.yml` for the steps each stage runs. Ask the manual-steps question from Phase 5 once per hotfix, at PR 1, and reuse its answers for PRs 2 and 3 because they carry the same fix. Do not ask again. Remove the section when no rows result.
+5. **Screenshots.** Ask create-pr's Phase 6 question once per PR, reading its "Story {N}" as the hotfix story `{ID}`, with `{ID}` and `TITLE`. An answer other than an explicit yes removes the template's Screenshots block. On yes, run Phase 6's capture flow and save the files here:
+
+   ```bash
+   SHOTS_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   mkdir -p "$SHOTS_ROOT/.claude/skills/uat-hotfix/output/screenshots/{ID}"
+   ```
+
+   Build the body lines and the closing drag-in note in the format Phase 6 Step 4 gives, with the path `{SHOTS_ROOT}/.claude/skills/uat-hotfix/output/screenshots/{ID}/{filename}`. After the PR is created, offer create-pr's Phase 10 wipe, applied to the uat-hotfix folder `$SHOTS_ROOT/.claude/skills/uat-hotfix/output/screenshots/{ID}` and not create-pr's.
+6. **Body check.** Write the body with the PR title comment as its first line, as create-pr's Phase 7 does. Run create-pr's template-marker check and its attribution check on the file, as update-pr does. Strip any hit, rewrite the file and re-run the check before `gh pr create`.
+
+Submit with an explicit head and base:
 
 ```bash
 gh pr create \
