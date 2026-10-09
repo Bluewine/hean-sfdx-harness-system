@@ -16,7 +16,8 @@
  * project is not checked.
  *
  * Checked: the sf (or sfdx) commands in WRITES, and the project's pre and post
- * deploy script. Not checked, because they change nothing: queries, retrieves,
+ * deploy script, and `sf api request rest` / `graphql` when they can change data.
+ * Not checked, because they change nothing: queries, retrieves,
  * describes, running tests, `project deploy validate` and `--dry-run`.
  *
  * The target org comes from -o / --target-org (or the older -u /
@@ -27,10 +28,10 @@
  * Reads the tool call on standard input, and either denies it or says nothing.
  */
 
-import { readFileSync } from 'node:fs';
-import { basename } from 'node:path';
+import { readFileSync, existsSync } from 'node:fs';
+import { basename, resolve } from 'node:path';
 
-import { commandsIn } from '../scripts/lib/command-line.mjs';
+import { commandsIn, isLiteral } from '../scripts/lib/command-line.mjs';
 import { projectRoot, defaultOrg, refusal } from '../scripts/lib/org-roles.mjs';
 
 /** Commands that change an org, by their topic words, including the CLI's aliases for them. */
@@ -50,6 +51,10 @@ export const WRITES = new Set([
   'agent activate', 'agent deactivate', 'agent publish authoring-bundle',
   'org delete sandbox', 'org delete scratch', 'env delete sandbox', 'env delete scratch'
 ]);
+
+/** sf api request commands: writes only when they can change data, decided by apiRequestWrites. */
+const API_REQUESTS = new Set(['api request rest', 'api request graphql']);
+const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 /** The project-supplied script /hean-harness:jenkins-pre-post-deploy runs. */
 const PRE_POST_SCRIPT = 'jenkins-pre-post-deploy.sh';
@@ -72,10 +77,33 @@ function flagValue(args, names) {
 }
 
 /**
+ * Whether an `sf api request` command can change data. rest: a POST, PUT, PATCH
+ * or DELETE method, or a --file request file (it can carry any method; the CLI
+ * sends GET when no method is given). graphql: a body containing `mutation`, or
+ * a body the gate cannot read. A method or body given as a shell variable cannot be read.
+ */
+function apiRequestWrites(kind, args, dir) {
+  if (kind === 'api request rest') {
+    if (flagValue(args, ['-f', '--file']) !== undefined) return true;
+    const method = flagValue(args, ['-X', '--method']);
+    if (method !== undefined && !isLiteral(method)) return true;   // "$M": the text cannot say which method
+    return method !== undefined && WRITE_METHODS.has(String(method).toUpperCase());
+  }
+  const body = flagValue(args, ['--body']);
+  if (!body || body === '-' || !isLiteral(body)) return true;
+  let text = body;
+  const path = resolve(dir, body.startsWith('@') ? body.slice(1) : body);
+  if (body.startsWith('@') || existsSync(path)) {
+    try { text = readFileSync(path, 'utf8'); } catch { return true; }
+  }
+  return /\bmutation\b/.test(text);
+}
+
+/**
  * The org-writing commands in words, as { org } where org is the name the
  * command gives, or undefined when it gives none. null when words writes nothing.
  */
-export function orgWrite(words) {
+export function orgWrite(words, dir = process.cwd()) {
   let w = words;
   if (w[0] === 'npx') w = w.slice(1);
   if (!w.length) return null;
@@ -90,8 +118,14 @@ export function orgWrite(words) {
   const topic = [];
   let i = 1;
   for (; i < w.length && !w[i].startsWith('-'); i++) topic.push(...w[i].split(':'));
-  if (!WRITES.has(topic.join(' '))) return null;
+  const head = topic.slice(0, 3).join(' ');
   const args = w.slice(i);
+  if (API_REQUESTS.has(head)) {
+    // The URL is a positional argument, so it can sit in topic or after the flags.
+    if (!apiRequestWrites(head, args, dir)) return null;
+    return { org: flagValue(args, ORG_FLAGS) };
+  }
+  if (!WRITES.has(topic.join(' '))) return null;
   if (args.includes('--dry-run')) return null;
   return { org: flagValue(args, ORG_FLAGS) };
 }
@@ -99,7 +133,7 @@ export function orgWrite(words) {
 /** Why this script may not run, or null when every write in it may. */
 export function check(script, sessionCwd, env = process.env) {
   for (const { words, env: local, dir } of commandsIn(script, sessionCwd)) {
-    const write = orgWrite(words);
+    const write = orgWrite(words, dir ?? sessionCwd);
     if (!write) continue;
     const root = projectRoot(dir ?? sessionCwd);
     if (!root) continue;

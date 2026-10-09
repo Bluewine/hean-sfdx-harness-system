@@ -49,6 +49,8 @@ const UNSAVED_DEFAULT = project('unsaved-default', 'other', SAVED);
 const NO_ROLES = project('no-roles', 'dev', null);
 const NOT_SFDX = join(sandbox, 'plain');
 mkdirSync(NOT_SFDX);
+writeFileSync(join(READY, 'query.graphql'), '{ uiapi { query { Account { edges { node { Id } } } } } }');
+writeFileSync(join(READY, 'mutation.graphql'), 'mutation { uiapi { AccountCreate(input: {}) { Record { Id } } } }');
 
 const env = { ...process.env, HOME };
 delete env.SF_TARGET_ORG;
@@ -86,6 +88,10 @@ allow('package install report',             'sf package install report -i 0Hf -o
 allow('org not logged in here',             'sf project deploy start -x m.xml -o ghost');
 allow('outside an SFDX project',            'sf project deploy start -x m.xml -o qa', NOT_SFDX);
 allow('not an sf command',                  'echo sf project deploy start -o qa');
+allow('api request with no method',         'sf api request rest /services/data/v64.0/limits -o qa');
+allow('api request GET',                    'sf api request rest /services/data/v64.0/limits -X GET -o qa');
+allow('api request HEAD',                   'sf api request rest /services/data/v64.0/limits --method HEAD -o qa');
+allow('graphql query body file',            'sf api request graphql --body query.graphql -o qa');
 
 console.log('Refused');
 deny('deploy to a pipeline org',            'sf project deploy start -x m.xml -o qa', READY, 'saved as pipeline', 'integration branch', 'dev (dev@example.com)');
@@ -103,6 +109,17 @@ deny('explicit org with no saved role',     'sf project deploy start -x m.xml -o
 deny('no roles saved in the project',       'sf project deploy start -x m.xml', NO_ROLES, 'No org roles are saved');
 deny('cd into a project first',             `cd ${NO_ROLES} && sf project deploy start -x m.xml`, NOT_SFDX, 'No org roles are saved');
 deny('pre/post deploy script',              'bash .claude/scripts/jenkins-pre-post-deploy.sh pre --org qa', READY, 'saved as pipeline');
+deny('api request POST',                    'sf api request rest /services/data/v64.0/tooling/composite/batch -X POST --body @b.json -o qa', READY, 'saved as pipeline');
+deny('api request lower-case method',       'sf api request rest /services/data/v64.0/sobjects/Account -X post -o qa', READY, 'saved as pipeline');
+deny('api request --method=DELETE',         'sf api request rest /services/data/v64.0/sobjects/Account/001 --method=DELETE -o qa', READY, 'saved as pipeline');
+deny('api request PATCH, flags after URL',  'sf api request rest /services/data/v64.0/sobjects/Account/001 -X PATCH --body @a.json --target-org qa', READY, 'saved as pipeline');
+deny('api request PUT, method before URL',  'sf api request rest -X PUT /services/data/v64.0/x -o qa', READY, 'saved as pipeline');
+deny('api request from a request file',     'sf api request rest --file request.json -o qa', READY, 'saved as pipeline');
+deny('graphql mutation body file',          'sf api request graphql --body mutation.graphql -o qa', READY, 'saved as pipeline');
+deny('graphql unreadable body file',        'sf api request graphql --body @missing.graphql -o qa', READY, 'saved as pipeline');
+deny('api request method from a variable',  'sf api request rest /services/data/v64.0/x -X "$M" -o qa', READY, 'saved as pipeline');
+deny('graphql body from a variable',        'sf api request graphql --body "$Q" -o qa', READY, 'saved as pipeline');
+deny('graphql body from stdin',             'sf api request graphql --body - -o qa', READY, 'saved as pipeline');
 
 console.log('CLI default moved');
 deny('default moved to a pipeline org',     'sf project deploy start -x m.xml', MOVED, '!! The CLI default org is now qa', 'dev (dev@example.com)', 'saved as pipeline');
