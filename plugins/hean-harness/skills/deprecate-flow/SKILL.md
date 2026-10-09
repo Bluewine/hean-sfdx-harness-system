@@ -110,7 +110,7 @@ Retain the generated block on stdout and the `SUMMARY:` line on stderr. Phase 4 
 
 ## Phase 3 — Destructive target selection
 
-The deploy runs `pre.metadata` → `pre.runAnonymousScriptFromDir` → `pre.runSFCommandFromFile` → `pre.metadata-destruct` → main deploy → `post.metadata-destruct`.
+The deploy runs `pre.metadata` → `pre.runAnonymousScriptFromDir` → the `pre` commands-file step (`runSFCommandFromFile` or `runSFDXCommandFromFile`) → `pre.metadata-destruct` → main deploy → `post.metadata-destruct`, but only the steps the repository's `deploy.yml` lists. Repositories list different ones.
 
 The target is chosen by the caller's **intent**, not by whether the flow file is currently in `force-app`. Do not use `test -f` as the discriminator: at this point the flow is normally still in `force-app`, because Phase 7 of this skill is what moves it. Inferring from the file's presence would route every ordinary deprecation down the rebuild path.
 
@@ -123,6 +123,18 @@ Never pair a `post` target with a flow left in `force-app`, and never pair a `pr
 
 Rebuild is outside this skill's stated scope. It also rests on an unconfirmed assumption: that the deploy runner iterates `metadata` before `metadata-destruct` within the `pre` phase. Warn the user before proceeding down it.
 
+### Step check
+
+Read `deploy.yml` at the repository root before Phase 4, and check that it lists every step the intent needs. Compare paths after removing a leading `./` and a trailing `/`.
+
+| Intent | Steps `deploy.yml` must list |
+|---|---|
+| Deprecation | `pre.metadata[].sourceFolder` naming `runbooks/pre-deploy/metaData` (Phases 5 and 7); `pre.runSFCommandFromFile` or `pre.runSFDXCommandFromFile` naming `runbooks/pre-deploy/sf/commands.txt` (Phase 6); `post.metadata-destruct[].destructiveChangesXml` naming `deletePackage/post/destructiveChangesPost.xml` |
+| Rebuild | `pre.metadata[].sourceFolder` naming `runbooks/pre-deploy/metaData` (Phase 5); `pre.runSFCommandFromFile` or `pre.runSFDXCommandFromFile` naming `runbooks/pre-deploy/sf/commands.txt` (Phase 6); `pre.metadata-destruct[].destructiveChangesXml` naming `deletePackage/pre/destructiveChangesPre.xml` |
+
+- **Missing step**: stop before Phase 4 and write nothing. Report each missing key and the file this skill would have written that Jenkins would never run. Never switch to the other stage on your own: a different stage changes when the deletion runs relative to the main deploy, and the pairing rules above depend on that. Adding the step to `deploy.yml` is the user's decision.
+- **No `deploy.yml`**: the repository's pipeline steps cannot be read. Say so at the Phase 4 gate and continue.
+
 ## Phase 4 — Confirmation gate
 
 Do not write any file before the user confirms. Present:
@@ -132,6 +144,7 @@ Do not write any file before the user confirms. Present:
 - the full range about to be listed: the Phase 2 top down to `1`
 - the headroom above `highest`, and — when it is under `5` — that this is the whole cushion against a higher version in an environment the query never saw
 - whether this is a deprecation or a rebuild, the destructive target that follows from it, and why
+- the `deploy.yml` steps the Phase 3 step check confirmed, or that the repository has no `deploy.yml`
 
 Confirm the destructive target only. `requestedVersions` and `intent` were both set in Phase 1 — report them, do not reopen them, and do not ask about any org other than the one queried. The gate reports the range; it does not put the range up for negotiation.
 
@@ -168,7 +181,7 @@ Write the script instead to `runbooks/pre-deploy/sf/01_deleteErrorFlowInterviews
 apex run --file ./runbooks/pre-deploy/sf/01_deleteErrorFlowInterviews.apex
 ```
 
-`runSFCommandFromFile` shells out to the real `sf` CLI as a subprocess, which resolves the org's or project's own API version — unaffected by the jsforce default. `deploy.yml` runs `runSFCommandFromFile` immediately after `runAnonymousScriptFromDir` and before `metadata-destruct`, so the ordering this cleanup depends on (after deactivation, before the destructive step) is unchanged.
+The commands-file step (`runSFCommandFromFile` or `runSFDXCommandFromFile`, whichever key the repository's `deploy.yml` uses) shells out to the Salesforce CLI as a subprocess, which resolves the org's or project's own API version — unaffected by the jsforce default. It runs immediately after `runAnonymousScriptFromDir` and before `metadata-destruct`, so the ordering this cleanup depends on (after deactivation, before the destructive step) is unchanged.
 
 ```apex
 List<String> flowNames = new List<String>{ '<flowApiName>' };

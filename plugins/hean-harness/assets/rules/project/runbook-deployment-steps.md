@@ -13,25 +13,30 @@ Apply when adding or changing anything under `runbooks/` or `deletePackage/`, an
 
 ## Stage mechanics
 
-Each stage runs around the `force-app` deployment, in this order:
+The repository's `deploy.yml` decides which steps each stage runs. The shared Jenkins library runs only the steps it lists, and repositories list different ones. Read it before placing a file under a stage folder.
 
-1. Convert `runbooks/<stage>-deploy/metaData/` and deploy the result
-2. Run every `.apex` file under `runbooks/<stage>-deploy/apex/` in filename order
-3. Apply `deletePackage/<stage>/destructiveChanges<Stage>.xml`
+Each stage runs around the `force-app` deployment. The library runs a stage's listed steps in this order:
+
+1. **Metadata** — `<stage>.metadata[].sourceFolder: ./runbooks/<stage>-deploy/metaData/`: convert that folder and deploy the result
+2. **Anonymous Apex** — `<stage>.runAnonymousScriptFromDir: runbooks/<stage>-deploy/apex`: run every `.apex` file in it in filename order
+3. **Commands file** — `<stage>.runSFCommandFromFile` or `<stage>.runSFDXCommandFromFile` (repositories use either key): run the commands in `runbooks/<stage>-deploy/sf/commands.txt`
+4. **Metadata destruct** — `<stage>.metadata-destruct[].destructiveChangesXml: deletePackage/<stage>/destructiveChanges<Stage>.xml`: apply the destructive manifest
+
+**A stage folder whose step `deploy.yml` does not list is never deployed**, and nothing reports it: a hand deploy of the file succeeds, and the pipeline skips it. Move such a file to a stage that runs its step. Adding a step to `deploy.yml` changes what Jenkins runs for every release of the repository; ask the user first. The plugin's `runbook-stage-gate.mjs` hook refuses a commit that adds or changes such a file, and `runbook-compile-check.mjs` warns when one is written.
 
 **Both stages share one conversion output folder, and it is not cleared between them.** When `pre` and `post` convert back to back into the same output folder, `post`'s conversion regenerates `package.xml` from `post`'s own declared source, but never removes a file `pre`'s earlier conversion left behind, so a component only `pre` declared can still be physically present when `post` deploys. Whether that breaks the deploy depends on the component's shape:
 
 - **A component nested inside a shared container file needs a matching declaration in the later stage too, at minimum an empty one** — a `CustomField` (or any other member living inside an `.object` file) that `pre` declares and `post` doesn't fails `post`'s deploy with "Not in package.xml": Salesforce parses the whole container file and cross-checks every nested member against that stage's `package.xml`.
 - **A standalone-file component needs no matching declaration.** A leftover file with no `package.xml` entry at all — an `ApexClass`, a `Flow`, a `FlowDefinition` — is silently dropped by the deploy; it neither applies nor errors. Duplicating it into the later stage is unnecessary.
 
-**Metadata under a stage's `metaData/` must be listed in that stage's destructive manifest**, so the transient component is removed again once it has run. The only exception is a component the user says to keep.
+**When `deploy.yml` lists `<stage>.metadata-destruct`, metadata under that stage's `metaData/` must be listed in that stage's destructive manifest**, so the transient component is removed again once it has run. The only exception is a component the user says to keep. **When it does not list `<stage>.metadata-destruct`, do not add the entry**: the manifest is never applied, and the commit gate refuses it. Tell the user the component stays in the org after the stage runs, and offer a Manual row for removing it.
 
 **`ACME_Deployment` is a shared placeholder. Never add, edit, or remove it.**
 
 **A destructive entry naming a component absent from the target org does not fail the deploy.** A destructive entry naming a component something else in the org still references does fail, regardless of metadata type — a custom field, a flexipage, an Apex class, a permission set. Two ways to satisfy the dependency, in order of preference:
 
 - **Defer the deletion to the post destructive manifest.** The default. `post` runs after `deploy` pushes `force-app`, so any consumer this release already updates there to stop referencing the component is live in the org before `post`'s destructive step runs — nothing needs duplicating. Deprecating a component that predates the branch, with no name reuse involved, is always this case: list it here, alongside deleting it from the repo.
-- **Deploy the referencing components' updated content early, under the same stage's `metaData/`,** so the metadata-deploy step (Stage mechanics step 1) clears every reference before that stage's destructive step (step 3) runs. Use this only when the deletion cannot wait for `post` — typically because the release reuses the exact same API name for new metadata, and the old component must be gone before `deploy` creates the new one under that name. This duplicates real `force-app` content into the runbook; keep both copies in sync for as long as the runbook keeps them.
+- **Deploy the referencing components' updated content early, under the same stage's `metaData/`,** so the metadata-deploy step (Stage mechanics step 1) clears every reference before that stage's destructive step (step 4) runs. Use this only when the deletion cannot wait for `post` — typically because the release reuses the exact same API name for new metadata, and the old component must be gone before `deploy` creates the new one under that name. This duplicates real `force-app` content into the runbook; keep both copies in sync for as long as the runbook keeps them.
 
 ## Writing pre/post-deploy Apex scripts
 
@@ -62,12 +67,20 @@ A top-level `return;` stops an anonymous Apex script, also inside `try`; use it 
 
 Derive one row per item the change touches. Every row's Mode is **Automatic**.
 
+Read the repository's `deploy.yml` first, and derive a row only for a step it lists (Stage mechanics). An added or modified file under a stage folder whose step it does not list gets no row; a deleted file gets neither a row nor a line. This covers a `runbooks/<stage>-deploy/` file other than a `.keep` or a commands file that holds only blank lines, `#` comments and the `version` placeholder, and a `<members>` entry the change adds to a destructive manifest. Print this line for each added or modified one instead, as reply text, never in the PR body:
+
+```
+!! {path} — deploy.yml has no {stage}.{key}, so Jenkins never deploys or runs it. Move it to a stage that runs this step, or ask the user to add the step.
+```
+
+When the repository has no `deploy.yml`, derive rows from the table alone.
+
 | What changed | What the row states | Stage |
 |---|---|---|
 | `runbooks/pre-deploy/apex/*.apex` | what the script does to the org | Pre |
 | `runbooks/post-deploy/apex/*.apex` | what the script does to the org | Post |
-| `runbooks/pre-deploy/metaData/**` | the component is deployed from the runbook, then removed again by `destructiveChangesPre.xml` in the same stage | Pre |
-| `runbooks/post-deploy/metaData/**` | the component is deployed from the runbook, then removed again by `destructiveChangesPost.xml` in the same stage | Post |
+| `runbooks/pre-deploy/metaData/**` | the component is deployed from the runbook; when the stage lists `metadata-destruct`, it is then removed again by `destructiveChangesPre.xml` in the same stage, and otherwise the row says it stays in the org | Pre |
+| `runbooks/post-deploy/metaData/**` | the component is deployed from the runbook; when the stage lists `metadata-destruct`, it is then removed again by `destructiveChangesPost.xml` in the same stage, and otherwise the row says it stays in the org | Post |
 | a `<members>` entry the change adds to `deletePackage/pre/destructiveChangesPre.xml` | the named component is deleted from the target org | Pre |
 | a `<members>` entry the change adds to `deletePackage/post/destructiveChangesPost.xml` | the named component is deleted from the target org | Post |
 

@@ -230,7 +230,7 @@ For **each** work-ID group from Phase 4 (root first), rebuild that group's deplo
 
 **Step 1 — Re-derive the automatic rows.**
 
-Discard `EXISTING_AUTOMATIC_STEPS_BY_ID` for the group and regenerate from the branch — these rows are derived from the runbook, so a stale one means the runbook moved on and the row is simply wrong. Take the group's own file set (the union of its `git diff-tree` paths across every bucket), reading each file's status from the net-status map, and derive one row per item found by the Automatic rows table in `.claude/rules/runbook-deployment-steps.md`. That rule is the single source of truth for which paths produce which rows, how to describe a runbook script, and how to diff the destructive manifests against the merge base — follow it rather than restating it here.
+Discard `EXISTING_AUTOMATIC_STEPS_BY_ID` for the group and regenerate from the branch — these rows are derived from the runbook, so a stale one means the runbook moved on and the row is simply wrong. Take the group's own file set (the union of its `git diff-tree` paths across every bucket), reading each file's status from the net-status map, and derive one row per item found by the Automatic rows table in `.claude/rules/runbook-deployment-steps.md`. That rule is the single source of truth for which paths produce which rows, how to describe a runbook script, and how to diff the destructive manifests against the merge base — follow it rather than restating it here. Read the repository's `deploy.yml` before deriving rows: the rule derives a row only for a step `deploy.yml` lists, and prints a `!!` line as reply text, never in the body, for each changed file whose stage step is missing.
 
 **Step 2 — Ask whether the manual rows changed.**
 

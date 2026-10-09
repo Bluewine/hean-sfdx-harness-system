@@ -141,7 +141,7 @@ For **each** work-ID group from Phase 2 (root first), assemble that group's depl
 
 **Step 1 — Detect the automatic steps.**
 
-Take the group's own file set (the union of its `git diff-tree` paths across every bucket), reading each file's status from the net-status map, and derive one row per item found by the Automatic rows table in `.claude/rules/runbook-deployment-steps.md`. That rule is the single source of truth for which paths produce which rows, how to describe a runbook script, and how to diff the destructive manifests against the merge base — follow it rather than restating it here.
+Take the group's own file set (the union of its `git diff-tree` paths across every bucket), reading each file's status from the net-status map, and derive one row per item found by the Automatic rows table in `.claude/rules/runbook-deployment-steps.md`. That rule is the single source of truth for which paths produce which rows, how to describe a runbook script, and how to diff the destructive manifests against the merge base — follow it rather than restating it here. Read the repository's `deploy.yml` before deriving rows: the rule derives a row only for a step `deploy.yml` lists, and prints a `!!` line as reply text, never in the body, for each changed file whose stage step is missing.
 
 **Step 2 — Ask for the manual steps.**
 
