@@ -230,7 +230,16 @@ cat > "$REPO_ROOT/.claude/skills/version-bump/output/version-{NEW_VERSION}.md" <
 BODY
 ```
 
-Show the rendered body and wait for an explicit `yes` before Phase 7. Anything else is a revision request: apply it, rewrite the file, show it again, wait again. Confirming an input is answering a question, not approving the publish.
+**Verify the rendered body before showing it.** Read the file back and confirm no Claude attribution reached it:
+
+```bash
+BODY_FILE="$(git rev-parse --show-toplevel)/.claude/skills/version-bump/output/version-{NEW_VERSION}.md"
+grep -nEi 'co-authored-by|generated with \[?claude|claude-session|claude\.(ai|com)/(code/session|claude-code)' "$BODY_FILE"
+```
+
+Expect no output. The template carries none of these, so any hit was introduced while rendering — strip the offending lines, including the blank line and any `---` separator that preceded them, rewrite the file, and re-run the check. Never submit a body containing a `Co-Authored-By` trailer, a "Generated with Claude Code" line, or a session URL.
+
+Show the rendered body and wait for an explicit `yes` before Phase 7. Anything else is a revision request: apply it, rewrite the file, re-run the attribution check, show it again, wait again. Confirming an input is answering a question, not approving the publish.
 
 ## Phase 7 — Open the PR
 
@@ -240,7 +249,8 @@ gh pr create \
   --head work-updateVersion \
   --title "Update Release Version to v{NEW_VERSION}" \
   --body-file "$REPO_ROOT/.claude/skills/version-bump/output/version-{NEW_VERSION}.md" \
-  --draft
+  --draft \
+  --assignee @me
 ```
 
 The title form `Update Release Version to v{NEW_VERSION}` has held for every cycle on record. Keep it.
@@ -295,7 +305,8 @@ Confirm each against real output, not intent:
 - The PR body lists every deletion, and every hold-back carries the user's own wording.
 - `git log --oneline {INTEGRATION}..HEAD` lists the version commit first, the cleanup commit second.
 - The PR base is the integration branch.
-- `gh pr create` returned a URL.
+- The attribution check printed nothing for the body file.
+- `gh pr create` ran with `--assignee @me` and returned a URL.
 
 ## Common mistakes
 
