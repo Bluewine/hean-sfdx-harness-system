@@ -346,6 +346,15 @@ Quote the heredoc delimiter. Linear titles routinely contain backticks and `$`; 
 
 Updating writes to the same `release-{DEPLOY_DATE}.md` path the previous run used, overwriting it. That is intended — the file is the review artifact for one deployment, and `DEPLOY_DATE` came from the existing PR title precisely so the path stays stable.
 
+**Verify the rendered body before telling the user.** Read the file back and confirm no Claude attribution reached it:
+
+```bash
+BODY_FILE="$REPO_ROOT/.claude/skills/release-pr/output/release-{DEPLOY_DATE}.md"
+grep -nEi 'co-authored-by|generated with \[?claude|claude-session|claude\.(ai|com)/(code/session|claude-code)' "$BODY_FILE"
+```
+
+Expect no output. The template carries none of these, so any hit was introduced while rendering — strip the offending lines, including the blank line and any `---` separator that preceded them, rewrite the file, and re-run the check. Never submit a body containing a `Co-Authored-By` trailer, a "Generated with Claude Code" line, or a session URL.
+
 Then tell the user, giving the path as an **absolute path followed by `:1`**:
 
 ```
@@ -375,7 +384,7 @@ Wait for an explicit `yes` before Phase 8.
 
 Anything other than `yes` is a revision request, not an approval: apply the change, rewrite the file with the same heredoc, report it again, and wait again. Loop until the user approves. Never read approval into silence, a question, or a comment that merely sounds positive. Confirming an input — a branch, a title, a date, a runlist — is answering a question, not approving the publish.
 
-The user may also edit that file by hand during review. Phase 8 submits that file with `--body-file`, so hand edits are what get published — after a `yes`, re-read the file and submit it as it stands rather than re-rendering it from the Linear data.
+The user may also edit that file by hand during review. Phase 8 submits that file with `--body-file`, so hand edits are what get published — after a `yes`, re-read the file and submit it as it stands rather than re-rendering it from the Linear data. Run the same attribution check from Phase 7 on the file as it stands, because a hand edit can add a line the first check never saw.
 
 ## Phase 8 — Open or update the PR
 
@@ -394,6 +403,8 @@ command to the next, so the one Phase 7 set is gone by now. An unset variable ex
 `--body-file ""` publishes a PR with an empty body, which looks like the render failed rather than
 like a variable was lost.
 
+Run the Phase 7 attribution check on the body file as it stands, and continue only when it prints nothing.
+
 **Opening a new PR** — `PR_NUMBER` unset:
 
 ```bash
@@ -409,6 +420,24 @@ gh pr create \
 
 **Updating an existing PR** — `PR_NUMBER` set:
 
+Read the assignees first:
+
+```bash
+gh pr view {PR_NUMBER} --json assignees --jq '.assignees | length'
+```
+
+When it prints `0`, add `--add-assignee @me`:
+
+```bash
+REPO_ROOT=$(git rev-parse --show-toplevel)
+BODY_FILE="$REPO_ROOT/.claude/skills/release-pr/output/release-{DEPLOY_DATE}.md"
+gh pr edit {PR_NUMBER} \
+  --body-file "$BODY_FILE" \
+  --add-assignee @me
+```
+
+Otherwise leave the flags as they are, so existing assignees are kept:
+
 ```bash
 REPO_ROOT=$(git rev-parse --show-toplevel)
 BODY_FILE="$REPO_ROOT/.claude/skills/release-pr/output/release-{DEPLOY_DATE}.md"
@@ -416,7 +445,7 @@ gh pr edit {PR_NUMBER} \
   --body-file "$BODY_FILE"
 ```
 
-**Pass only `--body-file` on edit.** Never pass `--title`, even when it appears unchanged — the title is the deployment's scheduled identity and this skill has no reason to rewrite it. Never pass `--base` or `--head` on edit either; retargeting an open deployment PR is not this skill's job.
+**Pass only `--body-file` on edit, plus `--add-assignee @me` when the PR has no assignee.** Never pass `--title`, even when it appears unchanged — the title is the deployment's scheduled identity and this skill has no reason to rewrite it. Never pass `--base` or `--head` on edit either; retargeting an open deployment PR is not this skill's job.
 
 Close with the links and, when there are any, the hotfix stories:
 
@@ -572,7 +601,7 @@ Confirm each against real output, not intent:
 - Every numbered question at the checkpoint got its own answer, and none was settled by an answer to a different one, by a general `yes`, or by silence.
 - No worktree was removed without an explicit `remove` from the user, and none was removed while a question was still open.
 - Where a worktree was removed, the body file was copied into the main working copy first and its new path was reported.
-- `gh pr create` returned a URL, or `gh pr edit` succeeded and re-reading the PR shows the intended body and an unchanged title.
+- `gh pr create` returned a URL, or `gh pr edit` succeeded and re-reading the PR shows the intended body, an unchanged title, and an assignee.
 
 ## Common mistakes
 
@@ -606,7 +635,7 @@ Confirm each against real output, not intent:
 | `DEPLOY_DATE` defaulted to today | Release champions set deployment dates; ask for it, never read the clock |
 | Placeholder date shown at the checkpoint to fill the title | An invented date reads as decided and gets approved unnoticed; leave it unresolved |
 | Title recomputed when updating | Take it from the existing PR; it already carries the champion's date |
-| `--title` passed to `gh pr edit` | Body only; the title is the deployment's identity |
+| `--title` passed to `gh pr edit` | Body only, plus `--add-assignee @me` when the PR has no assignee; the title is the deployment's identity |
 | Update presented as a fresh table | Show it as a diff — rows added, removed, moved |
 | Extra headings or a summary added to the body | The body is the table plus the runlist line, nothing else |
 | PR opened without the review gate | Write the file, wait for an explicit `yes`, then submit |
