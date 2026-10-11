@@ -72,7 +72,8 @@ export function runOut(cmd, args, env = {}) {
 
 export function run(cmd, args, env = {}, { timeout } = {}) {
   const opts = { encoding: 'utf8', env: { ...process.env, ...env } };
-  if (timeout) opts.timeout = timeout;
+  // SIGTERM can be ignored, and spawnSync then waits for the child without limit
+  if (timeout) { opts.timeout = timeout; opts.killSignal = 'SIGKILL'; }
   const r = spawnSync(cmd, args, opts);
   // strip terminal colour codes: sf wraps versions in them, which corrupts any
   // value parsed out of the output

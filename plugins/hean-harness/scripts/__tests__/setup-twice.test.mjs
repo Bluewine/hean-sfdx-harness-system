@@ -17,6 +17,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
+import { run as runLimited } from '../lib/environment.mjs';
 
 // <plugin>/scripts/__tests__/ -> <plugin>/scripts
 const SCRIPTS = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -36,7 +37,16 @@ writeFileSync(join(home, '.claude', 'settings.json'), JSON.stringify(MY_SETTINGS
 writeFileSync(join(home, '.zshrc'), MY_ZSHRC);
 execFileSync('git', ['-C', repo, 'init', '-q', '-b', 'main']);
 
-const env = { ...process.env, HOME: home, SHELL: '/bin/zsh' };
+// A stand-in ego-browser first on PATH keeps every script run here off the machine's real one.
+// Its folder differs from the doctor checks' fake-bin, which rewrite their own stand-in.
+const egoBin = join(root, 'ego-bin');
+mkdirSync(egoBin, { recursive: true });
+writeFileSync(join(egoBin, 'ego-browser'),
+  '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "ego-browser 0.4.7.4" >&2; else echo "function" >&2; fi\n');
+chmodSync(join(egoBin, 'ego-browser'), 0o755);
+const BASE_ENV = { ...process.env, PATH: `${egoBin}:${process.env.PATH}` };
+
+const env = { ...BASE_ENV, HOME: home, SHELL: '/bin/zsh' };
 const run = (script, args = []) =>
   execFileSync('node', [join(SCRIPTS, script), ...args], { env, encoding: 'utf8', stdio: 'pipe' });
 
@@ -47,6 +57,21 @@ const check = (label, ok, detail = '') => {
 };
 
 try {
+  // spawnSync sends SIGTERM at the timeout and then waits for the child without limit.
+  const hang = join(root, 'ignores-sigterm');
+  const hangPid = join(root, 'ignores-sigterm.pid');
+  writeFileSync(hang, `#!/bin/sh\n[ "$1" = warm ] && exit 0\ntrap "" TERM\necho $$ > '${hangPid}'\nexec sleep 30\n`);
+  chmodSync(hang, 0o755);
+  // A first run of a new script can take longer than the timeout, so the SIGTERM would land before the trap is set.
+  runLimited(hang, ['warm']);
+  const hangStart = Date.now();
+  runLimited(hang, [], {}, { timeout: 500 });
+  const hangMs = Date.now() - hangStart;
+  check('run() returns at its timeout when the child ignores SIGTERM', hangMs < 5000, `${hangMs} ms`);
+  let stubGone = false;
+  try { process.kill(Number(readFileSync(hangPid, 'utf8')), 0); } catch (e) { stubGone = e.code === 'ESRCH'; }
+  check('the timed-out child is gone', stubGone);
+
   run('setup.mjs', ['--repo', repo, '--commit-format', 'on']);
   const afterFirst = readSettings();
   check('the task tools key is set after setup', afterFirst.env?.CLAUDE_CODE_ENABLE_TODO_TOOLS === '1',
@@ -253,7 +278,7 @@ try {
   mkdirSync(repoLink, { recursive: true });
   mkdirSync(linkTarget, { recursive: true });
   execFileSync('git', ['-C', repoLink, 'init', '-q', '-b', 'main']);
-  const envLink = { ...process.env, HOME: homeLink, SHELL: '/bin/zsh' };
+  const envLink = { ...BASE_ENV, HOME: homeLink, SHELL: '/bin/zsh' };
   execFileSync('node', [join(SCRIPTS, 'setup.mjs'), '--repo', repoLink, '--commit-format', 'on'],
     { env: envLink, encoding: 'utf8', stdio: 'pipe' });
   writeFileSync(join(linkTarget, 'apex-classes.txt'), '[test]\nFooTest\n');
@@ -266,7 +291,7 @@ try {
   // as an empty shell of the parent objects (env: {}) it created along the way.
   const home3 = join(root, 'home3');
   mkdirSync(join(home3, '.claude'), { recursive: true });
-  const env3 = { ...process.env, HOME: home3 };
+  const env3 = { ...BASE_ENV, HOME: home3 };
   const settings3 = join(home3, '.claude', 'settings.json');
   execFileSync('node', [join(SCRIPTS, 'install-statusline.mjs')], { env: env3, encoding: 'utf8', stdio: 'pipe' });
   execFileSync('node', [join(SCRIPTS, 'install-task-tools.mjs')], { env: env3, encoding: 'utf8', stdio: 'pipe' });
@@ -279,7 +304,7 @@ try {
   mkdirSync(join(home4, '.claude'), { recursive: true });
   const settings4 = join(home4, '.claude', 'settings.json');
   writeFileSync(settings4, JSON.stringify({ theme: 'light' }, null, 2) + '\n');
-  const env4 = { ...process.env, HOME: home4 };
+  const env4 = { ...BASE_ENV, HOME: home4 };
   execFileSync('node', [join(SCRIPTS, 'install-statusline.mjs')], { env: env4, encoding: 'utf8', stdio: 'pipe' });
   execFileSync('node', [join(SCRIPTS, 'install-task-tools.mjs')], { env: env4, encoding: 'utf8', stdio: 'pipe' });
   execFileSync('node', [join(SCRIPTS, 'lib', 'manifest.mjs'), 'revert'], { env: env4, encoding: 'utf8', stdio: 'pipe' });
@@ -293,7 +318,7 @@ try {
   mkdirSync(join(home5, '.claude'), { recursive: true });
   const settings5 = join(home5, '.claude', 'settings.json');
   writeFileSync(settings5, JSON.stringify({ env: { CLAUDE_CODE_ENABLE_TODO_TOOLS: '0' } }, null, 2) + '\n');
-  const env5 = { ...process.env, HOME: home5 };
+  const env5 = { ...BASE_ENV, HOME: home5 };
   execFileSync('node', [join(SCRIPTS, 'install-task-tools.mjs')], { env: env5, encoding: 'utf8', stdio: 'pipe' });
   const afterSetup5 = JSON.parse(readFileSync(settings5, 'utf8'));
   check('setup replaces the user\'s own task tools value with 1',
@@ -308,7 +333,7 @@ try {
   mkdirSync(join(homeAdvisor, '.claude'), { recursive: true });
   const settingsAdvisor = join(homeAdvisor, '.claude', 'settings.json');
   writeFileSync(settingsAdvisor, JSON.stringify({ advisorModel: 'fable' }, null, 2) + '\n');
-  const envAdvisor = { ...process.env, HOME: homeAdvisor };
+  const envAdvisor = { ...BASE_ENV, HOME: homeAdvisor };
   execFileSync('node', [join(SCRIPTS, 'install-advisor.mjs')], { env: envAdvisor, encoding: 'utf8', stdio: 'pipe' });
   const afterSetupAdvisor = JSON.parse(readFileSync(settingsAdvisor, 'utf8'));
   check('setup replaces the user\'s own advisor with opus',
@@ -373,7 +398,7 @@ try {
   mkdirSync(join(homeH, '.claude'), { recursive: true });
   mkdirSync(repoH, { recursive: true });
   execFileSync('git', ['-C', repoH, 'init', '-q', '-b', 'main']);
-  const envH = { ...process.env, HOME: homeH };
+  const envH = { ...BASE_ENV, HOME: homeH };
   const runHooks = (repoDir, args) => execFileSync('node', [join(SCRIPTS, 'install-githooks.mjs'), '--repo', repoDir, ...args],
     { env: envH, encoding: 'utf8', stdio: 'pipe' });
   const msgH = join(repoH, '.githooks', 'commit-msg');
@@ -429,7 +454,7 @@ try {
 
   const homeP = join(root, 'homeP');
   mkdirSync(join(homeP, '.claude'), { recursive: true });
-  const envP = { ...process.env, HOME: homeP, CLAUDE_CONFIG_DIR: join(homeP, '.claude') };
+  const envP = { ...BASE_ENV, HOME: homeP, CLAUDE_CONFIG_DIR: join(homeP, '.claude') };
   const sfdxRepo = name => {
     const dir = join(root, name);
     mkdirSync(dir, { recursive: true });
@@ -541,7 +566,7 @@ try {
   writeInstalled(home6, 'test-market');
   const settings6 = join(home6, '.claude', 'settings.json');
   writeFileSync(settings6, JSON.stringify({ extraKnownMarketplaces: { 'test-market': marketEntry('https://example.com/a.git') } }, null, 2) + '\n');
-  const env6 = { ...process.env, HOME: home6 };
+  const env6 = { ...BASE_ENV, HOME: home6 };
   execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'hean'], { env: env6, encoding: 'utf8', stdio: 'pipe' });
   const afterHean6 = JSON.parse(readFileSync(settings6, 'utf8'));
   check('install-auto-update hean turns autoUpdate on', afterHean6.extraKnownMarketplaces['test-market'].autoUpdate === true);
@@ -559,7 +584,7 @@ try {
   writeInstalled(home7, 'test-market');
   const settings7 = join(home7, '.claude', 'settings.json');
   writeFileSync(settings7, JSON.stringify({ extraKnownMarketplaces: { 'test-market': { ...marketEntry('https://example.com/a.git'), autoUpdate: false } } }, null, 2) + '\n');
-  const env7 = { ...process.env, HOME: home7 };
+  const env7 = { ...BASE_ENV, HOME: home7 };
   execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'hean'], { env: env7, encoding: 'utf8', stdio: 'pipe' });
   const afterHean7 = JSON.parse(readFileSync(settings7, 'utf8'));
   check('install-auto-update hean overrides an existing false value', afterHean7.extraKnownMarketplaces['test-market'].autoUpdate === true);
@@ -574,7 +599,7 @@ try {
   const settings8 = join(home8, '.claude', 'settings.json');
   const settings8Text = JSON.stringify({ extraKnownMarketplaces: { 'other-market': marketEntry('https://example.com/b.git') } }, null, 2) + '\n';
   writeFileSync(settings8, settings8Text);
-  const env8 = { ...process.env, HOME: home8 };
+  const env8 = { ...BASE_ENV, HOME: home8 };
   const out8 = execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'hean'], { env: env8, encoding: 'utf8', stdio: 'pipe' });
   check('settings.json is untouched when the marketplace has no entry', readFileSync(settings8, 'utf8') === settings8Text);
   check('the output names /plugin when the marketplace has no entry', out8.includes('/plugin'));
@@ -585,7 +610,7 @@ try {
   const settings9 = join(home9, '.claude', 'settings.json');
   const settings9Text = JSON.stringify({ theme: 'dark' }, null, 2) + '\n';
   writeFileSync(settings9, settings9Text);
-  const env9 = { ...process.env, HOME: home9 };
+  const env9 = { ...BASE_ENV, HOME: home9 };
   execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'hean'], { env: env9, encoding: 'utf8', stdio: 'pipe' });
   check('exit 0 when there is no install record', true);
   check('settings.json is untouched when there is no install record', readFileSync(settings9, 'utf8') === settings9Text);
@@ -599,7 +624,7 @@ try {
     'test-market':  marketEntry('https://example.com/a.git'),
     'other-market': marketEntry('https://example.com/b.git')
   } }, null, 2) + '\n');
-  const env10 = { ...process.env, HOME: home10 };
+  const env10 = { ...BASE_ENV, HOME: home10 };
   execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'all'], { env: env10, encoding: 'utf8', stdio: 'pipe' });
   const afterAll10 = JSON.parse(readFileSync(settings10, 'utf8'));
   check('--auto-update all turns autoUpdate on for the plugin\'s own marketplace',
@@ -619,7 +644,7 @@ try {
   writeInstalled(home11, 'test-market');
   const settings11 = join(home11, '.claude', 'settings.json');
   writeFileSync(settings11, JSON.stringify({ extraKnownMarketplaces: { 'test-market': marketEntry('https://example.com/a.git') } }, null, 2) + '\n');
-  const env11 = { ...process.env, HOME: home11 };
+  const env11 = { ...BASE_ENV, HOME: home11 };
   execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'off'], { env: env11, encoding: 'utf8', stdio: 'pipe' });
   const afterOff11 = JSON.parse(readFileSync(settings11, 'utf8'));
   check('--auto-update off records autoUpdate false', afterOff11.extraKnownMarketplaces['test-market'].autoUpdate === false);
@@ -639,7 +664,7 @@ try {
   const settings12 = join(home12, '.claude', 'settings.json');
   const settings12Text = JSON.stringify({ extraKnownMarketplaces: { 'test-market': marketEntry('https://example.com/a.git') } }, null, 2) + '\n';
   writeFileSync(settings12, settings12Text);
-  const env12 = { ...process.env, HOME: home12 };
+  const env12 = { ...BASE_ENV, HOME: home12 };
   const dry12 = execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--dry-run'], { env: env12, encoding: 'utf8', stdio: 'pipe' });
   check('a dry run with the choice not yet made prints the ASK line', dry12.includes('!! ASK — AUTO-UPDATE NOT CHOSEN'));
   check('a dry run changes nothing', readFileSync(settings12, 'utf8') === settings12Text);
@@ -651,7 +676,7 @@ try {
   const settings13 = join(home13, '.claude', 'settings.json');
   const settings13Text = JSON.stringify({ extraKnownMarketplaces: { 'test-market': marketEntry('https://example.com/a.git') } }, null, 2) + '\n';
   writeFileSync(settings13, settings13Text);
-  const env13 = { ...process.env, HOME: home13 };
+  const env13 = { ...BASE_ENV, HOME: home13 };
   execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs')], { env: env13, encoding: 'utf8', stdio: 'pipe' });
   check('a real run with no flag changes nothing', readFileSync(settings13, 'utf8') === settings13Text);
 
@@ -664,7 +689,7 @@ try {
   writeFileSync(settings14, JSON.stringify({ extraKnownMarketplaces: {
     'other-market': marketEntry('https://example.com/b.git')
   } }, null, 2) + '\n');
-  const env14 = { ...process.env, HOME: home14 };
+  const env14 = { ...BASE_ENV, HOME: home14 };
   const out14 = execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'all'], { env: env14, encoding: 'utf8', stdio: 'pipe' });
   const afterAll14 = JSON.parse(readFileSync(settings14, 'utf8'));
   check('--auto-update all turns autoUpdate on for a marketplace that exists even when the plugin\'s own marketplace has no entry',
@@ -689,7 +714,7 @@ try {
   writeFileSync(settings15, JSON.stringify({ theme: 'dark', extraKnownMarketplaces: {
     'test-market': marketEntry('https://example.com/a.git')
   } }, null, 2) + '\n');
-  const env15 = { ...process.env, HOME: home15, SHELL: '/bin/zsh' };
+  const env15 = { ...BASE_ENV, HOME: home15, SHELL: '/bin/zsh' };
   const setup15 = args => execFileSync('node', [join(SCRIPTS, 'setup.mjs'), '--repo', repo15, ...args],
                                        { env: env15, encoding: 'utf8', stdio: 'pipe' });
   setup15(['--commit-format', 'off', '--auto-update', 'hean']);
@@ -717,7 +742,7 @@ try {
     'my.market': marketEntry('https://example.com/a.git')
   } }, null, 2) + '\n';
   writeFileSync(settings16, settings16Text);
-  const env16 = { ...process.env, HOME: home16 };
+  const env16 = { ...BASE_ENV, HOME: home16 };
   const out16 = execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'hean'], { env: env16, encoding: 'utf8', stdio: 'pipe' });
   check('a dotted marketplace name is refused', out16.includes('Auto-update was not changed') && out16.includes('contains a "."'), out16);
   check('settings.json is untouched after the refusal', readFileSync(settings16, 'utf8') === settings16Text);
@@ -736,7 +761,7 @@ try {
     'test-market':  marketEntry('https://example.com/a.git'),
     'other-market': { ...marketEntry('https://example.com/b.git'), autoUpdate: false }
   } }, null, 2) + '\n');
-  const env17 = { ...process.env, HOME: home17 };
+  const env17 = { ...BASE_ENV, HOME: home17 };
   execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'all'], { env: env17, encoding: 'utf8', stdio: 'pipe' });
   execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'hean'], { env: env17, encoding: 'utf8', stdio: 'pipe' });
   const after17 = JSON.parse(readFileSync(settings17, 'utf8')).extraKnownMarketplaces;
@@ -748,6 +773,9 @@ try {
   check('uninstall after the switch restores the original state',
         !('autoUpdate' in afterRevert17['test-market']) && afterRevert17['other-market'].autoUpdate === false);
 } finally {
+  let left = '';
+  try { left = execFileSync('pgrep', ['-fl', root], { encoding: 'utf8' }); } catch (e) { if (e.status !== 1) throw e; }
+  check('no process started by this test is left running', left === '', left);
   rmSync(root, { recursive: true, force: true });
 }
 
