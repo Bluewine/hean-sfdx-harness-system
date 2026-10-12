@@ -7,21 +7,22 @@ paths:
 
 Apply every time an Apex class or Apex test class is created, edited, extended, fixed or renamed.
 
-## Find the project's prefix first
+## The project's prefix and suffix
 
-Most Salesforce projects prefix every Apex class with a short namespace token. Read it from the
-classes that already exist rather than assuming one:
+The project saves its Apex naming answer in `.claude/hean-harness.json` under `naming.apex`, in the
+repository's main checkout. Read it before naming a class. Never scan existing class names for a
+prefix.
 
-```bash
-ls force-app/**/classes/*.cls 2>/dev/null | xargs -n1 basename | sed 's/\.cls$//' \
-  | sed -E 's/^([A-Za-z]+_).*/\1/' | sort | uniq -c | sort -rn | head -5
-```
-
-The token that nearly every class shares is the prefix. Call it `{PREFIX}` below — it includes its
-own trailing underscore, so `{PREFIX}` plus a name needs no separator added.
-
-When no common prefix appears, the project does not use one. Drop `{PREFIX}` from every formula
-below and keep the rest.
+- `use: true`: `{PREFIX}` is the saved `prefix` and `{SUFFIX}` the saved `suffix`; either may be
+  empty. A production class is `{PREFIX}<PascalCaseName>{SUFFIX}`, for example `ABC_AccountService_UK`
+  for prefix `ABC_` and suffix `_UK`. A test class is the production class name plus `Test`, always
+  last: `ABC_AccountService_UKTest`.
+- Every formula and rule below that names `{PREFIX}` also ends the production name with `{SUFFIX}`.
+  `{SUFFIX}` is exempt from "no underscores inside the name part".
+- `use: false`, or no `naming.apex` saved: the project uses no prefix or suffix. Drop `{PREFIX}` from
+  every formula below and read the examples' `ABC_` as absent.
+- A new class whose name does not match the saved answer is refused when the file is created. Rename
+  it to the expected form the refusal gives.
 
 ## Character limit
 
@@ -100,7 +101,7 @@ everywhere should not gain a single `Service`.
 ## Before saving a class name
 
 ```
-□ 1. Starts with the project's prefix, exactly as the existing classes spell it?
+□ 1. Starts with the saved prefix and ends with the saved suffix (Test after it), per naming.apex in .claude/hean-harness.json?
 □ 2. The part after the prefix starts with an uppercase letter?
 □ 3. No underscores inside that part?
 □ 4. Test classes: the production name plus exactly "Test"?

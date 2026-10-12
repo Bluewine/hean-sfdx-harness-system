@@ -38,11 +38,20 @@ Install the environment. Show the user what will change before changing it.
    hean-harness was installed from; `all` — every marketplace listed in that line; `off` — neither (updates stay manual; setup stops asking).
    Ask only then.
 
+   When the output has a line starting `!! ASK — NAMING NOT CHOSEN`, ask in one `AskUserQuestion`
+   call, one question per type the following `!! apex:` / `!! lwc:` lines name: the suggested answer
+   as the first option, "No prefix or suffix", and a typed answer (prefix, suffix, or both). When
+   the line says `suggested use=no`, offer only "No prefix or suffix" and a typed answer. Ask only
+   then. A saved answer is reused, and `naming.mjs set` changes it later. When the Naming step
+   prints `ERROR:`, show the line, ask that type again, and rerun setup with the corrected flag.
+
 3. When the user agrees, run it, adding only the flags the user chose:
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" [--replace-githook] [--edit-mcp] [--commit-format on|off] [--auto-update all|hean|off]
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" [--replace-githook] [--edit-mcp] [--commit-format on|off] [--auto-update all|hean|off] [--naming-apex <spec>] [--naming-lwc <spec>]
    ```
+
+   `<spec>` is `use=no` or `use=yes,prefix=X,suffix=Y`, leaving out an empty token.
 
 4. Report, using the script's own summary:
    - whether anything from a previous install was cleared, and how much. On a first install the step

@@ -10,20 +10,24 @@ Apply every time a Lightning Web Component is created, renamed, extended or fixe
 **Lightning Web Components only.** Do not apply any of this to Apex classes, Aura components, Flows
 or triggers.
 
-## Find the project's prefix first
+## The project's prefix and suffix
 
-Most Salesforce projects prefix every component with a short lowercase token. Read it from the
-components that already exist rather than assuming one:
+The project saves its LWC naming answer in `.claude/hean-harness.json` under `naming.lwc`, in the
+repository's main checkout. Read it before naming a component. Never scan existing component names
+for a prefix.
 
-```bash
-ls -d force-app/**/lwc/*/ 2>/dev/null | xargs -n1 basename \
-  | sed -E 's/^([a-z]+)[A-Z].*/\1/' | sort | uniq -c | sort -rn | head -5
-```
-
-The lowercase token nearly every component shares is the prefix. Call it `{prefix}` below.
-
-When no common token appears, the project does not use one. Drop `{prefix}` from the formulas and
-keep the rest.
+- `use: true`: `{prefix}` is the saved `prefix` (lowercase) and `{Suffix}` the saved `suffix`; either
+  may be empty. A component is `{prefix}<PascalCaseDescriptor>{Suffix}`, for example
+  `abcAccountPickerUk` for prefix `abc` and suffix `Uk`. A test component is the component name plus
+  `Test`, always last: `abcAccountPickerUkTest`.
+- Every formula and rule below that names `{prefix}` also ends the component name with `{Suffix}`.
+- With no prefix, the name is camelCase and starts lowercase, because an LWC folder name must begin
+  with a lowercase letter: `accountPickerUk` for suffix `Uk`. This overrides checklist items 2 and 4
+  and the capital first letter of `<PascalCaseDescriptor>` in the formula above.
+- `use: false`, or no `naming.lwc` saved: the project uses no prefix or suffix. Drop `{prefix}` from
+  every formula below and read the examples' `abc` as absent.
+- A new component whose name does not match the saved answer is refused when its folder is created.
+  Rename it to the expected form the refusal gives.
 
 ## Length
 
@@ -81,7 +85,7 @@ Check what the project already uses before inventing a short form.
 
 ```
 □ 0. Is this a Lightning Web Component? If not, stop — none of this applies.
-□ 1. Starts with the project's prefix, spelled exactly as existing components spell it?
+□ 1. Starts with the saved prefix and ends with the saved suffix (Test after it), per naming.lwc in .claude/hean-harness.json?
 □ 2. The character straight after the prefix is uppercase?
 □ 3. No underscore, hyphen or space anywhere?
 □ 4. The descriptor is PascalCase?

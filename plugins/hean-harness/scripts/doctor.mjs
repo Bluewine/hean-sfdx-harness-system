@@ -29,6 +29,7 @@ import { STATE_DIR } from './lib/manifest.mjs';
 import { getGitConfig } from './lib/install.mjs';
 import { readPreference, preferenceText } from './lib/commit-lifecycle.mjs';
 import { indexedFiles, unindexed } from './lib/memory-index.mjs';
+import { TYPES, readNaming, describe } from './lib/naming.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN_ROOT = dirname(HERE);
@@ -162,6 +163,15 @@ function main() {
     log('  not saved — asked at the next implementation');
   }
   log('');
+
+  const namingRepo = currentRepo() ?? repoRoot();
+  if (namingRepo && existsSync(join(namingRepo, 'sfdx-project.json'))) {
+    log('Naming');
+    const n = readNaming(namingRepo);
+    for (const t of TYPES) log(`  ${describe(t, n[t])}`);
+    if (TYPES.some(t => !n[t])) log('  asked at the next implementation or setup');
+    log('');
+  }
 
   // files setup writes on each clone must stay out of git
   const repo = currentRepo() ?? repoRoot();

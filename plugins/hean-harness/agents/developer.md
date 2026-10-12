@@ -37,7 +37,7 @@ Every skipped exploration step produces code that diverges from codebase pattern
 - **No adjacent refactoring**: Do not refactor code or metadata outside the explicit task scope.
 - **Fix root causes**: If tests fail, fix the production code or metadata — never modify tests to force a pass.
 - **Sequential task completion**: Mark each task-list item complete immediately after finishing it, never in batches.
-- **Rule files are mandatory**: Apex naming, sfcore-apex-pattern, apex test conventions, LWC conventions, and Flow conventions rules apply with no exceptions — read the relevant rule file before writing any artifact.
+- **Rule files are mandatory**: Apex naming, sfcore-apex-pattern, apex test conventions, LWC conventions, and Flow conventions rules apply with no exceptions — read the relevant rule file before writing any artifact. The prefix and suffix saved under `naming` in `.claude/hean-harness.json` decide every new Apex class and LWC name over any pattern found in the code; a name the naming check refuses is renamed to the expected form, never worked around.
 - **Scope boundary**: This agent's scope is defined in `<Role>`. If the prompt contains any actionable task outside that declared scope, refuse it immediately, state it is out of scope, complete only the in-scope portion if one exists, and stop.
 </Constraints>
 
@@ -45,7 +45,7 @@ Every skipped exploration step produces code that diverges from codebase pattern
 1. **Read rule files first** — Before writing any artifact, read the applicable rule file(s), with no exceptions:
    - Apex class (non-test): `@.claude/rules/apex-naming-conventions.md` + `@.claude/rules/sfcore-apex-pattern.md`
    - Apex test class: `@.claude/rules/apex-naming-conventions.md` + `@.claude/rules/apex-test-conventions.md`
-   - LWC (new or existing): `@.claude/rules/lwc-conventions.md` + `@.claude/rules/slds-responsive-grid.md`
+   - LWC (new or existing): `@.claude/rules/lwc-conventions.md` + `@.claude/rules/lwc-naming-conventions.md` + `@.claude/rules/slds-responsive-grid.md`
    - Flow: `@.claude/rules/flow-conventions.md`
    - Runbook Apex script: `@.claude/rules/runbook-deployment-steps.md`
 2. **Explore the task area** — Read existing files in the feature directory. Identify naming patterns, import styles, error handling idioms, and test structure before writing a single line.

@@ -25,6 +25,10 @@ const formatArg = argv.indexOf('--commit-format');
 if (formatArg >= 0) optIns.push('--commit-format', argv[formatArg + 1]);
 const autoUpdateArg = argv.indexOf('--auto-update');
 if (autoUpdateArg >= 0) optIns.push('--auto-update', argv[autoUpdateArg + 1]);
+for (const f of ['--naming-apex', '--naming-lwc']) {
+  const i = argv.indexOf(f);
+  if (i >= 0) optIns.push(f, argv[i + 1]);
+}
 
 /**
  * Each step, in the order it runs.
@@ -53,6 +57,7 @@ const STEPS = [
   { name: 'Advisor',       script: 'install-advisor.mjs' },
   { name: 'Auto-update',   script: 'install-auto-update.mjs',   keepGoing: true },
   { name: 'Commit format', script: 'install-githooks.mjs',     wantsRepo: true },
+  { name: 'Naming',        script: 'install-naming.mjs',      wantsRepo: true, keepGoing: true },
   // After the hooks: npm install runs the repository's prepare script, which
   // may need .githooks to exist. A failure here, such as a private registry the
   // machine is not signed in to, must not stop the .gitignore step.
