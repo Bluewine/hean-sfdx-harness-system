@@ -48,14 +48,25 @@ Run every command from the SFDX project root.
      `node "${CLAUDE_PLUGIN_ROOT}/scripts/org-roles.mjs" status`, ask the user which org in one
      `AskUserQuestion` call listing the logged-in orgs, then run step 2 again with that alias.
    - **Any other exit 1:** report the `ERROR:` line and stop.
-   - **Exit 2:** report that no flow is at the 50-version limit (or that every one was skipped,
-     with the SKIPPED list) and stop.
-   - **Exit 0:** show the user the `ORG:` line, the plan table, the totals and the SKIPPED list as
-     printed. Relay every line starting with `!!` word for word. Keep the `ALLOW:`, `RESTORE:` and
-     `PLAN_FILE:` values for later steps.
+   - **Exit 2:** report that no flow is at the 50-version limit (or that every one was skipped).
+     When the script printed a SKIPPED list, write it in the reply as a short list, one item per
+     flow: the flow API name in backticks and its version count. Then stop.
+   - **Exit 0:** write this in the reply text, before any other action:
+     - the `ORG:` line and the `COUNT:` line;
+     - a markdown table with one row per flow in the plan and the columns `Flow` (the API name in
+       backticks), `Versions`, `Active`, `To delete` and `Version numbers`, with the values from
+       the printed plan table;
+     - the `TOTAL:` line;
+     - the SKIPPED list, when present, as a short list: the flow API name in backticks and its
+       version count.
 
-3. **One confirmation.** Ask one `AskUserQuestion` question naming the org alias, the count, the
-   number of versions and the number of flows.
+     Command output is not shown to the user, so a list that stays in the output is a list the user
+     never saw. Never shorten the table to a count or a sample. Relay every line starting with `!!`
+     word for word. Keep the `ALLOW:`, `RESTORE:` and `PLAN_FILE:` values for later steps.
+
+3. **One confirmation.** Ask the question only after the reply text with the step 2 table. Ask one
+   `AskUserQuestion` question that refers to "the N flows listed above" and names the org alias, the
+   count, the number of versions and the number of flows.
    - Org printed `ROLE: … saved deploy target`: options "Delete" and "Cancel".
    - Org printed `!! … locked for writes`: options "Allow writes for this run, delete, then reset
      the role" and "Cancel".
