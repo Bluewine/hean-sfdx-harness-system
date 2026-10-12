@@ -1,6 +1,6 @@
 ---
 name: reference_plugin_component_limits
-description: Claude Code plugins cannot natively load rules, memories, user CLAUDE.md, or the statusLine setting — ship them as assets/ payload installed by a script
+description: Claude Code plugins cannot natively load rules, memories, user CLAUDE.md, or the statusLine setting — ship the files as assets/ payload installed by a script, and write the statusLine setting as a launcher
 metadata:
   type: reference
 ---
@@ -12,7 +12,9 @@ Claude Code loads `skills/`, `agents/`, `commands/`, `hooks/hooks.json`, `.mcp.j
 - **Memories** — not a plugin component type at all.
 - **A plugin's own CLAUDE.md** — the docs state it "is not loaded as project context".
 - **The `statusLine` setting** — a plugin's `settings.json` honours only `agent` and
-  `subagentStatusLine`.
+  `subagentStatusLine`. Setup writes the setting and it holds a launcher that finds the plugin's
+  current version folder through `installed_plugins.json`, so the script stays in the plugin and
+  updates with it. A mod cannot draw in the status line row.
 - **System prompt content** — `--append-system-prompt-file` is a CLI flag, so it can only be
   wired through a shell alias, never by installing a plugin.
 

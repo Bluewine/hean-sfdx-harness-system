@@ -11,8 +11,10 @@ Work through the phases in order. Each rule states what to do and why it matters
 1. A plugin carries these natively: `skills/`, `agents/`, `commands/`, `hooks/hooks.json`,
     `.mcp.json`, `output-styles/`, `bin/`. Claude Code finds them without any install step.
 2. A plugin cannot carry these natively: rule files, memories, the user's `CLAUDE.md`, and the
-    status line setting. Ship them as files under `assets/` and have a setup script copy them into
-    place.
+    status line setting. Ship rules, memories and `CLAUDE.md` content as files under `assets/` and
+    have a setup script copy them into place. The status line setting holds a launcher that finds
+    the plugin's current version folder through `installed_plugins.json`, so its script stays in
+    the plugin. A mod cannot draw in the status line row; it can only supply data the script reads.
 3. A plugin's own `settings.json` is read for two keys only: `agent` and `subagentStatusLine`.
     Anything else written there is ignored.
 4. `.claude-plugin/plugin.json` requires only `name`. Every other field is optional.
