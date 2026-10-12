@@ -45,6 +45,11 @@ try {
     console.log('');
     console.log('Or run /hean-harness:setup again to put the alias back.');
   }
+
+  // An older setup copied the status line script; the current one keeps it in the plugin.
+  if (m.changes.some(c => c.type === 'file-copy' && /statusline-command\.mjs$/.test(c.target))) {
+    console.log('The status line is an old copy that no longer updates. Run /hean-harness:setup again to replace it.');
+  }
 } catch {
   // never let this stop a session
 }

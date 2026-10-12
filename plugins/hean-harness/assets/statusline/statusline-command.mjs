@@ -1,21 +1,30 @@
 #!/usr/bin/env node
 /**
- * The status line: folder, git branch, Salesforce org, context use, token
- * counts, model, session name.
+ * The status line: three lines.
  *
- * Node rather than shell, because the shell version needed jq to read the JSON
- * on standard input, bc to divide, and awk to round. Each of those is a program
- * a Salesforce developer may not have, and a missing one produced a blank
- * status line with no explanation. Node is already present: the sf CLI is a
- * Node program.
+ *   1. path from ~, branch (and worktree), default org, context, the current turn's tokens, session name
+ *   2. the saved commit preference, then the project's orgs from development to production
+ *   3. model and effort, then the session's tokens and dollars
  *
- * Reads one JSON object on standard input and prints one line.
+ * Node rather than shell, because the shell version needed jq, bc and awk, any
+ * of which a Salesforce developer may lack, and a missing one blanked the line.
+ * Node is already present: the sf CLI is a Node program.
+ *
+ * This file runs from the plugin's current version folder. The statusLine
+ * setting holds a launcher that finds that folder (scripts/lib/statusline-launcher.mjs),
+ * so the imports below are always the same version as this file.
+ *
+ * Reads one JSON object on standard input. Always prints and always exits 0:
+ * a part that fails is left out, and the other lines still print.
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { basename, join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { basename, resolve } from 'node:path';
+
+import { line1, line2, line3, homePath, readMeter, prepareMeterDir } from '../../scripts/lib/statusline.mjs';
+import { readPreference } from '../../scripts/lib/commit-lifecycle.mjs';
+import { readRoles, projectRoot, defaultOrg } from '../../scripts/lib/org-roles.mjs';
 
 let input = {};
 try { input = JSON.parse(readFileSync(0, 'utf8')); } catch { input = {}; }
@@ -24,123 +33,67 @@ const get = (path, fallback) => {
   const v = path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), input);
   return v === undefined || v === null || v === '' ? fallback : v;
 };
-const num = (path) => {
-  const v = Number(get(path, 0));
-  return Number.isFinite(v) ? v : 0;
-};
+const safe = (fn, fallback) => { try { return fn(); } catch { return fallback; } };
 
-const cwd          = String(get('workspace.current_dir', get('cwd', '')));
-const dir          = cwd ? basename(cwd) : '';
-const model        = String(get('model.display_name', ''));
-const worktree     = String(get('workspace.git_worktree', ''));
-const sessionName  = String(get('session_name', ''));
-const usedRaw      = get('context_window.used_percentage', '');
-const totalIn      = num('context_window.total_input_tokens');
-const totalOut     = num('context_window.total_output_tokens');
-const curOutput    = num('context_window.current_usage.output_tokens');
-const ctxWindow    = num('context_window.context_window_size');
-const sessionId    = String(get('session_id', 'default'));
-
-// ── Per-cycle accumulation ───────────────────────────────────────────────────
-// A cycle is: the user sends a message, Claude works, Claude stops. The state
-// file carries the counts across invocations because each run sees only a
-// snapshot: baseline_in baseline_out prev_total_in prev_total_out prev_cur_out
-const stateDir = join(process.env.TMPDIR || tmpdir() || '/tmp', 'claude-statusline');
-const stateFile = join(stateDir, `turn-${sessionId.replace(/[^A-Za-z0-9._-]/g, '_')}.state`);
-
-let [baselineIn, baselineOut, prevTotalIn, prevTotalOut, prevCurOut] = [0, 0, 0, 0, 0];
-if (existsSync(stateFile)) {
-  const parts = readFileSync(stateFile, 'utf8').trim().split(/\s+/).map(n => {
-    const v = Number(n);
-    return Number.isFinite(v) ? v : 0;
-  });
-  [baselineIn, baselineOut, prevTotalIn, prevTotalOut, prevCurOut] =
-    [0, 1, 2, 3, 4].map(i => parts[i] ?? 0);
-}
-
-// A new cycle begins when the totals go backwards, which means the session was
-// reset, or when the last call produced no output and this one does.
-if (prevTotalIn > totalIn || prevTotalOut > totalOut) {
-  baselineIn = prevTotalIn; baselineOut = prevTotalOut;
-} else if (prevCurOut === 0 && curOutput > 0) {
-  baselineIn = prevTotalIn; baselineOut = prevTotalOut;
-}
-
-try {
-  mkdirSync(stateDir, { recursive: true });
-  writeFileSync(stateFile, `${baselineIn} ${baselineOut} ${totalIn} ${totalOut} ${curOutput}\n`);
-} catch { /* a status line must never fail the session */ }
-
-const cycleIn = Math.max(0, totalIn - baselineIn);
-const cycleOut = Math.max(0, totalOut - baselineOut);
-
-// ── Colour ───────────────────────────────────────────────────────────────────
-const C = (code, text) => `\u001b[${code}m${text}\u001b[0m`;
-
-// ── Salesforce org ───────────────────────────────────────────────────────────
-function gitOutput(args) {
+function git(args) {
   try {
     return execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-  } catch { return ''; }
-}
-
-let sfOrgSegment = '';
-if (cwd) {
-  const root = gitOutput(['-C', cwd, 'rev-parse', '--show-toplevel']);
-  let org = '';
-  if (root) {
-    for (const [file, key] of [['.sf/config.json', 'target-org'],
-                               ['.sfdx/sfdx-config.json', 'defaultusername']]) {
-      if (org) break;
-      const p = join(root, file);
-      if (!existsSync(p)) continue;
-      try { org = String(JSON.parse(readFileSync(p, 'utf8'))[key] ?? ''); } catch { org = ''; }
-    }
-  }
-  if (org) sfOrgSegment = ` ${C(35, `sf:(${org})`)}`;
-}
-
-// ── Git branch ───────────────────────────────────────────────────────────────
-let gitSegment = '';
-if (worktree) {
-  gitSegment = ` ${C(36, `git:(${worktree})`)}`;
-} else if (cwd && gitOutput(['-C', cwd, 'rev-parse', '--is-inside-work-tree']) === 'true') {
-  // --no-optional-locks belongs before the subcommand, not after it. Passed
-  // here, rev-parse treats it as a revision and echoes it back, which the shell
-  // version hid by piping through grep. rev-parse takes no locks anyway.
-  const branch = gitOutput(['-C', cwd, 'symbolic-ref', '--short', 'HEAD'])
-              || gitOutput(['-C', cwd, 'rev-parse', '--short', 'HEAD']);
-  if (branch) gitSegment = ` ${C(36, `git:(${branch})`)}`;
-}
-
-// ── Numbers ──────────────────────────────────────────────────────────────────
-// Thousands are truncated, not rounded: 1999 reads 1.9k. The shell version
-// divided with bc, whose scale truncates, and this keeps the same output.
-const fmtNum = (n) => (n >= 1000 ? `${(Math.floor(n / 100) / 10).toFixed(1)}k` : String(n));
-
-// ── Context usage ────────────────────────────────────────────────────────────
-let ctxSegment = '';
-if (usedRaw !== '' && usedRaw !== undefined) {
-  const used = Number(usedRaw);
-  if (Number.isFinite(used)) {
-    let ctxAb = '';
-    if (ctxWindow > 0) {
-      const usedTokens = Math.round((used / 100) * ctxWindow);
-      ctxAb = ` ${C(37, `(${fmtNum(usedTokens)}/${fmtNum(ctxWindow)})`)}`;
-    }
-    ctxSegment = ` ${C(33, `ctx:${Math.round(used)}%`)}${ctxAb}`;
+  } catch (error) {
+    // rev-parse prints every answer it could give before it fails on an unborn branch.
+    return String(error?.stdout ?? '').trim();
   }
 }
 
-let reqSegment = '';
-if (totalIn > 0) {
-  const sep = ` ${C(90, '│')} `;
-  reqSegment = `${sep}${C(94, `↑${fmtNum(cycleIn)}`)} ${C(92, `↓${fmtNum(cycleOut)}`)} ` +
-               `${C(93, `Σ${fmtNum(totalIn + totalOut)}`)}`;
+const cwd = String(get('workspace.current_dir', get('cwd', '')));
+const sessionId = String(get('session_id', ''));
+
+// ── Git ──────────────────────────────────────────────────────────────────────
+let root = '', branch = '', worktree = '';
+// One call answers every question: inside a work tree, top folder, git directory,
+// shared git directory, branch. On an unborn branch it fails at the last answer, "HEAD".
+const [inside, top, gitDir, common, ref] = cwd
+  ? git(['-C', cwd, 'rev-parse', '--is-inside-work-tree', '--show-toplevel',
+         '--path-format=absolute', '--git-dir', '--path-format=absolute', '--git-common-dir',
+         '--abbrev-ref', 'HEAD']).split('\n')
+  : [];
+if (inside === 'true') {
+  root = top ?? '';
+  // "HEAD" means a detached HEAD, or a branch with no commit yet.
+  branch = ref === 'HEAD'
+    ? git(['-C', cwd, 'symbolic-ref', '--short', 'HEAD']) || git(['-C', cwd, 'rev-parse', '--short', 'HEAD'])
+    : ref ?? '';
+  // A linked worktree has a git directory of its own, apart from the shared one.
+  if (root && gitDir && common && resolve(gitDir) !== resolve(common)) worktree = basename(root);
 }
 
-const sessionSegment = sessionName ? ` ${C(35, `[${sessionName}]`)}` : '';
+// ── Meter ────────────────────────────────────────────────────────────────────
+prepareMeterDir();
+const meter = readMeter(sessionId);
 
-process.stdout.write(
-  `${C(32, '➜')}  ${C('1;36', dir)}${gitSegment}${sfOrgSegment}${ctxSegment}${reqSegment}` +
-  `  ${C(90, model)}${sessionSegment}\n`);
+// ── Lines ────────────────────────────────────────────────────────────────────
+const usedRaw = get('context_window.used_percentage', '');
+const lines = [
+  safe(() => line1({
+    dir: cwd ? homePath(cwd) : '',
+    branch,
+    worktree,
+    org: root ? (safe(() => defaultOrg(root)?.name, '') ?? '') : '',
+    usedPct: usedRaw === '' ? NaN : Number(usedRaw),
+    ctxWindow: Number(get('context_window.context_window_size', 0)) || 0,
+    turn: meter?.turn ?? null,
+    sessionName: String(get('session_name', ''))
+  }), ''),
+  safe(() => {
+    const preference = safe(() => readPreference(), null);
+    const roles = root ? Object.values(safe(() => readRoles(root), {})) : [];
+    const showOrgs = root && (roles.length > 0 || projectRoot(cwd) !== null);
+    return line2(preference, showOrgs ? roles : null);
+  }, ''),
+  safe(() => line3({
+    model: String(get('model.display_name', '')),
+    effort: String(get('effort.level', '')),
+    costUsd: Number(get('cost.total_cost_usd', NaN))
+  }, meter), '')
+].filter(Boolean);
+
+process.stdout.write(`${lines.join('\n')}\n`);

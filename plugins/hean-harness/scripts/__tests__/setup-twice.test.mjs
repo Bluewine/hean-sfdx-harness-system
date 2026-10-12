@@ -81,6 +81,12 @@ try {
   check('the advisor keys are set after setup',
         afterFirst.env?.CLAUDE_CODE_ENABLE_EXPERIMENTAL_ADVISOR_TOOL === '1' && afterFirst.advisorModel === 'opus',
         JSON.stringify([afterFirst.env?.CLAUDE_CODE_ENABLE_EXPERIMENTAL_ADVISOR_TOOL, afterFirst.advisorModel]));
+  check('the status line runs the plugin\'s script through the launcher every 5 seconds',
+        afterFirst.statusLine?.type === 'command' && afterFirst.statusLine?.refreshInterval === 5 &&
+          String(afterFirst.statusLine?.command).includes('installed_plugins.json'),
+        JSON.stringify(afterFirst.statusLine));
+  check('setup copies no status line script out of the plugin',
+        !existsSync(join(home, '.claude', 'hean-harness', 'statusline-command.mjs')));
   const report = join(repo, '.claude', 'skills', 'create-pr', 'output', 'body.md');
   mkdirSync(dirname(report), { recursive: true });
   writeFileSync(report, 'a rendered body\n');
@@ -227,7 +233,11 @@ try {
           readFileSync(editedProjectRule, 'utf8').includes(PROJECT_EDIT),
         String(dryEntry?.note));
 
+  const meterDir = join(home, '.claude', 'hean-harness', 'meter');
+  mkdirSync(meterDir, { recursive: true });
+  writeFileSync(join(meterDir, 'some-session.json'), '{}');
   const revert = JSON.parse(run('lib/manifest.mjs', ['revert']));
+  check('uninstall deletes the status line meter files', !existsSync(meterDir));
   check('every recorded change reverses', revert.every(c => c.ok),
         `${revert.filter(c => c.ok).length}/${revert.length}`);
 
@@ -327,6 +337,22 @@ try {
   const afterUninstall5 = JSON.parse(readFileSync(settings5, 'utf8'));
   check('uninstall puts back the user\'s own task tools value',
         afterUninstall5.env?.CLAUDE_CODE_ENABLE_TODO_TOOLS === '0', JSON.stringify(afterUninstall5));
+
+  // An install from before the launcher copied the script into the state folder.
+  // Setup over it must remove that copy through the clear-previous step.
+  const homeLauncher = join(root, 'homeLauncher');
+  mkdirSync(join(homeLauncher, '.claude'), { recursive: true });
+  const envLauncher = { ...BASE_ENV, HOME: homeLauncher };
+  const oldCopy = join(homeLauncher, '.claude', 'hean-harness', 'statusline-command.mjs');
+  execFileSync('node', ['--input-type=module', '-e',
+    `import { init } from ${JSON.stringify(join(SCRIPTS, 'lib', 'manifest.mjs'))};` +
+    `import { installFile } from ${JSON.stringify(join(SCRIPTS, 'lib', 'install.mjs'))};` +
+    `init(); installFile(${JSON.stringify(join(dirname(SCRIPTS), 'assets', 'statusline', 'statusline-command.mjs'))}, ` +
+    `${JSON.stringify(oldCopy)});`], { env: envLauncher, encoding: 'utf8', stdio: 'pipe' });
+  check('the older install\'s copy is in place before the upgrade', existsSync(oldCopy));
+  execFileSync('node', [join(SCRIPTS, 'clear-previous-install.mjs')], { env: envLauncher, encoding: 'utf8', stdio: 'pipe' });
+  execFileSync('node', [join(SCRIPTS, 'install-statusline.mjs')], { env: envLauncher, encoding: 'utf8', stdio: 'pipe' });
+  check('setup over an older install removes the copied status line script', !existsSync(oldCopy));
 
   // A user who already chose their own advisor gets that choice back on uninstall.
   const homeAdvisor = join(root, 'homeAdvisor');

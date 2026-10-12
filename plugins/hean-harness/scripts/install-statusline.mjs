@@ -1,30 +1,30 @@
 #!/usr/bin/env node
 /**
- * Installs the status line — the line Claude Code prints at the bottom of the
- * terminal showing the folder, branch, Salesforce org and token usage.
+ * Installs the status line — the three lines Claude Code prints at the bottom
+ * of the terminal: location and turn, commit preference and orgs, model and
+ * session meter.
  *
- * The script goes in a fixed folder in the home directory, and the setting
- * points at it by full path. The plugin's own folder moves when the plugin
- * updates, so a setting pointing there would break.
+ * Nothing is copied. The setting holds a launcher that finds this plugin's
+ * current version folder through installed_plugins.json on every run, so a
+ * plugin update reaches the status line without running setup again, and the
+ * script imports the plugin's own libraries. See lib/statusline-launcher.mjs.
  *
- * The script runs on Node, so it needs nothing beyond what the sf CLI already
- * requires. Claude Code reads the setting at session start, so a change here
- * shows up in the next session rather than this one.
+ * refreshInterval re-runs it every 5 seconds: Claude Code's own refreshes do
+ * not fire for a change made in another session, such as a commit preference.
  */
 
-import { existsSync, chmodSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { STATE_DIR, init } from './lib/manifest.mjs';
-import { installFile, installJsonKey } from './lib/install.mjs';
-import { shQuote } from './lib/shell.mjs';
+import { init } from './lib/manifest.mjs';
+import { installJsonKey } from './lib/install.mjs';
 import { claudeDir } from './lib/paths.mjs';
+import { SCRIPT, pluginsRoot, pluginId, launcherCommand } from './lib/statusline-launcher.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN_ROOT = dirname(HERE);
-const SOURCE = join(PLUGIN_ROOT, 'assets', 'statusline', 'statusline-command.mjs');
-const DEST = join(STATE_DIR, 'statusline-command.mjs');
+const SOURCE = join(PLUGIN_ROOT, SCRIPT);
 const SETTINGS = join(claudeDir(), 'settings.json');
 
 const dryRun = process.argv.includes('--dry-run');
@@ -35,18 +35,22 @@ function main() {
     console.error(`Cannot find the status line script that ships with this plugin: ${SOURCE}`);
     process.exit(1);
   }
+  const id = pluginId(PLUGIN_ROOT);
+  if (!id) {
+    console.error(`Cannot tell which installed plugin this is from its folder: ${PLUGIN_ROOT}`);
+    process.exit(1);
+  }
+  const root = pluginsRoot();
 
-  log(`Script         ${DEST}`);
-  log(`Setting        statusLine in ${SETTINGS}`);
+  log(`Script         ${SCRIPT}, in the folder ${join(root, 'installed_plugins.json')} names for ${id}`);
+  log(`Setting        statusLine in ${SETTINGS}, refreshed every 5 seconds`);
   log('');
 
   if (dryRun) { log('Dry run. Nothing was changed.'); return; }
 
   init();
-  installFile(SOURCE, DEST);
-  chmodSync(DEST, 0o755);
-
-  const r = installJsonKey(SETTINGS, 'statusLine', { type: 'command', command: `node ${shQuote(DEST)}` });
+  const r = installJsonKey(SETTINGS, 'statusLine',
+    { type: 'command', command: launcherCommand(root, id), refreshInterval: 5 });
   log(r.hadKey
     ? 'Replaced the status line setting. Your previous one is recorded and comes back on uninstall.'
     : 'Set the status line.');

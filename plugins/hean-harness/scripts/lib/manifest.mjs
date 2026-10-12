@@ -568,6 +568,8 @@ export function revert({ dryRun = false, keep = [], only = null } = {}) {
       // the saved implementation preference is machine-wide, not a recorded
       // change, so it must go before the emptiness check below can succeed
       rmSync(PREFERENCE_FILE, { force: true });
+      // the status line meter files are generated per session, not recorded
+      rmSync(join(STATE_DIR, 'meter'), { recursive: true, force: true });
       // our own folder goes too, but only once it is empty — backups are kept
       for (const d of [BACKUP_DIR, STATE_DIR]) {
         try { if (existsSync(d) && readdirSync(d).length === 0) rmdirSync(d); } catch { /* keep going */ }
