@@ -140,7 +140,8 @@ leave no meter file. Line 3 then shows `🚕 –` with the `≈$` figure, and li
   directory shows its full path. A linked worktree uses the same rule. Shortening a worktree's path
   to start at its parent folder (`worktrees/abc`) is decided after the `~` form is tried.
 - 🌿 the branch, always; in a linked worktree followed by the worktree folder name in brackets.
-- ☁️ the CLI default org, read as today.
+- ☁️ the CLI default org, resolved by `defaultOrg` in `scripts/lib/org-roles.mjs`: the
+  `SF_TARGET_ORG` variable, the project config, then the machine-wide config.
 - 📊 context fill and `(used/window)`, as today.
 - `↑` `↓` the current main turn from the meter file; left out without it.
 - 🏷️ the session name, only when set.
@@ -169,7 +170,8 @@ leave no meter file. Line 3 then shows `🚕 –` with the `≈$` figure, and li
   branch; 🔭 `research`; 🏦 `production`.
 - No saved roles: `🔌 no org roles saved · /hean-harness:org-roles`.
 - Roles saved, none logged in: `🔌 no org connected`.
-- Outside a git repository: only the commit part.
+- Outside a git repository, and in a repository that is no SFDX project and has no saved roles:
+  only the commit part.
 
 ### Line 3
 
