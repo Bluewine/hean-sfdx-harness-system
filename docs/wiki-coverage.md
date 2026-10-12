@@ -62,7 +62,7 @@ Updated whenever a skill, agent, hook, or rule is added, removed, or renamed —
 | manifest-commit-check.mjs | Hooks | documented |
 | runbook-stage-gate.mjs | Hooks | documented |
 | naming-check.mjs | Hooks | documented |
-| statusline-meter.mjs | Hooks | pending |
+| statusline-meter.mjs | Hooks | documented |
 
 ## Rules
 
