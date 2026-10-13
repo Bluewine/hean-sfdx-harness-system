@@ -61,6 +61,20 @@ function status(root, home) {
     log('Saved but not logged in on this machine:');
     for (const [id, r] of elsewhere) log(`  ${r.alias ?? r.username}  org ${id}  ${describe(r)}`);
   }
+
+  // Every value a run of the skill still has to ask for. A pipeline org with no
+  // branch counts: the status line and the write gate's refusals name it by its
+  // branch, and a saved role alone hid the gap.
+  const ask = [
+    ...orgs.filter(o => !roles[o.orgId])
+      .map(o => `!! ASK — ROLE NOT SAVED: ${o.aliases[0] ?? o.username} (${o.username})`),
+    ...Object.values(roles).filter(r => r.role === 'pipeline' && !r.branch)
+      .map(r => `!! ASK — BRANCH NOT SAVED: ${r.alias ?? r.username} (${r.username}), a pipeline org`)
+  ];
+  if (ask.length) {
+    log('');
+    for (const line of ask) log(line);
+  }
 }
 
 function main() {

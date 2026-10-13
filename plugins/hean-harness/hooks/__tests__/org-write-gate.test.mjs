@@ -133,7 +133,20 @@ console.log('Saving roles');
 const run = (...args) => execFileSync('node', [ROLES_SCRIPT, ...args], { cwd: NO_ROLES, env, encoding: 'utf8' });
 run('set', 'dev', '--role', 'development', '--deploy', 'yes');
 allow('allowed once the deploy target is saved', 'sf project deploy start -x m.xml', NO_ROLES);
+const asked = (label, out, cond) => cond ? pass++ : (fail++, console.log(`  FAIL  ${label}\n${out}`));
+const before = run('status');
+asked('status asks for the role of each logged-in org with none saved', before,
+      before.includes('!! ASK — ROLE NOT SAVED: qa (qa@example.com)') &&
+      before.includes('!! ASK — ROLE NOT SAVED: other (other@example.com)') &&
+      !before.includes('ROLE NOT SAVED: dev'));
+run('set', 'qa', '--role', 'pipeline', '--deploy', 'no');
+const noBranch = run('status');
+asked('status asks for the branch of a pipeline org saved without one', noBranch,
+      noBranch.includes('!! ASK — BRANCH NOT SAVED: qa (qa@example.com), a pipeline org') &&
+      !noBranch.includes('ROLE NOT SAVED: qa'));
 run('set', 'qa', '--role', 'pipeline', '--deploy', 'no', '--branch', 'integration');
+const withBranch = run('status');
+asked('status stops asking once the branch is saved', withBranch, !withBranch.includes('BRANCH NOT SAVED'));
 deny('pipeline org saved with deploy no', 'sf project deploy start -x m.xml -o qa', NO_ROLES, 'fed by the integration branch');
 const saved = JSON.parse(readFileSync(join(NO_ROLES, '.claude', 'hean-harness.json'), 'utf8'));
 saved.orgs[ORGS.dev]?.deploy === true && saved.orgs[ORGS.qa]?.branch === 'integration' ? pass++

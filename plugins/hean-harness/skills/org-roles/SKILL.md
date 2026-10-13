@@ -1,7 +1,7 @@
 ---
 name: org-roles
-description: Per-project org role registry — shows each logged-in Salesforce org with its saved role (development, pipeline, research, production) and the CLI default, and saves the user-confirmed role and deploy permission the org write gate enforces, keyed by org ID so alias changes do not break it
-argument-hint: "[status | set <alias> ... | remove <alias>]"
+description: Per-project org role registry — shows each logged-in Salesforce org with its saved role (development, pipeline, research, production) and the CLI default, asks for every missing role or pipeline branch, or every value with `review`, and saves the user-confirmed answers the org write gate enforces, keyed by org ID
+argument-hint: "[status | review | set <alias> ... | remove <alias>]"
 allowed-tools: ["Bash", "Read", "AskUserQuestion"]
 ---
 
@@ -28,9 +28,27 @@ so every git worktree of the repository shows and saves the same roles.
    - **deploy** — `yes` when agents may deploy to it, otherwise `no`;
    - **branch** — for a `pipeline` org, the branch whose pipeline deploys to it.
 
-   Take values the user already stated in this conversation. Put every value still missing, with
-   a proposal and where the proposal came from, into one `AskUserQuestion` batch. Never save a
-   value the user did not state or confirm.
+   Which orgs to ask about:
+   - **Default run:** every value the status output names in a `!! ASK —` line — a logged-in org
+     with no saved role, and a `pipeline` org with no saved branch. Ask about all of them in this
+     run. When there is no `!! ASK —` line, report the output and stop.
+   - **`review` run:** when the argument is `review`, or the user asks to review or re-check the
+     roles, ask about every org the status output shows.
+
+   How to ask:
+   - **Org with every value saved** (review run only): one question, `<alias> — keep <role> ·
+     branch <branch> · deploy <yes|no>?`, with the options `Keep (saved)` first, then
+     `Change role`, `Change branch` (pipeline orgs only) and `Change deploy permission`. A change
+     option is followed by one question for that value, with the saved value first as
+     `<value> (saved)`. `Keep (saved)` saves nothing for that org.
+   - **Missing value:** one question per value, with a proposal first, marked `(Recommended)`,
+     and where the proposal came from: the alias, the CI and deploy configuration
+     (the discovery steps in `.claude/rules/org-roles.md`), or a skill such as `release-pr`.
+   - **Values already stated:** take values the user stated in this conversation and do not ask
+     for them again.
+   - **Batching:** put the questions in as few `AskUserQuestion` calls as possible, four per call.
+
+   Never save a value the user did not state or confirm.
 
 3. Save each org:
 
@@ -46,6 +64,7 @@ so every git worktree of the repository shows and saves the same roles.
 
 4. Run `status` again and report:
    - each org with its alias, role, branch and deploy permission;
+   - every `!! ASK —` line still in the output, which means a value is still missing;
    - the CLI default org, and whether it is a saved deploy target;
    - that the org write gate uses the new roles from the next command, with no restart.
 
