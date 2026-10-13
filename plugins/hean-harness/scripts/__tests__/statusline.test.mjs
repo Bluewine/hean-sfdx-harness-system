@@ -59,22 +59,31 @@ try {
   ];
   const loggedIn = new Set(['me@acme.com', 'me@acme.com.qa', 'me@acme.com.dev', 'me@acme.com.reint', 'me@acme.com.res']);
   const login = u => loggedIn.has(u) ? { isSandbox: u !== 'me@acme.com' } : null;
-  const chain = lib.orgsText(records, login);
-  check('orgs run development, pipeline by branch, research, production, with icons and aliases',
-        chain === '🛠️ dev: hean-dev → 🧱 reint (work-*): hean-reint → 🧪 qa (integration): hean-qa → ' +
-                  '🎭 uat (release): - → 🔭 res: hean-res → 🏦 prod: hean-prod', chain);
-  const noAlias = lib.orgsText([{ alias: null, username: 'me@acme.com.dev', role: 'development', branch: null }], login);
-  check('a logged-in org with no alias shows its username', noAlias === '🛠️ dev: me@acme.com.dev', noAlias);
-  const others = lib.orgsText([
+  const chain = strip(lib.orgsText(records, login, 'main'));
+  check('off a work branch: dev shows no branch, build shows the saved work-*, research comes last',
+        chain === '🛠️ dev:hean-dev → 🧱 build:hean-reint[work-*] → 🧪 qa:hean-qa[integration] → ' +
+                  '🎭 uat:-[release] → 🏦 prod:hean-prod[master] │ 🔭 research:hean-res', chain);
+  const onWork = strip(lib.orgsText(records, login, 'work-DEXRWO-500'));
+  check('on a work branch: dev and build show the session\'s branch',
+        onWork === '🛠️ dev:hean-dev[work-DEXRWO-500] → 🧱 build:hean-reint[work-DEXRWO-500] → 🧪 qa:hean-qa[integration] → ' +
+                   '🎭 uat:-[release] → 🏦 prod:hean-prod[master] │ 🔭 research:hean-res', onWork);
+  check('each org\'s label, alias and branch are purple',
+        lib.orgsText(records, login, 'main').includes('\u001b[35mdev:hean-dev\u001b[0m'));
+  const noAlias = strip(lib.orgsText([{ alias: null, username: 'me@acme.com.dev', role: 'development', branch: null }], login, 'main'));
+  check('a logged-in org with no alias shows its username', noAlias === '🛠️ dev:me@acme.com.dev', noAlias);
+  const others = strip(lib.orgsText([
     { alias: 'z', username: 'me@acme.com.zz', role: 'pipeline', branch: 'zeta' },
     { alias: 'a', username: 'me@acme.com.aa', role: 'pipeline', branch: 'alpha' }
-  ], () => ({ isSandbox: true }));
-  check('pipeline orgs on other branches sort alphabetically and use 🚚',
-        others === '🚚 aa (alpha): a → 🚚 zz (zeta): z', others);
-  const scratch = lib.orgsText([{ alias: 's', username: 'test-abc@example.com', role: 'pipeline', branch: 'work-x' }],
-    () => ({ isSandbox: false }));
-  check('a username that is not sandbox-shaped falls back to the role name',
-        scratch === '🧱 pipeline (work-x): s', scratch);
+  ], () => ({ isSandbox: true }), 'main'));
+  check('pipeline orgs on other branches sort alphabetically, use 🚚 and are labelled by their branch',
+        others === '🚚 alpha:a[alpha] → 🚚 zeta:z[zeta]', others);
+  const noBranch = strip(lib.orgsText([{ alias: 'p', username: 'me@acme.com.p', role: 'pipeline', branch: null }],
+    () => ({ isSandbox: true }), 'work-A'));
+  check('a pipeline org with no saved branch is labelled pipeline with no branch',
+        noBranch === '🚚 pipeline:p', noBranch);
+  const researchOnly = strip(lib.orgsText([{ alias: 'r', username: 'me@acme.com.r', role: 'research', branch: null }],
+    () => ({ isSandbox: true }), 'main'));
+  check('research alone has no leading separator', researchOnly === '🔭 research:r', researchOnly);
   check('no saved roles names the skill that saves them',
         lib.orgsText([], login) === '🔌 no org roles saved · /hean-harness:org-roles');
   check('saved roles with none logged in say no org is connected',
@@ -84,7 +93,7 @@ try {
   check('line 2 outside a project is the commit part alone',
         strip(lib.line2(null, null)) === '💾 commits: not set');
   check('line 2 joins the commit part and the orgs',
-        strip(lib.line2({ mode: 'main', commits: 'yes' }, records, login)) === `💾 commits: per task │ ${chain}`);
+        strip(lib.line2({ mode: 'main', commits: 'yes' }, records, login, 'main')) === `💾 commits: per task │ ${chain}`);
   const l3 = strip(lib.line3({ model: 'Opus 5.5', effort: 'high', costUsd: 4.18 },
                              { new: 180412, cached: 2396257, turn: { up: 0, down: 0 } }));
   check('line 3 shows model, effort, the meter and the dollars',
@@ -170,7 +179,7 @@ try {
   check('line 1 shows the path from ~, the branch, the default org, the context and the turn',
         s1 === '➜  📁 ~/repo 🌿 work-ABC ☁️ hean-dev 📊 10% (100.0k/1.0M) │ ↑2.0k ↓300', s1);
   check('line 2 shows the commit preference and the project\'s orgs',
-        s2 === '💾 commits: per task │ 🛠️ dev: hean-dev → 🧪 qa (integration): -', s2);
+        s2 === '💾 commits: per task │ 🛠️ dev:hean-dev[work-ABC] → 🧪 qa:-[integration]', s2);
   check('line 3 shows the model, the effort, the meter and the dollars',
         s3 === '🧠 Opus 5.5 · ⚡ high │ 🚕 5.0k new + 20.0k cached · ≈$1.50', s3);
 
@@ -192,7 +201,8 @@ try {
   check('in a linked worktree the branch is followed by the worktree folder name',
         wtLine.includes('📁 ~/repo-wt 🌿 work-WT (repo-wt)'), wtLine);
   const wtOrgs = strip(runScript(fixture(wt)).stdout).split('\n')[1];
-  check('a linked worktree reads the main checkout\'s org roles', wtOrgs === s2, wtOrgs);
+  check('a linked worktree reads the main checkout\'s org roles and shows its own work branch',
+        wtOrgs === '💾 commits: per task │ 🛠️ dev:hean-dev[work-WT] → 🧪 qa:-[integration]', wtOrgs);
   git('-C', wt, 'checkout', '-q', '--detach');
   const sha = git('-C', wt, 'rev-parse', '--short', 'HEAD');
   const detached = strip(runScript(fixture(wt)).stdout).split('\n')[0];

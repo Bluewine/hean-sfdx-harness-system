@@ -87,7 +87,7 @@ const lines = [
     const preference = safe(() => readPreference(), null);
     const roles = root ? Object.values(safe(() => readRoles(root), {})) : [];
     const showOrgs = root && (roles.length > 0 || projectRoot(cwd) !== null);
-    return line2(preference, showOrgs ? roles : null);
+    return line2(preference, showOrgs ? roles : null, undefined, branch);
   }, ''),
   safe(() => line3({
     model: String(get('model.display_name', '')),

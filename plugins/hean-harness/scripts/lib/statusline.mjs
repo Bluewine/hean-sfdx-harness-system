@@ -56,7 +56,8 @@ export function commitsText(preference) {
   return preference.commits === 'yes' ? 'commits: per task' : 'commits: none';
 }
 
-const ROLE_ORDER = { development: 0, pipeline: 1, research: 2, production: 3 };
+// The chain a change travels through; research is listed apart, after it.
+const ROLE_ORDER = { development: 0, pipeline: 1, production: 2, research: 3 };
 const ROLE_ICON = { development: '🛠️', research: '🔭', production: '🏦' };
 const PIPELINE_ICON = ['🧱', '🧪', '🎭'];
 
@@ -87,33 +88,47 @@ function orderOrgs(records) {
     .map(x => x.r);
 }
 
-// A sandbox username ends in the sandbox's name: me@acme.com.reint is the
-// reint sandbox. A login file says whether the org is a sandbox; without one,
-// a domain of three or more labels is taken as a sandbox username.
-function envName(record, auth) {
+// The stage an org stands for. A pipeline org is named after the branch that
+// feeds it, so the line reads as the path a change takes.
+function stageLabel(record) {
+  if (record.role === 'development') return 'dev';
   if (record.role === 'production') return 'prod';
-  const labels = (String(record.username ?? '').split('@')[1] ?? '').split('.').filter(Boolean);
-  const sandbox = auth ? auth.isSandbox === true : labels.length >= 3;
-  return sandbox && labels.length >= 3 ? labels[labels.length - 1] : record.role;
+  if (record.role !== 'pipeline') return record.role;
+  const branch = String(record.branch ?? '');
+  return ['build', 'qa', 'uat'][branchRank(branch)] ?? (branch || 'pipeline');
 }
 
-export function orgsText(records, login = username => orgOf(username)) {
+// The branch shown in brackets. The development org and the org fed by work-*
+// branches take the session's branch while it is a work branch, since that is
+// the branch deploying there now.
+function shownBranch(record, current) {
+  const onWork = String(current ?? '').startsWith('work-');
+  if (record.role === 'development') return onWork ? current : '';
+  if (record.role === 'pipeline' && branchRank(record.branch) === 0) return onWork ? current : record.branch;
+  return record.branch ?? '';
+}
+
+export function orgsText(records, login = username => orgOf(username), current = '') {
   if (records.length === 0) return '🔌 no org roles saved · /hean-harness:org-roles';
   let connected = false;
-  const parts = orderOrgs(records).map(r => {
+  const entry = r => {
     const auth = login(r.username);
     if (auth) connected = true;
     const icon = r.role === 'pipeline' ? (PIPELINE_ICON[branchRank(r.branch)] ?? '🚚') : (ROLE_ICON[r.role] ?? '❔');
-    const branch = r.role === 'pipeline' && r.branch ? ` (${r.branch})` : '';
     const who = auth ? (r.alias || r.username) : '-';
-    return `${icon} ${envName(r, auth)}${branch}: ${who}`;
-  });
-  return connected ? parts.join(' → ') : '🔌 no org connected';
+    const branch = shownBranch(r, current);
+    return `${icon} ${C(35, `${stageLabel(r)}:${who}${branch ? `[${branch}]` : ''}`)}`;
+  };
+  const ordered = orderOrgs(records);
+  const chain = ordered.filter(r => r.role !== 'research').map(entry).join(' → ');
+  const research = ordered.filter(r => r.role === 'research').map(entry).join(' · ');
+  if (!connected) return '🔌 no org connected';
+  return [chain, research].filter(Boolean).join(` ${SEP} `);
 }
 
-export function line2(preference, records, login) {
+export function line2(preference, records, login, current) {
   const commit = `💾 ${commitsText(preference)}`;
-  return records == null ? commit : `${commit} ${SEP} ${orgsText(records, login)}`;
+  return records == null ? commit : `${commit} ${SEP} ${orgsText(records, login, current)}`;
 }
 
 // ── Line 3 ──────────────────────────────────────────────────────────────────

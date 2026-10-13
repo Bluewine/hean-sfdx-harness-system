@@ -150,20 +150,24 @@ leave no meter file. Line 3 then shows `🚕 –` with the `≈$` figure, and li
 ### Line 2
 
 ```
-💾 commits: per task │ 🛠️ dev: hean-dev → 🧱 reint (work-*): hean-reint → 🧪 qa (integration): hean-qa → 🎭 uat (release): - → 🔭 research: hean-res → 🏦 prod: hean-prod
+💾 commits: none │ 🛠️ dev:rewsdev[work-DEXRWO-500] → 🧱 build:reint[work-DEXRWO-500] → 🧪 qa:rewsSharedQA[integration] → 🎭 uat:rewsuat2[release] → 🏦 prod:-[master] │ 🔭 research:trailhead2
 ```
 
 - Commit preference: `commits: per task`, `commits: none`, or `commits: not set`.
-- Orgs come from the `orgs` key of the main checkout's `.claude/hean-harness.json`, ordered:
+- Orgs come from the `orgs` key of the main checkout's `.claude/hean-harness.json`.
+- The chain, joined by ` → `:
   1. `development`
   2. `pipeline`, ranked by saved `branch`: `work-*`, `integration`, `release*`, `main` or `master`,
      then any other branch alphabetically; ties keep the saved order
-  3. `research`
-  4. `production`
-- Each org reads `<icon> <environment name>[ (<branch>)]: <alias>`:
-  - Environment name: the part after the last `.` of a sandbox username; `prod` for a production
-    org; the role name for any other non-sandbox org.
-  - Branch: pipeline orgs only.
+  3. `production`
+- `research` orgs follow the chain after ` │ `, joined by ` · `.
+- Each org reads `<icon> <label>:<alias>[<branch>]`; `label:alias[branch]` is purple (ANSI 35):
+  - Label: `dev` for development, `prod` for production, `research` for research. A pipeline org
+    is named after its saved branch: `build` for `work-*`, `qa` for `integration`, `uat` for
+    `release*`, the branch name for any other branch, `pipeline` with no branch saved.
+  - Branch: the development org shows the session's branch only while it starts with `work-`. The
+    `work-*` pipeline org shows the session's branch while it starts with `work-`, otherwise its
+    saved `work-*`. Every other org shows its saved branch; no brackets when none is saved.
   - Alias: the saved alias when the org is logged in on this machine (`~/.sfdx/<username>.json`
     exists); the username when logged in without an alias; `-` when not logged in.
 - Icons: 🛠️ `development`; 🧱 `work-*`, 🧪 `integration`, 🎭 `release*`, 🚚 any other pipeline
