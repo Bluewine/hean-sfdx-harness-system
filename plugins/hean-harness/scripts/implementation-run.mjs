@@ -3,7 +3,7 @@
  * Starts and closes implementation runs, and reads and changes the saved
  * machine-wide implementation preference.
  *
- * For a subagent-driven run started with "no commits", finish undoes the
+ * For a run started with "no commits", in either dev mode, finish undoes the
  * run's commits so every change is left in the working tree for review.
  *
  *   implementation-run.mjs start --session <session id>
@@ -103,9 +103,8 @@ function startCommand() {
 function statusCommand() {
   const session = sessionArg();
   if (!session) { usage(); return; }
-  const { run, turn } = readState(session);
+  const { run } = readState(session);
   console.log(run ? JSON.stringify(run, null, 2) : 'No implementation run is open in this session.');
-  console.log(`Commit approved this turn: ${turn.approved ? 'yes' : 'no'}`);
   process.exit(0);
 }
 

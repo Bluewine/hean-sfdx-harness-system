@@ -27,7 +27,8 @@ the execution-method question at the end of a plan.
    - **Exit 0** — report the saved preference in one line, run step 3 (naming), then use the
      printed `Dev mode:` line as the execution method: `Subagent-driven` runs
      `superpowers:subagent-driven-development`, `Main session` runs the plan in this session.
-   - **Exit 3** — an earlier subagent-driven run in this repository still has commits to undo.
+   - **Exit 3** — an earlier run started with `No commits`, in either dev mode, in this
+     repository still has commits to undo.
      Report the printed reason word for word and stop.
 
 3. Step 3 runs after step 2 for every exit except 3. The execution method starts only after step 3

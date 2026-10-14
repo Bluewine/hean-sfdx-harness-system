@@ -1,6 +1,7 @@
 /**
- * Whether an agent may commit right now, decided from a saved preference and
- * what the user did in this session, rather than from what the agent says.
+ * The saved implementation preference, and what an open implementation run
+ * allows or refuses, decided from saved state rather than from what the agent
+ * says.
  *
  * The preference is one file per machine (PREFERENCE_FILE): { mode, commits }.
  * It applies in every repository and folder, with no per-repository override,
@@ -12,23 +13,14 @@
  * stops a model that ignores the rule from writing the file directly — the
  * constraint is instructional, not enforced by this module.
  *
- * A commit is allowed only when one of these holds:
+ * A commit is never refused. The gate guards only what would make a "no
+ * commits" run's undo unsafe: while an open run in a repository has commits
+ * "no" (either dev mode), `git push` and `git reset --hard` there are refused,
+ * because finishing the run moves the branch back to its first commit. Outside
+ * an open run nothing is refused.
  *
- *   the saved preference is "commit per task"          commits allowed, kept
- *   the user's latest message asks for a commit        approved for that turn
- *   an open subagent-driven "no commits" run            its own task review
- *   in this repository                                  reads the commits
- *
- * Otherwise the saved preference of "no commits" refuses the commit until the
- * user's own message asks for it.
- *
- * A turn is one user message: the approval word test runs only on a prompt
- * from the user (fromUser), and a new user message ends the previous turn's
- * approval. Task notifications and peer session messages arrive as prompts
- * too; they are not the user and change nothing.
- *
- * Session state (the current run, and this turn's approval) is one small file
- * per session under STATE_DIR/sessions.
+ * Session state (the current run) is one small file per session under
+ * STATE_DIR/sessions.
  */
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -39,44 +31,15 @@ import { git, tryGit } from './command-line.mjs';
 
 export { PREFERENCE_FILE };
 export const FINISH_SKILL = 'hean-harness:finish-implementation';
-export const RULE = '~/.claude/rules/implementation-commits.md';
 export const MODE_HEADER = 'Dev mode';
 export const COMMITS_HEADER = 'Commits';
 export const NO_PREFERENCE = 'No implementation preference is saved on this machine.';
-
-const COMMIT_WORD = /\bcommit(s|ted|ting)?\b/gi;
-const NEGATIONS = new Set(['dont', 'not', 'never', 'no', 'without']);
-
-/** The word immediately before index in text, apostrophes stripped and lower-cased, or '' when there is none. */
-function wordBefore(text, index) {
-  const m = text.slice(0, index).match(/([A-Za-z'’]+)\s*$/);
-  return m ? m[1].toLowerCase().replace(/['’]/g, '') : '';
-}
-
-/**
- * Does this prompt ask for a commit? True when it contains commit, commits,
- * committed or committing as a word, unless that match is directly preceded
- * by a negation word (don't, dont, do not, not, never, no, without) or
- * directly followed by a hyphen, as in /hean-harness:commit-format.
- */
-function approvesCommit(prompt) {
-  COMMIT_WORD.lastIndex = 0;
-  let m;
-  while ((m = COMMIT_WORD.exec(prompt))) {
-    const end = m.index + m[0].length;
-    if (prompt[end] === '-') continue;
-    if (NEGATIONS.has(wordBefore(prompt, m.index))) continue;
-    return true;
-  }
-  return false;
-}
-
 
 const stateFile = session => join(STATE_DIR, 'sessions', `${session}.json`);
 const validSession = session => typeof session === 'string' && /^[A-Za-z0-9_-]+$/.test(session);
 
 export function readState(session) {
-  const empty = { turn: { approved: false }, run: null };
+  const empty = { run: null };
   if (!validSession(session)) return empty;
   try { return { ...empty, ...JSON.parse(readFileSync(stateFile(session), 'utf8')) }; } catch { return empty; }
 }
@@ -102,16 +65,6 @@ export function readPreference() {
 export function savePreference(preference) {
   mkdirSync(STATE_DIR, { recursive: true });
   writeFileSync(PREFERENCE_FILE, JSON.stringify(preference, null, 2) + '\n');
-}
-
-/** Does this prompt come from the user, rather than a task notification or another session? */
-export const fromUser = prompt =>
-  !/^\s*<task-notification>/.test(prompt) && !/<cross-session-message[\s>]/.test(prompt.slice(0, 300));
-
-/** A new user message: the previous turn's approval ends, and this one may grant its own. */
-export function onPrompt(state, prompt) {
-  if (!fromUser(prompt)) return state;
-  return { ...state, turn: { approved: approvesCommit(prompt) } };
 }
 
 /**
@@ -145,7 +98,7 @@ export function implementationAnswers(response) {
   return result;
 }
 
-const pendingUndo = run => run?.mode === 'subagent' && run?.commits === 'no';
+const pendingUndo = run => run?.commits === 'no';
 
 /** A preference or a run's own {mode, commits} as the two phrases a reader sees, e.g. { mode: 'subagent-driven', commits: 'commit per task' }. */
 export function preferenceText(preference) {
@@ -175,7 +128,7 @@ export function startRun(state, preference, cwd) {
                        note: 'Not in a git repository, so no implementation run was recorded. There is nothing here for the commit gate to apply to.' };
   if (pendingUndo(state.run) && state.run.repo === repo) {
     return { state, started: false, reason: 'pending-undo',
-             note: `An earlier subagent-driven run in ${repo} still has commits to undo. ` +
+             note: `An earlier run with no commits in ${repo} still has commits to undo. ` +
                    `Run ${FINISH_SKILL} first, then start the implementation again.` };
   }
   const run = {
@@ -186,8 +139,7 @@ export function startRun(state, preference, cwd) {
     dirtyAtStart: !!tryGit(repo, 'status', '--porcelain')
   };
   const how = run.commits === 'yes' ? 'Commit each task; the commits stay.'
-    : run.mode === 'main' ? 'Do not commit. The gate refuses commits during this run.'
-    : 'Commit each task so its review can read the diff. The commits are undone when the run finishes.';
+    : 'Commit each task. The commits are undone when the run finishes.';
   return { state: { ...state, run }, started: true,
            note: `Implementation run recorded: ${describePreference(run)}, ` +
                  `starting at ${run.base?.slice(0, 7) ?? 'an empty branch'} on ${run.branch ?? 'a detached HEAD'}. ` +
@@ -196,28 +148,14 @@ export function startRun(state, preference, cwd) {
 
 /**
  * Why this git command may not run now, or null when it may.
- * c is { sub, args }; repo is the repository it acts on; preference is the
- * saved machine-wide preference, or null when none is saved.
+ * c is { sub, args }; repo is the repository it acts on. A commit is never
+ * refused.
  */
-export function refusal(state, preference, c, repo) {
+export function refusal(state, c, repo) {
   const run = state.run && state.run.repo === repo ? state.run : null;
 
-  if (c.sub === 'commit') {
-    if (!preference) {
-      return `${NO_PREFERENCE}\n\n` +
-             `Ask the two implementation questions (headers "${MODE_HEADER}" and "${COMMITS_HEADER}") in one ` +
-             `AskUserQuestion call before committing. Rules: ${RULE}`;
-    }
-    if (preference.commits === 'yes') return null;
-    if (state.turn.approved) return null;
-    if (pendingUndo(run)) return null;
-    return `The saved preference is "No commits".\n\n` +
-           `List every file created, changed or deleted, with one line on why, leave the changes ` +
-           `uncommitted, and stop. The commit goes through when the user's own message asks for it.`;
-  }
-
   if (pendingUndo(run) && (c.sub === 'push' || (c.sub === 'reset' && c.args.includes('--hard')))) {
-    return `The subagent-driven run in ${repo} was started with "no commits", so its per-task commits ` +
+    return `The ${run.mode === 'subagent' ? 'subagent-driven' : 'main-session'} run in ${repo} was started with "no commits", so its per-task commits ` +
            `are undone when it finishes and must not leave this machine or be discarded.\n\n` +
            `Run ${FINISH_SKILL} first. It moves the branch back to ${run.base?.slice(0, 7)} and ` +
            `leaves every change in the working tree for the user to review.`;
@@ -226,7 +164,7 @@ export function refusal(state, preference, c, repo) {
 }
 
 /**
- * End the session's run. For a subagent-driven run with no commits, undo its
+ * End the session's run. For a run with no commits (either dev mode), undo its
  * commits: move the branch back to the run's first commit and unstage, which
  * leaves every file as the run left it. Returns the lines to print.
  */

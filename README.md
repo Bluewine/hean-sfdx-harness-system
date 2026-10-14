@@ -72,15 +72,15 @@ shell's startup file and prints the command that loads it.
 
 Two answers decide how implementation work is committed: `Dev mode` (Subagent-driven or Main
 session) and `Commits` (Commit per task or No commits). They are asked once and saved for the whole
-machine in `~/.claude/hean-harness/implementation.json`, so they apply in every repository.
+machine in `~/.claude/hean-harness/implementation.json`, so they apply in every repository. They
+apply only to implementation runs started by `/hean-harness:start-implementation`.
 
 - **Change it:** ask in a session, for example "switch to commit per task", and click the answer; or
   type `/hean-harness:implementation-defaults` with `show`, `clear`, `commits on`, `commits off`,
   `mode subagent` or `mode main`.
-- **What the commit check allows:** a `git commit` goes through when the setting is Commit per task,
-  when your latest message asks for a commit, or during an open subagent-driven No commits run, whose
-  task commits its reviewers read. Otherwise the commit is refused.
-- **During a No commits run:** `git push` and `git reset --hard` are refused until
+- **Commits outside a run:** nothing blocks a commit. The session commits when you ask for one.
+- **During a Commit per task run:** the commits stay and nothing is refused.
+- **During a No commits run, in either dev mode:** `git push` and `git reset --hard` are refused until
   `/hean-harness:finish-implementation` undoes the run's commits and leaves every change unstaged in
   the working tree.
 

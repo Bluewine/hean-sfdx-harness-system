@@ -1,6 +1,6 @@
 ---
 name: finish-implementation
-description: Implementation run closer — ends the session's run and, for a subagent-driven run started with "no commits", undoes its per-task commits back to the run's first commit so every change sits uncommitted and unstaged for the user's review
+description: Implementation run closer — ends the session's run and, for a run started with "no commits", undoes its per-task commits back to the run's first commit so every change sits uncommitted and unstaged for the user's review
 allowed-tools: ["Bash", "Read"]
 ---
 
@@ -22,7 +22,7 @@ after any final whole-branch review, because those reviews read the run's commit
    - whether commits were undone, and the list of undone commits;
    - every line starting with `!!`, under its own heading;
    - every file created, changed or deleted, with one line on why.
-4. Stop. The user reviews the changes and asks for a commit in their own message.
+4. Stop. The user reviews the changes and asks for a commit.
 
 ## Rules
 

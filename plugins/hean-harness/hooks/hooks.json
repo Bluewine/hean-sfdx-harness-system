@@ -116,17 +116,6 @@
           }
         ]
       }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/commit-lifecycle-events.mjs\"",
-            "timeout": 10
-          }
-        ]
-      }
     ]
   }
 }

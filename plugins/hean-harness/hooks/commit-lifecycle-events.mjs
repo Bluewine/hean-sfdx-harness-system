@@ -1,11 +1,8 @@
 #!/usr/bin/env node
 /**
- * Records what the user did in this session that the commit approval gate
- * decides on:
+ * Saves the implementation answers and starts the run the commit approval
+ * gate reads:
  *
- *   UserPromptSubmit         a new user message ends the previous turn's
- *                            approval; a message asking for a commit grants
- *                            one for this turn
  *   PostToolUse, AskUserQuestion
  *                            the user answered one or both implementation
  *                            questions: the saved machine-wide preference is
@@ -17,7 +14,7 @@
 
 import { readFileSync } from 'node:fs';
 
-import { readState, writeState, onPrompt, readPreference, savePreference, implementationAnswers, startRun, describePreference }
+import { readState, writeState, readPreference, savePreference, implementationAnswers, startRun, describePreference }
   from '../scripts/lib/commit-lifecycle.mjs';
 
 let input = {};
@@ -26,9 +23,6 @@ const session = input?.session_id;
 const state = readState(session);
 
 switch (input?.hook_event_name) {
-  case 'UserPromptSubmit':
-    writeState(session, onPrompt(state, String(input.prompt ?? '')));
-    break;
   case 'PostToolUse': {
     if (input.tool_name !== 'AskUserQuestion') break;
     const answers = implementationAnswers(input.tool_response);

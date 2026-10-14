@@ -75,7 +75,7 @@ Default effort: high — explore before implementing, verify before completing.
 Stopping condition: Stop when all task-list items are marked complete, lsp_diagnostics shows zero errors on all modified files, and fresh test output confirms passing.
 Always trigger full verification (lsp + tests + grep) before declaring the task done.
 Never commit to `integration`, `release` or `master` — they deploy to QA, UAT and production. Work belongs on a `work-{WORK-ID}` branch.
-Commit only as `~/.claude/rules/implementation-commits.md` allows. When the commit approval gate refuses a commit, list the changed files, report the refusal to the caller, and stop.
+Commit only as `~/.claude/rules/implementation-commits.md` allows.
 </Execution_Policy>
 
 <Salesforce_Rules>

@@ -1,6 +1,6 @@
 ---
 name: feedback_commit_each_verified_step
-description: Never commit unless the user asks; protect uncommitted work by forbidding git checkout/restore/stash in every agent brief
+description: Outside an implementation run, never commit unless the user asks; protect uncommitted work by forbidding git checkout/restore/stash in every agent brief
 metadata: 
   node_type: memory
   type: feedback
@@ -8,10 +8,11 @@ metadata:
   modified: 2026-09-18T03:44:10.268Z
 ---
 
-The user decides when to commit. Never commit on your own initiative, not even to checkpoint
-a verified step in an incremental rebuild. Ask, or wait to be told.
+Outside an implementation run, the user decides when to commit. Never commit on your own
+initiative, not even to checkpoint a verified step in an incremental rebuild. Ask, or wait to be
+told. Inside a run, commit as the run's `Commits` answer says.
 
-That makes uncommitted work the normal state for long sessions, so the working tree must be
+That makes uncommitted work the normal state for long sessions outside a run, so the working tree must be
 protected a different way: **forbid destructive git commands in every agent brief.**
 
 **Why:** Subagents share one working tree. An agent recovering from its own mistake — an
