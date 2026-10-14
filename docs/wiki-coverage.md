@@ -25,7 +25,7 @@ Updated whenever a skill, agent, hook, or rule is added, removed, or renamed —
 | memory-review | — | pending (exists, not in original scope) |
 | open-work-report | — | pending (exists, not in original scope) |
 | release-pr | Skills | excluded (turned off, SKILL.mdx) |
-| env-release-pr | Skills | pending |
+| env-release-pr | Skills | documented |
 | start-implementation | Skills | documented |
 | update-pr | Skills | documented |
 | test-changed | — | pending (exists, not in original scope) |

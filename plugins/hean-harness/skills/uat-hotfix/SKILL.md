@@ -320,8 +320,25 @@ All three PRs follow the same shape and build their body from create-pr's own fi
 
 Build each body in this order. The commit range for a PR is `git merge-base origin/<base> <head>` to `<head>`.
 
-1. **Story lookup.** Resolve `TITLE`, `LINEAR_URL` and `ISSUE_DESCRIPTION` for `{ID}` as create-pr's Phase 3 does, including the manual fallback. The PR title is `@{ID}: <Summary>` from `TITLE`, 77 characters or fewer.
-2. **Template.** Read `${CLAUDE_PLUGIN_ROOT}/skills/create-pr/templates/pr-body.md`. Replace `{WORK-ID}` with `{ID}`, `{TITLE}` and `{LINEAR_URL}` with the story values.
+1. **Story lookup.** Resolve `TITLE`, `LINEAR_URL` and `ISSUE_DESCRIPTION` for `{ID}` as create-pr's Phase 3 does, including the manual fallback. Build `PR_TITLE` for the PR being opened:
+
+   | PR | `PR_TITLE` |
+   |---|---|
+   | 1 | `@{ID}: ` + `TITLE` with the `[Hotfix]` tag removed |
+   | 2 | `@{ID}: ` + `TITLE` unchanged when `TITLE` already contains the `[Hotfix]` tag; otherwise `@{ID}: [Hotfix] ` + `TITLE` |
+   | 3 | exactly `@{ID}: Backmerge` |
+
+   - **The tag:** only `[Hotfix]` in square brackets, in any capitalisation (`[Hotfix]`, `[HotFix]`, `[HOTFIX]`). A plain `Hotfix` word without square brackets is not the tag: PR 1 leaves it, and PR 2 still adds `[Hotfix] ` in front.
+   - **Removal in PR 1:** remove the tag together with one separator directly after it (` - ` or `:`), then collapse doubled spaces and trim. If nothing but the tag was there, keep the rest as is.
+   - **Length:** the whole title is 77 characters or fewer. When it must be shortened, shorten only the part taken from `TITLE`; never cut `[Hotfix]` or `Backmerge`.
+
+   | Linear `TITLE` | PR 1 | PR 2 | PR 3 |
+   |---|---|---|---|
+   | `ABC: [Hotfix] - Remove X` | `@{ID}: ABC: Remove X` | `@{ID}: ABC: [Hotfix] - Remove X` | `@{ID}: Backmerge` |
+   | `[Hotfix] Simplify criteria` | `@{ID}: Simplify criteria` | `@{ID}: [Hotfix] Simplify criteria` | `@{ID}: Backmerge` |
+   | `Grant edit access to Active__c` | `@{ID}: Grant edit access to Active__c` | `@{ID}: [Hotfix] Grant edit access to Active__c` | `@{ID}: Backmerge` |
+   | `RE Approval Hotfix` | `@{ID}: RE Approval Hotfix` | `@{ID}: [Hotfix] RE Approval Hotfix` | `@{ID}: Backmerge` |
+2. **Template.** Read `${CLAUDE_PLUGIN_ROOT}/skills/create-pr/templates/pr-body.md`. Replace `{WORK-ID}` with `{ID}`, `{TITLE}` and `{LINEAR_URL}` with the story values. `{TITLE}` is the plain Linear title in all three PRs, never `PR_TITLE`.
 3. **Bullets.** Read `${CLAUDE_PLUGIN_ROOT}/skills/create-pr/bullets.md`. Write the "What was Done?" bullets from `ISSUE_DESCRIPTION` and the PR's commits. Sort the commits into the main, Sonar and Framework buckets as create-pr's Phase 4 does, and fill `{BULLETS}`, `{SONAR_BULLETS}` and `{FRAMEWORK_BULLETS}`. Remove each empty section as create-pr's Phase 7 does. PR 3 adds its config-reset bullet to `{BULLETS}`.
 4. **Deployment steps.** Fill `{DEPLOYMENT_STEPS}` as create-pr's Phase 5 does, from the files the PR's commit range changes. Follow `.claude/rules/runbook-deployment-steps.md` and read the repository's `deploy.yml` for the steps each stage runs. Ask the manual-steps question from Phase 5 once per hotfix, at PR 1, and reuse its answers for PRs 2 and 3 because they carry the same fix. Do not ask again. Remove the section when no rows result.
 5. **Screenshots.** Ask create-pr's Phase 6 question once per PR, reading its "Story {N}" as the hotfix story `{ID}`, with `{ID}` and `TITLE`. An answer other than an explicit yes removes the template's Screenshots block. On yes, run Phase 6's capture flow and save the files here:
@@ -332,7 +349,7 @@ Build each body in this order. The commit range for a PR is `git merge-base orig
    ```
 
    Build the body lines and the closing drag-in note in the format Phase 6 Step 4 gives, with the path `{SHOTS_ROOT}/.claude/skills/uat-hotfix/output/screenshots/{ID}/{filename}`. After the PR is created, offer create-pr's Phase 10 wipe, applied to the uat-hotfix folder `$SHOTS_ROOT/.claude/skills/uat-hotfix/output/screenshots/{ID}` and not create-pr's.
-6. **Body check.** Write the body with the PR title comment as its first line, as create-pr's Phase 7 does. Run create-pr's template-marker check and its attribution check on the file, as update-pr does. Strip any hit, rewrite the file and re-run the check before `gh pr create`.
+6. **Body check.** Write the body with the PR title comment (`PR_TITLE`) as its first line, as create-pr's Phase 7 does. Run create-pr's template-marker check and its attribution check on the file, as update-pr does. Strip any hit, rewrite the file and re-run the check before `gh pr create`.
 
 Submit with an explicit head and base:
 
@@ -340,7 +357,7 @@ Submit with an explicit head and base:
 gh pr create \
   --base <base> \
   --head <head> \
-  --title "@{ID}: <Summary>" \
+  --title "{PR_TITLE}" \
   --body-file .claude/skills/uat-hotfix/output/{ID}.md \
   --assignee @me
 ```
@@ -402,3 +419,5 @@ Report the hotfix complete only when `PR3_MERGED` holds and `origin/integration`
 | Rewording the `Back-merge and config reset` commit | Resumed runs miss `RESET_READY` and re-enter Phase 4b |
 | Squash-merging any of the three PRs | Destroys the `@{ID}: ` subjects Phase 0 detects from |
 | Committing with `git add .` | Sweeps unrelated working-tree changes into an urgent, lightly-reviewed PR |
+| `[Hotfix]` added twice in PR 2 | The title reads `[Hotfix] [Hotfix] ...`; check `TITLE` for the tag first and add it only when absent |
+| Story title used for the back-merge PR | PR 3 reads like the fix; its title is exactly `@{ID}: Backmerge` |
