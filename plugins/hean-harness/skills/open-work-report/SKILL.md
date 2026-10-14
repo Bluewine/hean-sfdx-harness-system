@@ -7,9 +7,9 @@ You are executing the `/open-work-report` skill. Work through the phases below i
 
 ## The scope rule
 
-**This skill owns everything *before* integration. `/release-pr` owns everything after it.**
+**This skill owns everything *before* integration. `/hean-harness:env-release-pr` owns everything after it.**
 
-A story appears here when it owns commits that have **not** reached `origin/integration`. Once merged, it stops being open work and becomes `/release-pr`'s business — that skill computes `origin/release..origin/integration` for the UAT deployment. The two never overlap, and neither recomputes the other's range.
+A story appears here when it owns commits that have **not** reached `origin/integration`. Once merged, it stops being open work and becomes `/hean-harness:env-release-pr`'s business — that skill computes `origin/release..origin/integration` for the UAT deployment and `origin/master..origin/release` for the Production Release. The two never overlap, and neither recomputes the other's range.
 
 The row set is defined by git, not by Linear. A Linear cycle cannot tell you what is unmerged; only the refs can. Linear is used solely to enrich each row with subject, assignee, and sprint.
 
@@ -28,7 +28,7 @@ node "${CLAUDE_PLUGIN_ROOT}/skills/open-work-report/scripts/open-work.mjs" \
 
 Never run the fetch under `--quiet` — it hides a failure, and a stale `origin/integration` silently inflates the report with work that is already merged.
 
-**The verify step is not optional and its failure is not advisory.** `origin/integration` is a local copy of the remote, only as fresh as the last *successful* fetch, and a failed fetch is silent — the stale ref simply keeps answering. `verify-remote-refs.mjs` compares it against what GitHub actually has and exits non-zero on any mismatch; stop the run there rather than reporting merged stories as open work. The same script guards `/release-pr`, so the check lives in one place and cannot drift between the two skills.
+**The verify step is not optional and its failure is not advisory.** `origin/integration` is a local copy of the remote, only as fresh as the last *successful* fetch, and a failed fetch is silent — the stale ref simply keeps answering. `verify-remote-refs.mjs` compares it against what GitHub actually has and exits non-zero on any mismatch; stop the run there rather than reporting merged stories as open work. The same script guards `/hean-harness:env-release-pr`, so the check lives in one place and cannot drift between the two skills.
 
 The script emits `{ integration, rows, mentionOnly }`:
 
@@ -61,7 +61,7 @@ Cycle numbers restart per team, so never reuse one team's cycle list for another
 
 ## Phase 4 — Order the rows
 
-Same order as `/release-pr`, so the two reports read alike:
+Same order as `/hean-harness:env-release-pr`, so the two reports read alike:
 
 1. **Sprint block, descending by cycle `startsAt`.** Never sort on cycle `number`.
 2. **Within a block, work ID ascending** — team key ascending, then the numeric part compared **as a number**: `ABC-96` precedes `ABC-146`.
@@ -77,7 +77,7 @@ Work ID | Branch | Subject | Assignee | Sprint | Push status
 -- | -- | -- | -- | -- | -- |
 ```
 
-**Work ID and Sprint are links; Branch, Subject, Assignee and Push status are not** — otherwise the same rule `/release-pr` follows. Escape any `|` inside a title or assignee as `\|`.
+**Work ID and Sprint are links; Branch, Subject, Assignee and Push status are not** — otherwise the same rule `/hean-harness:env-release-pr` follows. Escape any `|` inside a title or assignee as `\|`.
 
 Render `branches` as inline code, comma-separated when a story spans more than one. Local and remote copies of the same branch are one name — `refs/heads/foo` and `refs/remotes/origin/foo` collapse to `foo`.
 
@@ -109,7 +109,7 @@ Push state says nothing about delivery — every row here is unmerged by definit
 | Mistake | Correction |
 |---|---|
 | Row set built from a Linear cycle | Only the git refs know what is unmerged; Linear enriches, never selects |
-| Including work already in integration | That is `/release-pr`'s range; this skill stops at integration |
+| Including work already in integration | That is `/hean-harness:env-release-pr`'s range; this skill stops at integration |
 | Treating `fully local` as a delivery problem | It is a visibility and backup problem; nothing here is delivered either way |
 | Reading `⚠ also in integration` as partial delivery | It usually means two different efforts share one work ID |
 | Scanning `--all` instead of `--branches --remotes` | `--all` walks the stash and tags; a stash entry is not work in flight |

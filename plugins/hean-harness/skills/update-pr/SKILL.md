@@ -5,7 +5,7 @@ description: Update an existing open PR body — detects root and merged child-b
 
 You are executing the `/update-pr` skill. Work through the phases below in order.
 
-Every request to update or refresh an open pull request's body runs this skill, whatever the PR's base branch, except a PR that release-pr, uat-hotfix or version-bump opens or edits as one of its own steps. Render the body from this skill's template, unless the user asks in their own words for a different body or template — then write the body as they ask, skip the template self-check, and keep every other phase.
+Every request to update or refresh an open pull request's body runs this skill, whatever the PR's base branch, except a PR that env-release-pr, uat-hotfix or version-bump opens or edits as one of its own steps. Render the body from this skill's template, unless the user asks in their own words for a different body or template — then write the body as they ask, skip the template self-check, and keep every other phase.
 
 ## Phase 1 — Extract branch work ID
 

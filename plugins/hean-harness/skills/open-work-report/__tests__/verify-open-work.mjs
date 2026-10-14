@@ -18,7 +18,7 @@ check('emits rows and mentionOnly', Array.isArray(out.rows) && Array.isArray(out
   Object.keys(out).join(','));
 
 // The defining property: nothing already merged to integration may appear. This
-// is what keeps the skill disjoint from /release-pr.
+// is what keeps the skill disjoint from /hean-harness:env-release-pr.
 const integrationIds = new Set();
 for (const s of git(['log', 'origin/integration', '--format=%s']).split('\n').filter(Boolean)) {
   for (const raw of s.match(/\b[A-Z]{2,}-[0-9]+/g) ?? []) integrationIds.add(raw);

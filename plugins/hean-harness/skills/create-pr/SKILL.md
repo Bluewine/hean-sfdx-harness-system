@@ -1,12 +1,12 @@
 ---
 name: create-pr
-description: GitHub PR assembler for every PR request on any base branch, except PRs release-pr, uat-hotfix or version-bump open — resolves the base branch and Linear stories, writes problem-solved bullets, splits Sonar-fix and Framework-change bullets, detects runbook steps, asks for manual ones, writes the review body, then calls gh pr create
+description: GitHub PR assembler for every PR request on any base branch, except PRs env-release-pr, uat-hotfix or version-bump open — resolves the base branch and Linear stories, writes problem-solved bullets, splits Sonar-fix and Framework-change bullets, detects runbook steps, asks for manual ones, writes the review body, then calls gh pr create
 argument-hint: "[--base <branch>]"
 ---
 
 You are executing the `/create-pr` skill. Work through the phases below in order.
 
-Every request to open, create or raise a pull request runs this skill, whatever the target branch, except a PR that release-pr, uat-hotfix or version-bump opens or edits as one of its own steps. Render the body from this skill's template, unless the user asks in their own words for a different body or template — then write the body as they ask, skip the template self-check, and keep every other phase.
+Every request to open, create or raise a pull request runs this skill, whatever the target branch, except a PR that env-release-pr, uat-hotfix or version-bump opens or edits as one of its own steps. Render the body from this skill's template, unless the user asks in their own words for a different body or template — then write the body as they ask, skip the template self-check, and keep every other phase.
 
 ## Phase 0 — Base branch
 

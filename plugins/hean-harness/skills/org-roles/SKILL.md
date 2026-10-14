@@ -43,7 +43,7 @@ so every git worktree of the repository shows and saves the same roles.
      `<value> (saved)`. `Keep (saved)` saves nothing for that org.
    - **Missing value:** one question per value, with a proposal first, marked `(Recommended)`,
      and where the proposal came from: the alias, the CI and deploy configuration
-     (the discovery steps in `.claude/rules/org-roles.md`), or a skill such as `release-pr`.
+     (the discovery steps in `.claude/rules/org-roles.md`), or a skill such as `env-release-pr`.
    - **Values already stated:** take values the user stated in this conversation and do not ask
      for them again.
    - **Batching:** put the questions in as few `AskUserQuestion` calls as possible, four per call.

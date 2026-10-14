@@ -69,7 +69,7 @@ for (const line of lines) {
   }
 }
 
-// Owning test, identical in intent to release-pr: a candidate earns a row only
+// Owning test, identical in intent to env-release-pr: a candidate earns a row only
 // if it owns a commit — as the `@ID:` subject prefix, or as the `work-ID` branch
 // in a merge subject. An ID appearing only inside another story's subject is a
 // cross-reference, not work in flight.
