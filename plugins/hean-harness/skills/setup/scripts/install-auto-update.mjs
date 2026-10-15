@@ -20,16 +20,16 @@
  * line and a real run says no choice was made.
  *
  * The choice lasts across setup runs: the revert setup runs first keeps every
- * recorded autoUpdate key (the `choices` category in lib/manifest.mjs), and
+ * recorded autoUpdate key (the `choices` category in scripts/lib/manifest.mjs), and
  * each entry keeps the value from before the first setup for uninstall.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { init, revert, isAutoUpdateKey } from './lib/manifest.mjs';
-import { installJsonKey } from './lib/install.mjs';
-import { claudeDir } from './lib/paths.mjs';
+import { init, revert, isAutoUpdateKey } from '../../../scripts/lib/manifest.mjs';
+import { installJsonKey } from '../../../scripts/lib/install.mjs';
+import { claudeDir } from '../../../scripts/lib/paths.mjs';
 
 const INSTALLED = join(claudeDir(), 'plugins', 'installed_plugins.json');
 const KNOWN = join(claudeDir(), 'plugins', 'known_marketplaces.json');
@@ -64,7 +64,7 @@ function findMarketplace() {
  * Build the dotted key installJsonKey needs for one marketplace's autoUpdate
  * flag, or null when the name cannot be represented that way.
  *
- * setJsonKey/getJsonKey (lib/manifest.mjs) split a key on every ".", with no
+ * setJsonKey/getJsonKey (scripts/lib/manifest.mjs) split a key on every ".", with no
  * escaping, so a marketplace name that itself contains a dot cannot be
  * addressed safely: the split would reach into the wrong nested object
  * instead of this one entry. That name is refused rather than risking a wrong

@@ -13,12 +13,12 @@ import { readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { STATE_DIR, init } from './lib/manifest.mjs';
-import { installFile, installBlock } from './lib/install.mjs';
-import { detectShell, aliasLine, claudeCommand, MARKER, SUPPORTED } from './lib/shell.mjs';
+import { STATE_DIR, init } from '../../../scripts/lib/manifest.mjs';
+import { installFile, installBlock } from '../../../scripts/lib/install.mjs';
+import { detectShell, aliasLine, claudeCommand, MARKER, SUPPORTED } from '../../../scripts/lib/shell.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const PLUGIN_ROOT = dirname(HERE);
+const PLUGIN_ROOT = dirname(dirname(dirname(HERE)));
 const SOURCE = join(PLUGIN_ROOT, 'assets', 'system-prompt', 'global-system-prompt.txt');
 const DEST = join(STATE_DIR, 'global-system-prompt.txt');
 

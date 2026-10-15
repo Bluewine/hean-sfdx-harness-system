@@ -22,9 +22,9 @@
 
 import { join } from 'node:path';
 
-import { init } from './lib/manifest.mjs';
-import { installJsonKey } from './lib/install.mjs';
-import { claudeDir } from './lib/paths.mjs';
+import { init } from '../../../scripts/lib/manifest.mjs';
+import { installJsonKey } from '../../../scripts/lib/install.mjs';
+import { claudeDir } from '../../../scripts/lib/paths.mjs';
 
 const SETTINGS = join(claudeDir(), 'settings.json');
 const KEYS = [

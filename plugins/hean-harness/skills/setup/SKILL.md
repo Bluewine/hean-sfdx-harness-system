@@ -14,7 +14,7 @@ Install the environment. Show the user what will change before changing it.
 1. Show what would change, without changing anything:
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" --dry-run
+   node "${CLAUDE_SKILL_DIR}/scripts/setup.mjs" --dry-run
    ```
 
 2. Show that output to the user and ask whether to go ahead. Wait for an answer. When the output
@@ -49,7 +49,7 @@ Install the environment. Show the user what will change before changing it.
 3. When the user agrees, run it, adding only the flags the user chose:
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" [--replace-githook] [--edit-mcp] [--commit-format on|off] [--auto-update all|hean|off] [--naming-apex <spec>] [--naming-lwc <spec>]
+   node "${CLAUDE_SKILL_DIR}/scripts/setup.mjs" [--replace-githook] [--edit-mcp] [--commit-format on|off] [--auto-update all|hean|off] [--naming-apex <spec>] [--naming-lwc <spec>]
    ```
 
    `<spec>` is `use=no` or `use=yes,prefix=X,suffix=Y`, leaving out an empty token.

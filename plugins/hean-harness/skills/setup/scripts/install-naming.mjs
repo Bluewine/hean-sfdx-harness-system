@@ -8,8 +8,8 @@
  * give, so the setup skill can ask.
  */
 
-import { projectRoot } from './lib/org-roles.mjs';
-import { TYPES, readNaming, saveNaming, validate, describe, suggest } from './lib/naming.mjs';
+import { projectRoot } from '../../../scripts/lib/org-roles.mjs';
+import { TYPES, readNaming, saveNaming, validate, describe, suggest } from '../../../scripts/lib/naming.mjs';
 
 const argv = process.argv.slice(2);
 const dryRun = argv.includes('--dry-run');

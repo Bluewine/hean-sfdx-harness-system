@@ -13,12 +13,12 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { init } from './lib/manifest.mjs';
-import { recordExternal, installRepoMcpFile } from './lib/install.mjs';
+import { init } from '../../../scripts/lib/manifest.mjs';
+import { recordExternal, installRepoMcpFile } from '../../../scripts/lib/install.mjs';
 import { allChecks, reportChecks, checkSuperpowers, checkEgoSkills, checkEgoLite, currentRepo,
          present, run, marketplacePresent, egoBrowserFromSkillsTool,
-         SUPERPOWERS_PLUGIN, EGO_PLUGIN, EGO_LITE_URL } from './lib/environment.mjs';
-import { findLinear, addLinear, removeCommand, LINEAR_NAME } from './lib/mcp.mjs';
+         SUPERPOWERS_PLUGIN, EGO_PLUGIN, EGO_LITE_URL } from '../../../scripts/lib/environment.mjs';
+import { findLinear, addLinear, removeCommand, LINEAR_NAME } from '../../../scripts/lib/mcp.mjs';
 
 const argv = process.argv.slice(2);
 const doInstall = argv.includes('--install');

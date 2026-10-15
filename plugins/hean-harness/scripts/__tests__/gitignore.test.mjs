@@ -18,6 +18,7 @@ import { ensureIgnored, missingLines, COMMENT } from '../lib/gitignore.mjs';
 
 // <plugin>/scripts/__tests__/ -> <plugin>/scripts
 const SCRIPTS = dirname(dirname(fileURLToPath(import.meta.url)));
+const SETUP = join(dirname(SCRIPTS), 'skills', 'setup', 'scripts');
 
 const root = mkdtempSync(join(tmpdir(), 'hean-gitignore-'));
 
@@ -102,7 +103,7 @@ try {
   // 5. a dry run changes nothing
   const before5 = before1;
   const repo5 = repoTrackingHooks('dry-run', before5);
-  const dryRun = execFileSync('node', [join(SCRIPTS, 'init-gitignore.mjs'), '--repo', repo5, '--dry-run'],
+  const dryRun = execFileSync('node', [join(SETUP, 'init-gitignore.mjs'), '--repo', repo5, '--dry-run'],
                                { encoding: 'utf8' });
   const after5 = readFileSync(join(repo5, '.gitignore'), 'utf8');
   check('a dry run leaves the file untouched', after5 === before5);

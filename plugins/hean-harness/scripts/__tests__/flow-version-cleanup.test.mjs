@@ -13,7 +13,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SCRIPTS = dirname(dirname(fileURLToPath(import.meta.url)));
-const lib = await import(join(SCRIPTS, 'lib', 'flow-version-cleanup.mjs'));
+const lib = await import(join(dirname(SCRIPTS), 'skills', 'flow-version-cleanup', 'scripts', 'lib', 'flow-version-cleanup.mjs'));
 
 let failures = 0;
 const check = (label, ok, detail = '') => {
@@ -172,7 +172,7 @@ console.log('command line');
   const { spawnSync } = await import('node:child_process');
   const { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, rmSync, realpathSync, copyFileSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
-  const CLI = join(SCRIPTS, 'flow-version-cleanup.mjs');
+  const CLI = join(dirname(SCRIPTS), 'skills', 'flow-version-cleanup', 'scripts', 'flow-version-cleanup.mjs');
   const sandbox = realpathSync(mkdtempSync(join(tmpdir(), 'flow-cleanup-')));
   const BIN = join(sandbox, 'bin');
   mkdirSync(BIN);

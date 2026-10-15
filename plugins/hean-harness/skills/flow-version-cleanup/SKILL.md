@@ -40,7 +40,7 @@ Run every command from the SFDX project root.
    was given:
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/flow-version-cleanup.mjs" plan --org <org> --count <N>
+   node "${CLAUDE_SKILL_DIR}/scripts/flow-version-cleanup.mjs" plan --org <org> --count <N>
    ```
 
    - **Exit 1 with "matches more than one org", "no org logged in on this machine matches", "no org
@@ -80,7 +80,7 @@ Run every command from the SFDX project root.
 6. **Delete.** Run:
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/flow-version-cleanup.mjs" apply "<PLAN_FILE>"
+   node "${CLAUDE_SKILL_DIR}/scripts/flow-version-cleanup.mjs" apply "<PLAN_FILE>"
    ```
 
    Each batch of 25 versions takes about 30 seconds. Use a 600000 ms timeout; when the plan's total

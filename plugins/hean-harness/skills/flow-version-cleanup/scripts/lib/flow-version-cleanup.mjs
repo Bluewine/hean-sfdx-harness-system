@@ -8,8 +8,8 @@
  * Site Setting or Named Credential deployed to the org.
  */
 
-import { formatRanges } from './apex-coverage.mjs';
-import { shQuote } from './shell.mjs';
+import { formatRanges } from '../../../../scripts/lib/apex-coverage.mjs';
+import { shQuote } from '../../../../scripts/lib/shell.mjs';
 
 export const VERSION_LIMIT = 50;
 export const BATCH_SIZE = 25;   // Composite Batch accepts at most 25 subrequests

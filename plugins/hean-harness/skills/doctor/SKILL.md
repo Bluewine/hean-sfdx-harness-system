@@ -14,7 +14,7 @@ Report the state of the installation. Change nothing.
 1. Run it:
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/doctor.mjs"
+   node "${CLAUDE_SKILL_DIR}/scripts/doctor.mjs"
    ```
 
 2. Report what it printed. Explain each item that needs attention, in these terms:

@@ -19,13 +19,13 @@ The pattern is fixed. Other skills read work IDs from commit subjects in that fo
    and ask:
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/commit-format.mjs" status
+   node "${CLAUDE_SKILL_DIR}/scripts/commit-format.mjs" status
    ```
 
 2. Show what the switch would change, without changing anything:
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/commit-format.mjs" <on|off> --dry-run
+   node "${CLAUDE_SKILL_DIR}/scripts/commit-format.mjs" <on|off> --dry-run
    ```
 
    When the output says setup has not run in this repository, report that and stop.
@@ -37,7 +37,7 @@ The pattern is fixed. Other skills read work IDs from commit subjects in that fo
 4. Apply it, adding `--replace-githook` only when the user chose it:
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/commit-format.mjs" <on|off> [--replace-githook]
+   node "${CLAUDE_SKILL_DIR}/scripts/commit-format.mjs" <on|off> [--replace-githook]
    ```
 
 5. Report:

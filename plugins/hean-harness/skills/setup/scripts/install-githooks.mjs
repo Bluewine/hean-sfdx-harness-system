@@ -31,8 +31,8 @@
 
 import { execFileSync } from 'node:child_process';
 
-import { readChoice, applyChoice, settingsFile } from './lib/commit-format.mjs';
-import { applyPreCommit } from './lib/githooks.mjs';
+import { readChoice, applyChoice, settingsFile } from '../../../scripts/lib/commit-format.mjs';
+import { applyPreCommit } from '../../../scripts/lib/githooks.mjs';
 
 const argv = process.argv.slice(2);
 const dryRun = argv.includes('--dry-run');

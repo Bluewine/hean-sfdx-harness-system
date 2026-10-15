@@ -21,6 +21,7 @@ import { run as runLimited } from '../lib/environment.mjs';
 
 // <plugin>/scripts/__tests__/ -> <plugin>/scripts
 const SCRIPTS = dirname(dirname(fileURLToPath(import.meta.url)));
+const SETUP = join(dirname(SCRIPTS), 'skills', 'setup', 'scripts');
 
 const root = mkdtempSync(join(tmpdir(), 'hean-twice-'));
 const home = join(root, 'home');
@@ -47,8 +48,11 @@ chmodSync(join(egoBin, 'ego-browser'), 0o755);
 const BASE_ENV = { ...process.env, PATH: `${egoBin}:${process.env.PATH}` };
 
 const env = { ...BASE_ENV, HOME: home, SHELL: '/bin/zsh' };
+// Scripts that live in their own skill's scripts folder.
+const SKILL_OF = { 'doctor.mjs': 'doctor', 'commit-format.mjs': 'commit-format', 'setup.mjs': 'setup', 'install-memories.mjs': 'setup' };
+const skillScript = script => SKILL_OF[script] && join(dirname(SCRIPTS), 'skills', SKILL_OF[script], 'scripts', script);
 const run = (script, args = []) =>
-  execFileSync('node', [join(SCRIPTS, script), ...args], { env, encoding: 'utf8', stdio: 'pipe' });
+  execFileSync('node', [skillScript(script) ?? join(SCRIPTS, script), ...args], { env, encoding: 'utf8', stdio: 'pipe' });
 
 let failures = 0;
 const check = (label, ok, detail = '') => {
@@ -126,7 +130,7 @@ try {
     };
     const doctorWithEgo = () => {
       try {
-        return execFileSync('node', [join(SCRIPTS, 'doctor.mjs')],
+        return execFileSync('node', [skillScript('doctor.mjs')],
           { env: { ...env, PATH: `${fakeBin}:${process.env.PATH}` }, encoding: 'utf8', stdio: 'pipe' });
       } catch (e) { return String(e.stdout ?? ''); }
     };
@@ -289,7 +293,7 @@ try {
   mkdirSync(linkTarget, { recursive: true });
   execFileSync('git', ['-C', repoLink, 'init', '-q', '-b', 'main']);
   const envLink = { ...BASE_ENV, HOME: homeLink, SHELL: '/bin/zsh' };
-  execFileSync('node', [join(SCRIPTS, 'setup.mjs'), '--repo', repoLink, '--commit-format', 'on'],
+  execFileSync('node', [join(SETUP, 'setup.mjs'), '--repo', repoLink, '--commit-format', 'on'],
     { env: envLink, encoding: 'utf8', stdio: 'pipe' });
   writeFileSync(join(linkTarget, 'apex-classes.txt'), '[test]\nFooTest\n');
   symlinkSync(linkTarget, join(repoLink, '.claude', 'inputs'));
@@ -303,8 +307,8 @@ try {
   mkdirSync(join(home3, '.claude'), { recursive: true });
   const env3 = { ...BASE_ENV, HOME: home3 };
   const settings3 = join(home3, '.claude', 'settings.json');
-  execFileSync('node', [join(SCRIPTS, 'install-statusline.mjs')], { env: env3, encoding: 'utf8', stdio: 'pipe' });
-  execFileSync('node', [join(SCRIPTS, 'install-task-tools.mjs')], { env: env3, encoding: 'utf8', stdio: 'pipe' });
+  execFileSync('node', [join(SETUP, 'install-statusline.mjs')], { env: env3, encoding: 'utf8', stdio: 'pipe' });
+  execFileSync('node', [join(SETUP, 'install-task-tools.mjs')], { env: env3, encoding: 'utf8', stdio: 'pipe' });
   execFileSync('node', [join(SCRIPTS, 'lib', 'manifest.mjs'), 'revert'], { env: env3, encoding: 'utf8', stdio: 'pipe' });
   check('a settings.json this plugin created from nothing is gone after uninstall', !existsSync(settings3));
 
@@ -315,8 +319,8 @@ try {
   const settings4 = join(home4, '.claude', 'settings.json');
   writeFileSync(settings4, JSON.stringify({ theme: 'light' }, null, 2) + '\n');
   const env4 = { ...BASE_ENV, HOME: home4 };
-  execFileSync('node', [join(SCRIPTS, 'install-statusline.mjs')], { env: env4, encoding: 'utf8', stdio: 'pipe' });
-  execFileSync('node', [join(SCRIPTS, 'install-task-tools.mjs')], { env: env4, encoding: 'utf8', stdio: 'pipe' });
+  execFileSync('node', [join(SETUP, 'install-statusline.mjs')], { env: env4, encoding: 'utf8', stdio: 'pipe' });
+  execFileSync('node', [join(SETUP, 'install-task-tools.mjs')], { env: env4, encoding: 'utf8', stdio: 'pipe' });
   execFileSync('node', [join(SCRIPTS, 'lib', 'manifest.mjs'), 'revert'], { env: env4, encoding: 'utf8', stdio: 'pipe' });
   const afterUninstall4 = JSON.parse(readFileSync(settings4, 'utf8'));
   check('a settings.json with no env block has no env block after uninstall',
@@ -329,7 +333,7 @@ try {
   const settings5 = join(home5, '.claude', 'settings.json');
   writeFileSync(settings5, JSON.stringify({ env: { CLAUDE_CODE_ENABLE_TODO_TOOLS: '0' } }, null, 2) + '\n');
   const env5 = { ...BASE_ENV, HOME: home5 };
-  execFileSync('node', [join(SCRIPTS, 'install-task-tools.mjs')], { env: env5, encoding: 'utf8', stdio: 'pipe' });
+  execFileSync('node', [join(SETUP, 'install-task-tools.mjs')], { env: env5, encoding: 'utf8', stdio: 'pipe' });
   const afterSetup5 = JSON.parse(readFileSync(settings5, 'utf8'));
   check('setup replaces the user\'s own task tools value with 1',
         afterSetup5.env?.CLAUDE_CODE_ENABLE_TODO_TOOLS === '1', JSON.stringify(afterSetup5));
@@ -350,8 +354,8 @@ try {
     `init(); installFile(${JSON.stringify(join(dirname(SCRIPTS), 'assets', 'statusline', 'statusline-command.mjs'))}, ` +
     `${JSON.stringify(oldCopy)});`], { env: envLauncher, encoding: 'utf8', stdio: 'pipe' });
   check('the older install\'s copy is in place before the upgrade', existsSync(oldCopy));
-  execFileSync('node', [join(SCRIPTS, 'clear-previous-install.mjs')], { env: envLauncher, encoding: 'utf8', stdio: 'pipe' });
-  execFileSync('node', [join(SCRIPTS, 'install-statusline.mjs')], { env: envLauncher, encoding: 'utf8', stdio: 'pipe' });
+  execFileSync('node', [join(SETUP, 'clear-previous-install.mjs')], { env: envLauncher, encoding: 'utf8', stdio: 'pipe' });
+  execFileSync('node', [join(SETUP, 'install-statusline.mjs')], { env: envLauncher, encoding: 'utf8', stdio: 'pipe' });
   check('setup over an older install removes the copied status line script', !existsSync(oldCopy));
 
   // A user who already chose their own advisor gets that choice back on uninstall.
@@ -360,7 +364,7 @@ try {
   const settingsAdvisor = join(homeAdvisor, '.claude', 'settings.json');
   writeFileSync(settingsAdvisor, JSON.stringify({ advisorModel: 'fable' }, null, 2) + '\n');
   const envAdvisor = { ...BASE_ENV, HOME: homeAdvisor };
-  execFileSync('node', [join(SCRIPTS, 'install-advisor.mjs')], { env: envAdvisor, encoding: 'utf8', stdio: 'pipe' });
+  execFileSync('node', [join(SETUP, 'install-advisor.mjs')], { env: envAdvisor, encoding: 'utf8', stdio: 'pipe' });
   const afterSetupAdvisor = JSON.parse(readFileSync(settingsAdvisor, 'utf8'));
   check('setup replaces the user\'s own advisor with opus',
         afterSetupAdvisor.advisorModel === 'opus', JSON.stringify(afterSetupAdvisor));
@@ -382,7 +386,7 @@ try {
   writeFileSync(join(own, '.gitignore'),
     'node_modules/\n\n# hean-harness: installed or written on each clone, not shared\n.claude/\n.mcp.json\n');
   const env2 = { ...env, HOME: home2 };
-  execFileSync('node', [join(SCRIPTS, 'setup.mjs'), '--repo', own, '--commit-format', 'on', '--replace-githook'],
+  execFileSync('node', [join(SETUP, 'setup.mjs'), '--repo', own, '--commit-format', 'on', '--replace-githook'],
                { env: env2, encoding: 'utf8', stdio: 'pipe' });
   const ownHooksPath = () => {
     try { return execFileSync('git', ['-C', own, 'config', '--get', 'core.hooksPath'], { encoding: 'utf8' }).trim(); }
@@ -425,7 +429,7 @@ try {
   mkdirSync(repoH, { recursive: true });
   execFileSync('git', ['-C', repoH, 'init', '-q', '-b', 'main']);
   const envH = { ...BASE_ENV, HOME: homeH };
-  const runHooks = (repoDir, args) => execFileSync('node', [join(SCRIPTS, 'install-githooks.mjs'), '--repo', repoDir, ...args],
+  const runHooks = (repoDir, args) => execFileSync('node', [join(SETUP, 'install-githooks.mjs'), '--repo', repoDir, ...args],
     { env: envH, encoding: 'utf8', stdio: 'pipe' });
   const msgH = join(repoH, '.githooks', 'commit-msg');
   runHooks(repoH, ['--commit-format', 'on']);
@@ -488,7 +492,7 @@ try {
     writeFileSync(join(dir, 'sfdx-project.json'), '{"packageDirectories":[{"path":"force-app","default":true}]}\n');
     return dir;
   };
-  const runP = (repoDir, args) => execFileSync('node', [join(SCRIPTS, 'install-githooks.mjs'), '--repo', repoDir, ...args],
+  const runP = (repoDir, args) => execFileSync('node', [join(SETUP, 'install-githooks.mjs'), '--repo', repoDir, ...args],
     { env: envP, encoding: 'utf8', stdio: 'pipe' });
   const hooksPathOf = repoDir => {
     try { return execFileSync('git', ['-C', repoDir, 'config', '--get', 'core.hooksPath'], { encoding: 'utf8' }).trim(); }
@@ -559,7 +563,7 @@ try {
   check('the commit-msg hook says the commit format check for terminal commits is off too',
         outL.includes('commit format check for terminal commits is off') && !outL.includes('Set core.hooksPath'), outL);
 
-  execFileSync('node', [join(SCRIPTS, 'install-manifest-check.mjs')], { env: envP, encoding: 'utf8', stdio: 'pipe' });
+  execFileSync('node', [join(SETUP, 'install-manifest-check.mjs')], { env: envP, encoding: 'utf8', stdio: 'pipe' });
   const checkDir = join(homeP, '.claude', 'hean-harness', 'hooks');
   check('the manifest check and branch-manifest are copied to the fixed folder',
         existsSync(join(checkDir, 'scripts', 'lib', 'manifest-check.mjs')) &&
@@ -593,7 +597,7 @@ try {
   const settings6 = join(home6, '.claude', 'settings.json');
   writeFileSync(settings6, JSON.stringify({ extraKnownMarketplaces: { 'test-market': marketEntry('https://example.com/a.git') } }, null, 2) + '\n');
   const env6 = { ...BASE_ENV, HOME: home6 };
-  execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'hean'], { env: env6, encoding: 'utf8', stdio: 'pipe' });
+  execFileSync('node', [join(SETUP, 'install-auto-update.mjs'), '--auto-update', 'hean'], { env: env6, encoding: 'utf8', stdio: 'pipe' });
   const afterHean6 = JSON.parse(readFileSync(settings6, 'utf8'));
   check('install-auto-update hean turns autoUpdate on', afterHean6.extraKnownMarketplaces['test-market'].autoUpdate === true);
   check('the marketplace source is unchanged',
@@ -611,7 +615,7 @@ try {
   const settings7 = join(home7, '.claude', 'settings.json');
   writeFileSync(settings7, JSON.stringify({ extraKnownMarketplaces: { 'test-market': { ...marketEntry('https://example.com/a.git'), autoUpdate: false } } }, null, 2) + '\n');
   const env7 = { ...BASE_ENV, HOME: home7 };
-  execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'hean'], { env: env7, encoding: 'utf8', stdio: 'pipe' });
+  execFileSync('node', [join(SETUP, 'install-auto-update.mjs'), '--auto-update', 'hean'], { env: env7, encoding: 'utf8', stdio: 'pipe' });
   const afterHean7 = JSON.parse(readFileSync(settings7, 'utf8'));
   check('install-auto-update hean overrides an existing false value', afterHean7.extraKnownMarketplaces['test-market'].autoUpdate === true);
   execFileSync('node', [join(SCRIPTS, 'lib', 'manifest.mjs'), 'revert'], { env: env7, encoding: 'utf8', stdio: 'pipe' });
@@ -626,7 +630,7 @@ try {
   const settings8Text = JSON.stringify({ extraKnownMarketplaces: { 'other-market': marketEntry('https://example.com/b.git') } }, null, 2) + '\n';
   writeFileSync(settings8, settings8Text);
   const env8 = { ...BASE_ENV, HOME: home8 };
-  const out8 = execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'hean'], { env: env8, encoding: 'utf8', stdio: 'pipe' });
+  const out8 = execFileSync('node', [join(SETUP, 'install-auto-update.mjs'), '--auto-update', 'hean'], { env: env8, encoding: 'utf8', stdio: 'pipe' });
   check('settings.json is untouched when the marketplace has no entry', readFileSync(settings8, 'utf8') === settings8Text);
   check('the output names /plugin when the marketplace has no entry', out8.includes('/plugin'));
 
@@ -637,7 +641,7 @@ try {
   const settings9Text = JSON.stringify({ theme: 'dark' }, null, 2) + '\n';
   writeFileSync(settings9, settings9Text);
   const env9 = { ...BASE_ENV, HOME: home9 };
-  execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'hean'], { env: env9, encoding: 'utf8', stdio: 'pipe' });
+  execFileSync('node', [join(SETUP, 'install-auto-update.mjs'), '--auto-update', 'hean'], { env: env9, encoding: 'utf8', stdio: 'pipe' });
   check('exit 0 when there is no install record', true);
   check('settings.json is untouched when there is no install record', readFileSync(settings9, 'utf8') === settings9Text);
 
@@ -651,7 +655,7 @@ try {
     'other-market': marketEntry('https://example.com/b.git')
   } }, null, 2) + '\n');
   const env10 = { ...BASE_ENV, HOME: home10 };
-  execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'all'], { env: env10, encoding: 'utf8', stdio: 'pipe' });
+  execFileSync('node', [join(SETUP, 'install-auto-update.mjs'), '--auto-update', 'all'], { env: env10, encoding: 'utf8', stdio: 'pipe' });
   const afterAll10 = JSON.parse(readFileSync(settings10, 'utf8'));
   check('--auto-update all turns autoUpdate on for the plugin\'s own marketplace',
         afterAll10.extraKnownMarketplaces['test-market'].autoUpdate === true);
@@ -671,13 +675,13 @@ try {
   const settings11 = join(home11, '.claude', 'settings.json');
   writeFileSync(settings11, JSON.stringify({ extraKnownMarketplaces: { 'test-market': marketEntry('https://example.com/a.git') } }, null, 2) + '\n');
   const env11 = { ...BASE_ENV, HOME: home11 };
-  execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'off'], { env: env11, encoding: 'utf8', stdio: 'pipe' });
+  execFileSync('node', [join(SETUP, 'install-auto-update.mjs'), '--auto-update', 'off'], { env: env11, encoding: 'utf8', stdio: 'pipe' });
   const afterOff11 = JSON.parse(readFileSync(settings11, 'utf8'));
   check('--auto-update off records autoUpdate false', afterOff11.extraKnownMarketplaces['test-market'].autoUpdate === false);
-  const dryAfterOff11 = execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--dry-run'], { env: env11, encoding: 'utf8', stdio: 'pipe' });
+  const dryAfterOff11 = execFileSync('node', [join(SETUP, 'install-auto-update.mjs'), '--dry-run'], { env: env11, encoding: 'utf8', stdio: 'pipe' });
   check('a dry run after --auto-update off does not ask again', !dryAfterOff11.includes('!! ASK'));
   const beforeRealOff11 = readFileSync(settings11, 'utf8');
-  const realAfterOff11 = execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs')], { env: env11, encoding: 'utf8', stdio: 'pipe' });
+  const realAfterOff11 = execFileSync('node', [join(SETUP, 'install-auto-update.mjs')], { env: env11, encoding: 'utf8', stdio: 'pipe' });
   check('a real run after --auto-update off reports the recorded choice',
         realAfterOff11.includes('test-market is already false in settings.json') && !realAfterOff11.includes('Auto-update was not chosen'),
         realAfterOff11);
@@ -691,7 +695,7 @@ try {
   const settings12Text = JSON.stringify({ extraKnownMarketplaces: { 'test-market': marketEntry('https://example.com/a.git') } }, null, 2) + '\n';
   writeFileSync(settings12, settings12Text);
   const env12 = { ...BASE_ENV, HOME: home12 };
-  const dry12 = execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--dry-run'], { env: env12, encoding: 'utf8', stdio: 'pipe' });
+  const dry12 = execFileSync('node', [join(SETUP, 'install-auto-update.mjs'), '--dry-run'], { env: env12, encoding: 'utf8', stdio: 'pipe' });
   check('a dry run with the choice not yet made prints the ASK line', dry12.includes('!! ASK — AUTO-UPDATE NOT CHOSEN'));
   check('a dry run changes nothing', readFileSync(settings12, 'utf8') === settings12Text);
 
@@ -703,7 +707,7 @@ try {
   const settings13Text = JSON.stringify({ extraKnownMarketplaces: { 'test-market': marketEntry('https://example.com/a.git') } }, null, 2) + '\n';
   writeFileSync(settings13, settings13Text);
   const env13 = { ...BASE_ENV, HOME: home13 };
-  execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs')], { env: env13, encoding: 'utf8', stdio: 'pipe' });
+  execFileSync('node', [join(SETUP, 'install-auto-update.mjs')], { env: env13, encoding: 'utf8', stdio: 'pipe' });
   check('a real run with no flag changes nothing', readFileSync(settings13, 'utf8') === settings13Text);
 
   // home14: --auto-update all still sets every existing entry when the plugin's
@@ -716,7 +720,7 @@ try {
     'other-market': marketEntry('https://example.com/b.git')
   } }, null, 2) + '\n');
   const env14 = { ...BASE_ENV, HOME: home14 };
-  const out14 = execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'all'], { env: env14, encoding: 'utf8', stdio: 'pipe' });
+  const out14 = execFileSync('node', [join(SETUP, 'install-auto-update.mjs'), '--auto-update', 'all'], { env: env14, encoding: 'utf8', stdio: 'pipe' });
   const afterAll14 = JSON.parse(readFileSync(settings14, 'utf8'));
   check('--auto-update all turns autoUpdate on for a marketplace that exists even when the plugin\'s own marketplace has no entry',
         afterAll14.extraKnownMarketplaces['other-market'].autoUpdate === true);
@@ -741,7 +745,7 @@ try {
     'test-market': marketEntry('https://example.com/a.git')
   } }, null, 2) + '\n');
   const env15 = { ...BASE_ENV, HOME: home15, SHELL: '/bin/zsh' };
-  const setup15 = args => execFileSync('node', [join(SCRIPTS, 'setup.mjs'), '--repo', repo15, ...args],
+  const setup15 = args => execFileSync('node', [join(SETUP, 'setup.mjs'), '--repo', repo15, ...args],
                                        { env: env15, encoding: 'utf8', stdio: 'pipe' });
   setup15(['--commit-format', 'off', '--auto-update', 'hean']);
   const autoUpdate15 = () => JSON.parse(readFileSync(settings15, 'utf8')).extraKnownMarketplaces['test-market'].autoUpdate;
@@ -769,13 +773,13 @@ try {
   } }, null, 2) + '\n';
   writeFileSync(settings16, settings16Text);
   const env16 = { ...BASE_ENV, HOME: home16 };
-  const out16 = execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'hean'], { env: env16, encoding: 'utf8', stdio: 'pipe' });
+  const out16 = execFileSync('node', [join(SETUP, 'install-auto-update.mjs'), '--auto-update', 'hean'], { env: env16, encoding: 'utf8', stdio: 'pipe' });
   check('a dotted marketplace name is refused', out16.includes('Auto-update was not changed') && out16.includes('contains a "."'), out16);
   check('settings.json is untouched after the refusal', readFileSync(settings16, 'utf8') === settings16Text);
-  const dryAll16 = execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'all', '--dry-run'], { env: env16, encoding: 'utf8', stdio: 'pipe' });
+  const dryAll16 = execFileSync('node', [join(SETUP, 'install-auto-update.mjs'), '--auto-update', 'all', '--dry-run'], { env: env16, encoding: 'utf8', stdio: 'pipe' });
   check('the all dry run reports the dotted name as not changed',
         dryAll16.includes('my.market  not changed') && !dryAll16.includes('my.market  to true'), dryAll16);
-  execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'all'], { env: env16, encoding: 'utf8', stdio: 'pipe' });
+  execFileSync('node', [join(SETUP, 'install-auto-update.mjs'), '--auto-update', 'all'], { env: env16, encoding: 'utf8', stdio: 'pipe' });
   check('the all real run leaves the dotted name untouched', readFileSync(settings16, 'utf8') === settings16Text);
 
   // home17: switching from all to hean puts the other marketplace back
@@ -788,8 +792,8 @@ try {
     'other-market': { ...marketEntry('https://example.com/b.git'), autoUpdate: false }
   } }, null, 2) + '\n');
   const env17 = { ...BASE_ENV, HOME: home17 };
-  execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'all'], { env: env17, encoding: 'utf8', stdio: 'pipe' });
-  execFileSync('node', [join(SCRIPTS, 'install-auto-update.mjs'), '--auto-update', 'hean'], { env: env17, encoding: 'utf8', stdio: 'pipe' });
+  execFileSync('node', [join(SETUP, 'install-auto-update.mjs'), '--auto-update', 'all'], { env: env17, encoding: 'utf8', stdio: 'pipe' });
+  execFileSync('node', [join(SETUP, 'install-auto-update.mjs'), '--auto-update', 'hean'], { env: env17, encoding: 'utf8', stdio: 'pipe' });
   const after17 = JSON.parse(readFileSync(settings17, 'utf8')).extraKnownMarketplaces;
   check('switching from all to hean keeps the plugin\'s own marketplace on', after17['test-market'].autoUpdate === true);
   check('switching from all to hean puts the other marketplace\'s own value back', after17['other-market'].autoUpdate === false,

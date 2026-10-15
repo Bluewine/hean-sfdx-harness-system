@@ -18,13 +18,13 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { init } from './lib/manifest.mjs';
-import { installFile, installIndexLines, installDir } from './lib/install.mjs';
-import { INDEX } from './lib/memory-index.mjs';
-import { claudeDir } from './lib/paths.mjs';
+import { init } from '../../../scripts/lib/manifest.mjs';
+import { installFile, installIndexLines, installDir } from '../../../scripts/lib/install.mjs';
+import { INDEX } from '../../../scripts/lib/memory-index.mjs';
+import { claudeDir } from '../../../scripts/lib/paths.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const PLUGIN_ROOT = dirname(HERE);
+const PLUGIN_ROOT = dirname(dirname(dirname(HERE)));
 const PROJECT_SRC = join(PLUGIN_ROOT, 'assets', 'memories', 'project');
 const AGENT_SRC   = join(PLUGIN_ROOT, 'assets', 'memories', 'agent');
 const PLUGIN_NAME = JSON.parse(readFileSync(join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'), 'utf8')).name;

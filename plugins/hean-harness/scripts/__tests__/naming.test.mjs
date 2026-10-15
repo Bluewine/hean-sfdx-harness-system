@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const SCRIPTS = dirname(dirname(fileURLToPath(import.meta.url)));
+const SETUP = join(dirname(SCRIPTS), 'skills', 'setup', 'scripts');
 const lib = await import(join(SCRIPTS, 'lib', 'naming.mjs'));
 
 let failures = 0;
@@ -230,7 +231,7 @@ try {
 
   console.log('setup step');
   {
-    const STEP = join(SCRIPTS, 'install-naming.mjs');
+    const STEP = join(SETUP, 'install-naming.mjs');
     const r = repo({ classes: ['ABC_A', 'ABC_B', 'ABC_C'] });
     const step = (...args) => spawnSync('node', [STEP, '--repo', r, ...args], { encoding: 'utf8' });
     const ask = step('--dry-run');

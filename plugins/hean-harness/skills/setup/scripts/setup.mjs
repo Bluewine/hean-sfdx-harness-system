@@ -11,8 +11,8 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { STATE_DIR, markSetupRun } from './lib/manifest.mjs';
-import { claudeCommand } from './lib/shell.mjs';
+import { STATE_DIR, markSetupRun } from '../../../scripts/lib/manifest.mjs';
+import { claudeCommand } from '../../../scripts/lib/shell.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);

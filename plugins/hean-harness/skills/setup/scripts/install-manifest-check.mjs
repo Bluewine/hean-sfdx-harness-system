@@ -15,10 +15,10 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { STATE_DIR, init } from './lib/manifest.mjs';
-import { installDir, installFile } from './lib/install.mjs';
+import { STATE_DIR, init } from '../../../scripts/lib/manifest.mjs';
+import { installDir, installFile } from '../../../scripts/lib/install.mjs';
 
-const PLUGIN_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+const PLUGIN_ROOT = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url)))));
 const DEST = join(STATE_DIR, 'hooks');
 // manifest-check.mjs and everything it loads, directly or through branch-manifest.mjs
 const FILES = [

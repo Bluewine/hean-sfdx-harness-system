@@ -21,18 +21,18 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 
-import { load, MANIFEST, markers, pluginVersion } from './lib/manifest.mjs';
-import { allChecks, reportChecks, currentRepo } from './lib/environment.mjs';
-import { claudeCommand } from './lib/shell.mjs';
-import { repoRoot, missingLines } from './lib/gitignore.mjs';
-import { STATE_DIR } from './lib/manifest.mjs';
-import { getGitConfig } from './lib/install.mjs';
-import { readPreference, preferenceText } from './lib/commit-lifecycle.mjs';
-import { indexedFiles, unindexed } from './lib/memory-index.mjs';
-import { TYPES, readNaming, describe } from './lib/naming.mjs';
+import { load, MANIFEST, markers, pluginVersion } from '../../../scripts/lib/manifest.mjs';
+import { allChecks, reportChecks, currentRepo } from '../../../scripts/lib/environment.mjs';
+import { claudeCommand } from '../../../scripts/lib/shell.mjs';
+import { repoRoot, missingLines } from '../../../scripts/lib/gitignore.mjs';
+import { STATE_DIR } from '../../../scripts/lib/manifest.mjs';
+import { getGitConfig } from '../../../scripts/lib/install.mjs';
+import { readPreference, preferenceText } from '../../../scripts/lib/commit-lifecycle.mjs';
+import { indexedFiles, unindexed } from '../../../scripts/lib/memory-index.mjs';
+import { TYPES, readNaming, describe } from '../../../scripts/lib/naming.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const PLUGIN_ROOT = dirname(HERE);
+const PLUGIN_ROOT = dirname(dirname(dirname(HERE)));
 const log = (...a) => console.log(...a);
 const short = p => p.replace(homedir(), '~');
 const sum = f => createHash('sha1').update(readFileSync(f)).digest('hex');

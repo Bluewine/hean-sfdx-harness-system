@@ -9,8 +9,8 @@
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 
-import { load } from './lib/manifest.mjs';
-import { readChoice, applyChoice, realPath } from './lib/commit-format.mjs';
+import { load } from '../../../scripts/lib/manifest.mjs';
+import { readChoice, applyChoice, realPath } from '../../../scripts/lib/commit-format.mjs';
 
 const argv = process.argv.slice(2);
 const cmd = argv[0];

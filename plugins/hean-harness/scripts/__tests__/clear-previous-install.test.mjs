@@ -33,7 +33,7 @@ execFileSync('git', ['init', '-q', repo]);
 const env = { ...process.env, HOME: home, SHELL: '/bin/zsh',
               CLAUDE_CONFIG_DIR: join(home, '.claude') };
 const setup = (...args) =>
-  execFileSync('node', [join(HERE, 'setup.mjs'), '--repo', repo, ...args],
+  execFileSync('node', [join(PLUGIN, 'skills', 'setup', 'scripts', 'setup.mjs'), '--repo', repo, ...args],
                { env, encoding: 'utf8', stdio: 'pipe' });
 
 let pass = 0, fail = 0;

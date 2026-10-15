@@ -356,7 +356,7 @@ check('nothing is written under the real configuration folder',
       !existsSync(join(homedir(), '.claude', 'hean-harness', 'manifest-check', dirname(SCRATCH).split('/').pop())));
 
 console.log('Terminal commits through the git pre-commit hook');
-execFileSync(process.execPath, [join(dirname(HOOKS), 'scripts', 'install-manifest-check.mjs')], { env, stdio: 'ignore' });
+execFileSync(process.execPath, [join(dirname(HOOKS), 'skills', 'setup', 'scripts', 'install-manifest-check.mjs')], { env, stdio: 'ignore' });
 const term = makeRepo('terminal', 'work-GH-2_story');
 const TM = '.claude/manifest/GH-2.xml';
 const TERM_SCRATCH = join(CONFIG, 'hean-harness', 'manifest-check',

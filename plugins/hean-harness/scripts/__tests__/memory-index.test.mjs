@@ -24,6 +24,7 @@ import { markers, note } from '../lib/manifest.mjs';
 
 // <plugin>/scripts/__tests__/ -> <plugin>/scripts
 const SCRIPTS = dirname(dirname(fileURLToPath(import.meta.url)));
+const SETUP = join(dirname(SCRIPTS), 'skills', 'setup', 'scripts');
 const MEMORIES = join(dirname(SCRIPTS), 'assets', 'memories');
 
 let failures = 0;
@@ -111,8 +112,11 @@ mkdirSync(repo, { recursive: true });
 execFileSync('git', ['-C', repo, 'init', '-q', '-b', 'main']);
 
 const env = { ...process.env, HOME: home, CLAUDE_CONFIG_DIR: join(home, '.claude') };
+// Scripts that live in their own skill's scripts folder.
+const SKILL_OF = { 'doctor.mjs': 'doctor', 'install-memories.mjs': 'setup' };
+const skillScript = script => SKILL_OF[script] && join(dirname(SCRIPTS), 'skills', SKILL_OF[script], 'scripts', script);
 const run = (script, args = []) =>
-  execFileSync('node', [join(SCRIPTS, script), ...args], { env, encoding: 'utf8', stdio: 'pipe' });
+  execFileSync('node', [skillScript(script) ?? join(SCRIPTS, script), ...args], { env, encoding: 'utf8', stdio: 'pipe' });
 const manifest = () => JSON.parse(readFileSync(join(home, '.claude', 'hean-harness', 'install-manifest.json'), 'utf8'));
 const shipped = dir => readdirSync(dir).filter(f => f.endsWith('.md')).sort();
 
@@ -201,7 +205,7 @@ try {
   check('the old block format is in place before the new install',
         readFileSync(index2, 'utf8').includes(open) && manifest2().map(c => c.type).join() === 'marker-block');
 
-  execFileSync('node', [join(SCRIPTS, 'install-memories.mjs'), '--repo', repo2], { env: env2, stdio: 'pipe' });
+  execFileSync('node', [join(SETUP, 'install-memories.mjs'), '--repo', repo2], { env: env2, stdio: 'pipe' });
   const migrated = readFileSync(index2, 'utf8');
   const links2 = targets(migrated);
   check('the markers and their note are removed',

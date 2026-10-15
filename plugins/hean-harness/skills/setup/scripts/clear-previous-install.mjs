@@ -28,8 +28,8 @@ import { existsSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { load, revert, MANIFEST } from './lib/manifest.mjs';
-import { claudeDir } from './lib/paths.mjs';
+import { load, revert, MANIFEST } from '../../../scripts/lib/manifest.mjs';
+import { claudeDir } from '../../../scripts/lib/paths.mjs';
 
 const argv = process.argv.slice(2);
 const dryRun = argv.includes('--dry-run');
@@ -50,7 +50,7 @@ const KINDS = {
 };
 const describe = type => KINDS[type] ?? type;
 
-const PLUGIN_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+const PLUGIN_ROOT = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url)))));
 const names = dir => existsSync(dir) ? readdirSync(dir).filter(f => f.endsWith('.md')) : [];
 
 /**

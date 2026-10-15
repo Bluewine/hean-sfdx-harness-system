@@ -19,7 +19,7 @@ Arguments: $ARGUMENTS
    one was given, and `--flow <FlowApiName>` when the arguments name a flow to place:
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/flow-trigger-order.mjs" <ObjectApiName> --flow <FlowApiName>
+   node "${CLAUDE_SKILL_DIR}/scripts/flow-trigger-order.mjs" <ObjectApiName> --flow <FlowApiName>
    ```
 
    Leave the object name off to list every object; leave `--flow` off to list every flow instead of

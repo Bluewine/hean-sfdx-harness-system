@@ -16,13 +16,13 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { init } from './lib/manifest.mjs';
-import { installFile, installBlock, installDir, installRepoFolder } from './lib/install.mjs';
-import { MARKER } from './lib/shell.mjs';
-import { claudeDir } from './lib/paths.mjs';
+import { init } from '../../../scripts/lib/manifest.mjs';
+import { installFile, installBlock, installDir, installRepoFolder } from '../../../scripts/lib/install.mjs';
+import { MARKER } from '../../../scripts/lib/shell.mjs';
+import { claudeDir } from '../../../scripts/lib/paths.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const PLUGIN_ROOT = dirname(HERE);
+const PLUGIN_ROOT = dirname(dirname(dirname(HERE)));
 const USER_SRC = join(PLUGIN_ROOT, 'assets', 'rules', 'user');
 const PROJ_SRC = join(PLUGIN_ROOT, 'assets', 'rules', 'project');
 const BLOCK_SRC = join(PLUGIN_ROOT, 'assets', 'claude-md', 'block.md');

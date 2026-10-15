@@ -16,6 +16,7 @@ import { tmpdir } from 'node:os';
 
 // <plugin>/scripts/__tests__/ -> <plugin>/scripts
 const SCRIPTS = dirname(dirname(fileURLToPath(import.meta.url)));
+const SETUP = join(dirname(SCRIPTS), 'skills', 'setup', 'scripts');
 const CLI = join(SCRIPTS, 'worktree-share.mjs');
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), 'hean share ')));   // a space on purpose
@@ -201,7 +202,7 @@ try {
 
   // ==== uninstall reaches the main checkout's saved answers when setup ran in a worktree ====
   const u = repoWithWorktree('uninstall');
-  const inst = spawnSync('node', [join(SCRIPTS, 'install-rules.mjs'), '--repo', u.wt], { env, encoding: 'utf8' });
+  const inst = spawnSync('node', [join(SETUP, 'install-rules.mjs'), '--repo', u.wt], { env, encoding: 'utf8' });
   const { writeSetting } = await import(join(SCRIPTS, 'lib', 'settings.mjs'));
   writeSetting(u.wt, 'commitFormat', 'on');
   check('an answer saved from the worktree lands in the main checkout', existsSync(join(u.main, '.claude', 'hean-harness.json')), inst.stderr);

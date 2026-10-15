@@ -19,11 +19,11 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 
-import { findFlowFiles, parseFlow, formatReport, repoRelative } from '../lib/flow-trigger-order.mjs';
+import { findFlowFiles, parseFlow, formatReport, repoRelative } from '../../skills/flow-trigger-order/scripts/lib/flow-trigger-order.mjs';
 
 // <plugin>/scripts/__tests__/ -> <plugin>/scripts
 const SCRIPTS = dirname(dirname(fileURLToPath(import.meta.url)));
-const SCRIPT = join(SCRIPTS, 'flow-trigger-order.mjs');
+const SCRIPT = join(dirname(SCRIPTS), 'skills', 'flow-trigger-order', 'scripts', 'flow-trigger-order.mjs');
 
 let failures = 0;
 const check = (label, ok, detail = '') => {

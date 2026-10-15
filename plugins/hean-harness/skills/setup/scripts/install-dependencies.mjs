@@ -17,9 +17,9 @@ import { existsSync } from 'node:fs';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 
-import { init } from './lib/manifest.mjs';
-import { recordExternal } from './lib/install.mjs';
-import { present } from './lib/environment.mjs';
+import { init } from '../../../scripts/lib/manifest.mjs';
+import { recordExternal } from '../../../scripts/lib/install.mjs';
+import { present } from '../../../scripts/lib/environment.mjs';
 
 const argv = process.argv.slice(2);
 const dryRun = argv.includes('--dry-run');

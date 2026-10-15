@@ -20,11 +20,11 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { connectedOrgs, defaultOrg, orgOf, projectRoot, readRoles, recordHome, refusal } from './lib/org-roles.mjs';
+import { connectedOrgs, defaultOrg, orgOf, projectRoot, readRoles, recordHome, refusal } from '../../../scripts/lib/org-roles.mjs';
 import { EXIT, FLOW_QUERY, buildBatches, checkComplete, isLockError, matchOrg, parseBatchResponse, parseCount,
          reconcile, renderPlan, renderReport, roleCommands, selectVersions, stillDeletable } from './lib/flow-version-cleanup.mjs';
 
-const ROLES_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'org-roles.mjs');
+const ROLES_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'scripts', 'org-roles.mjs');
 const USAGE = 'Usage: flow-version-cleanup.mjs plan [--org <name>] [--count <N>]\n' +
               '       flow-version-cleanup.mjs apply <plan file>';
 const argv = process.argv.slice(2);
