@@ -158,9 +158,9 @@ export function renderPlan({ count, flows, skipped }) {
   const lines = [`COUNT: ${count} oldest non-Active versions per flow`,
                  `AT LIMIT: ${flows.length + skipped.length} flows with ${VERSION_LIMIT} or more versions`];
   if (flows.length) {
-    lines.push('', 'Flow | Versions | Active | To delete | Version numbers');
+    lines.push('', '| Flow | Versions | Active | To delete | Version numbers |', '|---|---|---|---|---|');
     for (const f of flows) {
-      lines.push(`${f.name} | ${f.present} | v${f.activeVersion} | ${f.delete.length} | ${formatRanges(f.delete.map(v => v.version)) || '-'}`);
+      lines.push(`| \`${f.name}\` | ${f.present} | v${f.activeVersion} | ${f.delete.length} | ${formatRanges(f.delete.map(v => v.version)) || '-'} |`);
     }
     lines.push('', `TOTAL: ${total} versions from ${flows.filter(f => f.delete.length).length} flows`);
   }

@@ -20,11 +20,11 @@ deployed to the org. The Salesforce CLI calls the Tooling API directly and needs
 - Never deploy metadata for this: no Remote Site Setting, Named Credential, External Credential or
   Connected App.
 - Never delete `FlowInterview` records to unlock a version.
-- Never change the org's saved role except through steps 4 and 6.
+- Never change the org's saved role except through steps 5 and 7.
 
 ## Task list
 
-Create one task per step below, steps 1 to 7, before step 1. Mark each `in_progress` when it starts
+Create one task per step below, steps 1 to 8, before step 1. Mark each `in_progress` when it starts
 and `completed` when it ends.
 
 ## Steps
@@ -49,33 +49,34 @@ Run every command from the SFDX project root.
      `AskUserQuestion` call listing the logged-in orgs, then run step 2 again with that alias.
    - **Any other exit 1:** report the `ERROR:` line and stop.
    - **Exit 2:** report that no flow is at the 50-version limit (or that every one was skipped).
-     When the script printed a SKIPPED list, write it in the reply as a short list, one item per
-     flow: the flow API name in backticks and its version count. Then stop.
-   - **Exit 0:** write this in the reply text, before any other action:
-     - the `ORG:` line and the `COUNT:` line;
-     - a markdown table with one row per flow in the plan and the columns `Flow` (the API name in
-       backticks), `Versions`, `Active`, `To delete` and `Version numbers`, with the values from
-       the printed plan table;
-     - the `TOTAL:` line;
-     - the SKIPPED list, when present, as a short list: the flow API name in backticks and its
-       version count.
+     When the script printed a SKIPPED list, paste it into the reply exactly as printed. Then stop.
+   - **Exit 0:** go to step 3. Keep the `ALLOW:`, `RESTORE:` and `PLAN_FILE:` values for later
+     steps.
 
-     Command output is not shown to the user, so a list that stays in the output is a list the user
-     never saw. Never shorten the table to a count or a sample. Relay every line starting with `!!`
-     word for word. Keep the `ALLOW:`, `RESTORE:` and `PLAN_FILE:` values for later steps.
+3. **Flow list.** This is the first action after the plan, before any other tool call or question.
+   Paste these into the reply text exactly as printed:
+   - the `ORG:`, `COUNT:` and `AT LIMIT:` lines, in printed order;
+   - the markdown table;
+   - the `TOTAL:` line;
+   - the SKIPPED list, when present.
 
-3. **One confirmation.** Ask the question only after the reply text with the step 2 table. Ask one
-   `AskUserQuestion` question that refers to "the N flows listed above" and names the org alias, the
-   count, the number of versions and the number of flows.
-   - Org printed `ROLE: … saved deploy target`: options "Delete" and "Cancel".
+   Command output is not shown to the user, so a list that stays in the output is a list the user
+   never saw. Never summarise the table to a count, never shorten it, never reformat it. Relay every
+   line starting with `!!` word for word.
+
+4. **One confirmation.** Ask the question only after the reply text with the step 3 table. Ask one
+   `AskUserQuestion` question that names the org alias, the count, the number of versions and the
+   number of flows. Put the same table and the `TOTAL:` line in the `preview` field of the first
+   option.
+   - Org printed `ROLE: … saved deploy target`: options "Delete" (with the `preview`) and "Cancel".
    - Org printed `!! … locked for writes`: options "Allow writes for this run, delete, then reset
-     the role" and "Cancel".
+     the role" (with the `preview`) and "Cancel".
    - "Cancel": stop. Nothing was written.
 
-4. **Temporary permission.** Only when the org was locked: run the `ALLOW:` command exactly as
-   printed. From here on, step 6 runs whatever happens.
+5. **Temporary permission.** Only when the org was locked: run the `ALLOW:` command exactly as
+   printed. From here on, step 7 runs whatever happens.
 
-5. **Delete.** Run:
+6. **Delete.** Run:
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/flow-version-cleanup.mjs" apply "<PLAN_FILE>"
@@ -87,12 +88,12 @@ Run every command from the SFDX project root.
    `ERROR:` line and no `RESULT:` line or Before | After table, and its stderr progress lines
    (`batch N: deleting …`) show how far it got.
 
-6. **Reset.** Only when step 4 ran, and after every outcome of step 5 — exit 0, 1 or 3, an
+7. **Reset.** Only when step 5 ran, and after every outcome of step 6 — exit 0, 1 or 3, an
    interrupted run, or a timeout: run the `RESTORE:` command exactly as printed, then
    `node "${CLAUDE_PLUGIN_ROOT}/scripts/org-roles.mjs" status`. When the reset fails, print
    `!! The role of <alias> was not restored. Run: <RESTORE command>` and tell the user.
 
-7. **Report.** On exit 1 from step 5: report the `ERROR:` line. When any `batch N: deleting …`
+8. **Report.** On exit 1 from step 6: report the `ERROR:` line. When any `batch N: deleting …`
    line appears in the stderr output, versions may already be deleted: tell the user to run the
    plan step again to see the current counts. When no batch line appears, nothing was deleted.
    Then say whether the role was reset, as below, and stop.

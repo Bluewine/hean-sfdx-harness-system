@@ -153,7 +153,8 @@ console.log('renderPlan and renderReport');
   const text = lib.renderPlan({ count: 5, flows, skipped });
   check('plan names the count', text.includes('COUNT: 5 oldest non-Active versions per flow'));
   check('plan counts flows at the limit', text.includes('AT LIMIT: 2 flows with 50 or more versions'));
-  check('plan row with ranges', text.includes('Full | 50 | v50 | 5 | 1-5'));
+  check('plan header row', text.includes('| Flow | Versions | Active | To delete | Version numbers |\n|---|---|---|---|---|\n'));
+  check('plan row with ranges', text.includes('| `Full` | 50 | v50 | 5 | 1-5 |'));
   check('plan total', text.includes('TOTAL: 5 versions from 1 flows'));
   check('plan lists skipped', text.includes('NoActive: 50 versions'));
   const before = flow('Full', 50, 50);
@@ -240,7 +241,7 @@ process.exit(a.code || 0);
   check('plan queries the Tooling API on the matched org',
         p.calls[0]?.startsWith('data query --use-tooling-api --json -o me@example.com.qa -q SELECT Id, DefinitionId'));
   check('plan sends nothing', p.calls.length === 1);
-  check('plan row', p.stdout.includes('Full | 50 | v50 | 3 | 1-3'));
+  check('plan row', p.stdout.includes('| `Full` | 50 | v50 | 3 | 1-3 |'));
   check('locked org is announced', p.stdout.includes('!! qa is locked for writes: saved as pipeline, agents do not write.'));
   check('allow and restore commands', p.stdout.includes(`node '${join(SCRIPTS, 'org-roles.mjs')}' set 'qa' --role pipeline --deploy yes --branch 'integration'`) &&
                                       p.stdout.includes(`node '${join(SCRIPTS, 'org-roles.mjs')}' set 'qa' --role pipeline --deploy no --branch 'integration'`));
