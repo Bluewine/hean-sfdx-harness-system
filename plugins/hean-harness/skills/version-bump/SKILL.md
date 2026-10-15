@@ -217,7 +217,7 @@ Two commits, in this order, keep the diff readable: the version bump, then the c
 
 ## Phase 6 — Write the PR body
 
-Render `templates/pr-body.md`, dropping any block whose HTML comment says to omit it.
+Render `${CLAUDE_SKILL_DIR}/assets/pr-body.md`, dropping any block whose HTML comment says to omit it.
 
 **The body names two things and nothing else: what you deleted, and what the user held back with their stated reason.** Keep-list files appear in neither — they are permanent, so naming them adds noise to every PR forever.
 

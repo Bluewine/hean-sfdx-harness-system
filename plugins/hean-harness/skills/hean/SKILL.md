@@ -3,11 +3,11 @@ name: hean
 description: Prompt wrapper for superpowers:brainstorming — appends answer rules (every task, changing code, writing tests, workflow), ranked below brainstorming's steps, to the user's prompt and inlines the brainstorming skill at load time with no relay call
 when_to_use: The user's message needs reasoning before acting or answering — a new story, feature, or behavior change to implement; a bug, failure, or unexpected result to investigate, debug, or explain; a technical question about how, why, or which option; a design, plan, architecture, or approach to evaluate; a long or multi-part request. When unsure whether a message needs reasoning, invoke it. Invoke it in place of superpowers:brainstorming, never both, and pass the user's full message verbatim as args. Skip it for a single fully specified mechanical action (run a named command, commit, show git status, open a file, invoke another named skill), for replies inside a session this skill already started (answers to clarifying questions, approvals, corrections), and when the message already starts with /hean or /superpowers:brainstorming.
 argument-hint: "<prompt>"
-allowed-tools: Bash(sh *hean/inject.sh*)
+allowed-tools: Bash(sh *hean/scripts/inject.sh*)
 ---
 
 ```!
-sh "${CLAUDE_SKILL_DIR}/inject.sh"
+sh "${CLAUDE_SKILL_DIR}/scripts/inject.sh"
 ```
 
 ARGUMENTS: $ARGUMENTS

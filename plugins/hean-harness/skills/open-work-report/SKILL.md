@@ -23,7 +23,7 @@ mkdir -p .claude/skills/open-work-report/output
 rm -f .claude/skills/open-work-report/output/open-work.json .claude/skills/open-work-report/output/open-work.md
 git fetch origin
 node "${CLAUDE_PLUGIN_ROOT}/scripts/verify-remote-refs.mjs" integration || exit 1
-node "${CLAUDE_PLUGIN_ROOT}/skills/open-work-report/scripts/open-work.mjs" \
+node "${CLAUDE_SKILL_DIR}/scripts/open-work.mjs" \
   > .claude/skills/open-work-report/output/open-work.json
 ```
 

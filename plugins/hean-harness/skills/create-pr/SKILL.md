@@ -127,7 +127,7 @@ The group's main-bucket file set is the union of `git diff-tree` paths across it
 
 Load the bullet rules before writing any bullet:
 ```bash
-cat "${CLAUDE_PLUGIN_ROOT}/skills/create-pr/bullets.md"
+cat "${CLAUDE_SKILL_DIR}/references/bullets.md"
 ```
 
 Generate main bullets for each group by the "Main bullets" rules in that output. The sources are that group's `ISSUE_DESCRIPTION`, the subjects of its main-bucket commits, and its main-bucket file set.
@@ -217,13 +217,13 @@ Concatenate these lines, then append one closing line: "Drag the file(s) above i
 
 Select the template by `STORY_COUNT`.
 
-**Single story (`STORY_COUNT == 1`):** read `${CLAUDE_PLUGIN_ROOT}/skills/create-pr/templates/pr-body.md` and replace `{WORK-ID}` → `ROOT_WORK_ID`, `{TITLE}` → `ROOT_TITLE`, `{LINEAR_URL}` → the root group URL, `{BULLETS}` → the root group main bullets (each prefixed `- `), `{SONAR_BULLETS}` → the root group's Sonar bullets (each prefixed `- `), `{FRAMEWORK_BULLETS}` → the root group's Framework bullets (each prefixed `- `), `{DEPLOYMENT_STEPS}` → the root group's Phase 5 table, `{SCREENSHOTS}` → the root group's Phase 6 output.
+**Single story (`STORY_COUNT == 1`):** read `${CLAUDE_SKILL_DIR}/assets/pr-body.md` and replace `{WORK-ID}` → `ROOT_WORK_ID`, `{TITLE}` → `ROOT_TITLE`, `{LINEAR_URL}` → the root group URL, `{BULLETS}` → the root group main bullets (each prefixed `- `), `{SONAR_BULLETS}` → the root group's Sonar bullets (each prefixed `- `), `{FRAMEWORK_BULLETS}` → the root group's Framework bullets (each prefixed `- `), `{DEPLOYMENT_STEPS}` → the root group's Phase 5 table, `{SCREENSHOTS}` → the root group's Phase 6 output.
 - If the root group's `SONAR_BULLETS` is empty, delete the entire block from `### Sonar Fixes` through its following `---` line, both included.
 - If the root group's `FRAMEWORK_BULLETS` is empty, delete the entire block from `### Framework Changes` through its following `---` line, both included.
 - If the root group's `DEPLOYMENT_STEPS` is empty, delete the entire block from `### Pre and Post Deployment Steps` through its following `---` line, both included.
 - If the root group's `SCREENSHOTS` is empty, delete the entire block from `### Screenshots` through its following `---` line, both included.
 
-**Multi-story (`STORY_COUNT >= 2`):** read `${CLAUDE_PLUGIN_ROOT}/skills/create-pr/templates/pr-body-multiple.md`. It contains one repeatable `## Story {N}` block (which itself contains that story's own Screenshots block) and, at the end, one repeatable `Resolves {WORK-ID}` line (ignore the leading instruction comments when rendering). For each group in order, emit one copy of the `## Story {N}` block with:
+**Multi-story (`STORY_COUNT >= 2`):** read `${CLAUDE_SKILL_DIR}/assets/pr-body-multiple.md`. It contains one repeatable `## Story {N}` block (which itself contains that story's own Screenshots block) and, at the end, one repeatable `Resolves {WORK-ID}` line (ignore the leading instruction comments when rendering). For each group in order, emit one copy of the `## Story {N}` block with:
 - `{N}` → 1-based story index (root = 1),
 - `{WORK-ID}` → the group work ID,
 - `{TITLE}` → the group title,
@@ -327,7 +327,7 @@ If any of those paths shows as untracked or modified, list those paths, tell the
 
 create-pr, update-pr and branch-manifest work together: the PR carries the story's manifest as the branch now stands. Run:
 ```bash
-node "${CLAUDE_SKILL_DIR}/../branch-manifest/scripts/branch-manifest.mjs"
+node "${CLAUDE_PLUGIN_ROOT}/skills/branch-manifest/scripts/branch-manifest.mjs"
 ```
 
 Read the first line. For any `Manifest: <path> …` line other than `not written` or `Error`, run:
