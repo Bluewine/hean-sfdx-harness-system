@@ -1,6 +1,7 @@
 ---
 name: jenkins-pre-post-deploy
 description: Jenkins pre and post deploy phase runner for the connected Salesforce org — resolves the target org, takes one confirmation, then runs the phases unattended via a single script invocation, skipping the force-app deployment so a metadata deprecation can be tested without pushing a commit
+when_to_use: "The user asks to run or test the Jenkins pre and post deploy phases for real against the connected org without pushing a commit — \"run pre and post deploy\", \"test the destructive changes\", \"run the pre-deploy steps in my sandbox\", \"try the runbook scripts\". Needs the project script `.claude/scripts/jenkins-pre-post-deploy.sh`. Not a dry run: every phase deploys and deletes for real, so it takes one confirmation."
 ---
 
 # Jenkins pre/post deploy runner

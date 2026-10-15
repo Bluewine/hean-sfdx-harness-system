@@ -1,6 +1,7 @@
 ---
 name: version-bump
 description: Post-UAT housekeeping on the integration branch — raises the package.json release version by one and deletes every spent runbook script, staged class, and destructive-change entry outside a fixed keep-list and whatever the user holds back, then opens the Update Release Version PR
+when_to_use: A UAT deployment PR from `integration` into `release` has merged and the `integration` branch needs its housekeeping — "bump the version", "post-UAT cleanup", "raise the release version", "delete the spent runbook scripts", "open the Update Release Version PR". Not for a hotfix.
 ---
 
 > Applies to internal Salesforce projects, where this is the standard way of working.

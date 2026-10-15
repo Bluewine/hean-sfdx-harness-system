@@ -1,6 +1,7 @@
 ---
 name: linear-start-issue
 description: Branch setup for new Linear issues — parses issue ID from a Linear link, fetches latest integration, and creates a work-{ISSUE-ID} branch ready for development
+when_to_use: The user gives a Linear issue link or ID and wants to start work on it — "start ABC-24", "start work on this Linear link", "set up a branch for this Linear issue", "create the work branch for ABC-24". It creates the `work-{ISSUE-ID}` branch from the latest `integration`.
 ---
 
 You are executing the `/linear-start-issue` skill. Work through the phases below in order.

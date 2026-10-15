@@ -1,6 +1,7 @@
 ---
 name: update-pr
 description: Update an existing open PR body — detects root and merged child-branch story groups, regenerates per-story bullets, Sonar-fix and Framework-change bullets, re-derives runbook deployment steps while preserving manual ones, optionally recaptures screenshots, writes the body for review, then submits via gh pr edit
+when_to_use: Any request to update, refresh, regenerate or fix the body of an open pull request — "update the PR", "refresh the PR description", "the PR body is out of date", "add the new commits to the PR", "regenerate the PR bullets". Not for a deployment PR that `env-release-pr`, `uat-hotfix` or `version-bump` opens or edits as one of its own steps.
 ---
 
 You are executing the `/update-pr` skill. Work through the phases below in order.

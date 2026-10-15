@@ -1,6 +1,7 @@
 ---
 name: start-implementation
 description: Implementation run starter — runs the saved machine-wide preference before the first change, asks the two implementation questions only when none is saved, and reports the dev mode as the execution method to use
+when_to_use: Before the first change of any implementation, with or without a plan, and whenever a plan ends by asking for an execution method — "start implementing", "begin the implementation", "execute the plan". It reads the saved implementation preference and asks the two questions only when none is saved.
 allowed-tools: ["Bash", "AskUserQuestion"]
 ---
 

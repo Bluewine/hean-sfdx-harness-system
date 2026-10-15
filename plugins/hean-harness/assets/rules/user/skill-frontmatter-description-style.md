@@ -1,6 +1,6 @@
 # Skill Frontmatter Description Style
 
-Apply these conventions every time the `description:` field in the frontmatter is written or edited in any SKILL.md — no exceptions.
+Apply these conventions every time the `description:` or `when_to_use:` field in the frontmatter is written or edited in any SKILL.md — no exceptions.
 
 
 ## Structure — two allowed forms
@@ -26,6 +26,16 @@ Never open with "A", "An", or "The".
 - Use domain jargon freely — the reader is technical: "PRD-driven", "worktree-first", "tournament selection", "ambiguity-scoring"
 
 
+## `when_to_use` field
+
+- Required in every SKILL.md frontmatter, directly after `description:`.
+- `description` states what the skill does. `when_to_use` states when to use it: the situations and the user's own trigger phrases, for example "open the PR" or "delete old flow versions".
+- A skill the user runs only by typing names the typed command and the request it answers.
+- `description` and `when_to_use` together stay under 1,536 characters. Claude Code cuts the combined text there.
+- Quote the value when it contains `: ` or starts with a special character.
+- `## Structure — two allowed forms`, `## Length` and the first six self-check items apply to `description` only. `when_to_use` may run to several sentences and may open with "The user".
+
+
 ## Tone rules
 
 - Dense and exact — cut every filler word
@@ -48,6 +58,8 @@ Never open with "A", "An", or "The".
 - [ ] Constraint or differentiator present if scope needs bounding?
 - [ ] Under 50 words?
 - [ ] No standalone puff adjectives?
+- [ ] `when_to_use` present, directly after `description`, with situations and trigger phrases?
+- [ ] `description` and `when_to_use` together under 1,536 characters?
 
 
 ## Examples

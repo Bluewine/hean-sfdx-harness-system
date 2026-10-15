@@ -1,6 +1,7 @@
 ---
 name: flow-trigger-order
 description: Record-triggered flow run-order report for an SFDX repository — groups flows sharing an object and trigger timing, shows each one's trigger order, ties, missing-order flows, declared field reads and writes, and async or scheduled paths, in the platform's actual run order, or places one flow with --flow
+when_to_use: The user asks which record-triggered flows run on an object, in what order, whether two flows tie or conflict on trigger order, what `triggerOrder` a new flow should take, or which flows lack one — "what flows fire on Account before save", "show the flow run order for Case", "where does this flow go in the order", "flow trigger order conflicts". Pass the object API name when given, and `--flow` with the flow API name to place one flow.
 argument-hint: "[ObjectApiName] [--flow FlowApiName]"
 allowed-tools: ["Bash"]
 ---

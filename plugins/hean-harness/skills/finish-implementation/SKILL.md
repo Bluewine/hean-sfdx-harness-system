@@ -1,6 +1,7 @@
 ---
 name: finish-implementation
 description: Implementation run closer — ends the session's run and, for a run started with "no commits", undoes its per-task commits back to the run's first commit so every change sits uncommitted and unstaged for the user's review
+when_to_use: The last task of an implementation run is done, any final whole-branch review and coverage check have finished, and the run must be closed — "finish the implementation", "close the run", "we are done implementing". Invoke `finish-implementation` after the last task and never before a review that reads the run commits.
 allowed-tools: ["Bash", "Read"]
 ---
 

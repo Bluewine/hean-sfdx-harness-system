@@ -1,6 +1,7 @@
 ---
 name: setup
 description: Install the hean-harness environment on this machine — copies rules, memories and agents into place, sets the status line, adds the claude alias, turns on the task tools and the Opus advisor in settings.json, offers auto-update for its marketplace or all marketplaces, and records every change so uninstall can reverse it
+when_to_use: The user asks to install, set up, refresh or repair the `hean-harness` environment on this machine — "set up hean-harness", "install the rules and memories", "add the claude alias", "run setup again" — or the user asks to fix what `doctor` reported, or this is the first run on a new machine. It shows what changes and asks before applying.
 allowed-tools: ["Bash", "Read"]
 ---
 

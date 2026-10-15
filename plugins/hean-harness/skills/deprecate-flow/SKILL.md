@@ -1,6 +1,7 @@
 ---
 name: deprecate-flow
 description: Flow deprecation utility for Jenkins pre/post deploy manifests — collects the flow name, version count, and intent up front, then deactivates the flow, clears errored flow interviews, removes the source from force-app, and lists every version down to 1 in destructiveChanges
+when_to_use: The user asks to deprecate, retire, remove or delete a Flow, to add a flow to the Jenkins `destructiveChanges`, or to delete and rebuild a flow whose type cannot change in place — "deprecate flow Account_Before_Save", "delete this flow from the org and the repo", "add the flow to destructiveChanges", "remove all versions of the flow". Pass the flow API name as the skill argument when the user gives one.
 ---
 
 # Deprecate Flow

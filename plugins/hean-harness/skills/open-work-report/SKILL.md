@@ -1,6 +1,7 @@
 ---
 name: open-work-report
 description: Open work tracer for everything not yet merged to integration — lists one row per Linear story with subject, assignee, sprint, and whether its commits are fully pushed, partially pushed, or still only on this machine
+when_to_use: The user asks what work is still open or not yet merged to `integration`, who has what in flight, or which commits exist only on this machine — "what is open", "open work report", "which stories are not merged", "what have I not pushed", "what is in flight this sprint".
 ---
 
 You are executing the `/open-work-report` skill. Work through the phases below in order.

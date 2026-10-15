@@ -1,6 +1,7 @@
 ---
 name: org-roles
 description: Per-project org role registry — shows each logged-in Salesforce org with its saved role (development, pipeline, research, production) and the CLI default, asks for every missing role or pipeline branch, or every value with `review`, and saves the user-confirmed answers the org write gate enforces, keyed by org ID
+when_to_use: The user asks which Salesforce orgs the project knows, what role each org has, which org agents may deploy to, or wants to set, change, review or remove an org role — "show org roles", "set qa as a pipeline org", "which org can you deploy to", "review the org roles", or when the org write gate refuses because roles are missing. Pass `status`, `review`, `set` or `remove` with its arguments.
 argument-hint: "[status | review | set <alias> ... | remove <alias>]"
 allowed-tools: ["Bash", "Read", "AskUserQuestion"]
 ---

@@ -1,6 +1,7 @@
 ---
 name: flow-version-cleanup
 description: Flow version limit cleanup for one Salesforce org — finds every flow at the 50-version limit and deletes its oldest non-Active versions through Tooling API batch requests from the Salesforce CLI, with one confirmation and a temporary write permission that is always reset, never Apex or a metadata deploy
+when_to_use: A flow save or deploy fails because the flow has reached the 50-version limit, or the user asks to delete old flow versions in an org — "delete old flow versions", "flow at the 50-version limit", "too many versions of a flow", "clean up flow versions in qa". Only flows at the 50-version limit are cleaned. Pass the org alias and `--count` only when the user names them.
 argument-hint: "[org alias or username] [--count <N, default 5>]"
 ---
 

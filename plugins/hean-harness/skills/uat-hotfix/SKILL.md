@@ -1,6 +1,7 @@
 ---
 name: uat-hotfix
 description: UAT hotfix lifecycle driver for the release branch — detects which of the four phases a hotfix is in from git state alone, then executes only that phase's steps and stops at its human gate
+when_to_use: The user mentions a hotfix for the UAT release branch, or resumes one mid-flight — "start a UAT hotfix for ABC-123", "continue the hotfix", "open the hotfix PR", "hotfix PR is merged what next", "back-merge the hotfix into integration" — or makes any PR request while on a `work-{ID}-HF`, `hotfix-{ID}` or `work-{ID}-BM` branch. Pass the work ID as the skill argument; never infer it from the branch name. Not for a fix that can wait for the normal release train, or a Production hotfix.
 ---
 
 > Applies to internal Salesforce projects, where this is the standard way of working.

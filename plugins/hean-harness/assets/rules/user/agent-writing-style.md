@@ -123,6 +123,7 @@ Section tags use `PascalCase_With_Underscores` for multi-word names.
 - One bullet per tool
 - Format: `- Use [ToolName] to [action] ([specific pattern or context]).`
 - Only tools actually needed — no exhaustive inventory
+- An agent that needs a skill names it by its full name (`hean-harness:<skill>`) in `<Investigation_Protocol>` and `<Tool_Usage>` and runs it through the Skill tool. Never list skills in a `skills:` frontmatter field: `skills:` loads the full text of each listed skill into the agent's context at startup; naming the skill in a step loads it only when that step runs.
 - When the agent can spawn sub-agents, include a nested `<External_Consultation>` element:
   - States the exact invocation call signature
   - Ends with: `Skip silently if delegation is unavailable. Never block on external consultation.`

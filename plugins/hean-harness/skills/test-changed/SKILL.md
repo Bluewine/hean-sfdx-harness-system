@@ -1,6 +1,7 @@
 ---
 name: test-changed
 description: Post-dev test orchestration — resolves Apex + LWC test scope transitively from working tree changes and an open implementation run's commits, then spawns apex-tester and/or lwc-tester in parallel with pre-computed scope and a 100% whole-file coverage target
+when_to_use: The user asks to test, cover or check coverage of what changed after development — "test my changes", "run the tests for this branch", "check coverage", "write tests for what I changed", "are my Apex and LWC changes at 100%" — and before `finish-implementation` in an implementation run. It resolves the Apex and LWC scope and spawns the testers.
 ---
 
 You are executing the `/test-changed` skill. Work through the nine phases below in order. Do not spawn any agent until Phase 7.

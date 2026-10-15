@@ -1,6 +1,7 @@
 ---
 name: flow-description-comment
 description: Dated change-log verifier for Flow metadata — reads each staged Flow this branch changes against the top entry of its description, adds or sharpens that entry only when the staged change is not already covered, never touching the entries beneath it, then retries the blocked commit
+when_to_use: A `git commit` was refused by `flow-description-gate.mjs` because a staged Flow has no verified dated description entry, or the user asks to check the description entry of a staged Flow before committing — "the commit was blocked for the flow description", "check the flow description before I commit". Stage the Flow first; the skill reads only staged Flows and retries the refused commit.
 ---
 
 # Flow Description Comment

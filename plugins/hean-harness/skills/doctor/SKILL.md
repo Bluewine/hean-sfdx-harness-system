@@ -1,6 +1,7 @@
 ---
 name: doctor
 description: Report what hean-harness installed on this machine and what no longer matches — missing files, files edited since install, removed blocks, and anything the environment still needs
+when_to_use: The user asks whether the `hean-harness` setup is healthy or complete, why a rule, memory, agent or the `claude` alias seems missing or out of date, or what `setup` installed and what changed since — "check my hean install", "is hean-harness set up right", "run doctor", "why are the rules not loading". Read-only; it changes nothing.
 allowed-tools: ["Bash", "Read"]
 ---
 

@@ -1,6 +1,7 @@
 ---
 name: soql-bindvar-resolver
 description: Use when given a Salesforce Apex debug log and asked to identify SOQL queries, resolve bindVar placeholders to real values, and trace originating methods from the call stack — with or without a target SObject; also use when asked to dump findings to a markdown file or generate a PDF report from the analysis
+when_to_use: The user hands over a Salesforce Apex debug log and asks which SOQL queries ran, what a `bindVar` placeholder resolved to, or which method issued a query — "resolve the bind variables in this log", "which method ran this SOQL", "find the queries against Account in this debug log" — or asks to save the findings as a markdown file or a PDF report.
 ---
 
 # SOQL BindVar Resolver

@@ -1,6 +1,7 @@
 ---
 name: create-pr
 description: GitHub PR assembler for every PR request on any base branch, except PRs env-release-pr, uat-hotfix or version-bump open — resolves the base branch and Linear stories, writes problem-solved bullets, splits Sonar-fix and Framework-change bullets, detects runbook steps, asks for manual ones, writes the review body, then calls gh pr create
+when_to_use: Any request to open, create, raise, make or submit a pull request on any base branch, including "open the PR", "create a PR", "raise a PR for this story", "PR into work-ABC-20" and "PR this branch against integration". Pass `--base` only when the user names a target branch. Not for a deployment PR between `integration`, `release` and `master` (`env-release-pr`), nor a PR from a `work-{ID}-HF`, `hotfix-{ID}` or `work-{ID}-BM` branch (`uat-hotfix`) or the Update Release Version PR (`version-bump`).
 argument-hint: "[--base <branch>]"
 ---
 

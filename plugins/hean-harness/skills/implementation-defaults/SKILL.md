@@ -1,6 +1,7 @@
 ---
 name: implementation-defaults
 description: Machine-wide implementation preference editor — shows, clears or sets the saved dev-mode and commit defaults from a typed argument, without asking the two implementation questions again
+when_to_use: Typed-only command. The user types `/hean-harness:implementation-defaults` to show, clear or change the saved machine-wide implementation preference — dev mode (subagent or main session) and whether tasks are committed — without answering the two implementation questions again. `disable-model-invocation` blocks model invocation; never start it from a request in words.
 argument-hint: "[show | clear | commits on|off | mode subagent|main]"
 disable-model-invocation: true
 allowed-tools: ["Bash"]

@@ -1,6 +1,7 @@
 ---
 name: memory-review
 description: Reviews new and changed entries in .claude/memory and .claude/agent-memory/*/ against a commit-worthiness test, summarizes each with a verdict, and resolves accept/reject decisions — including surgical MEMORY.md index-line removal — without ever running git commit. 
+when_to_use: The user asks to review, vet or clean up memory entries before they are shared, or asks which memories are worth committing — "review the memories", "which memory files should I commit", "check .claude/memory before I commit", "review agent memory". It stages accepted entries in `.claude/memory` and `.claude/agent-memory` and never commits.
 ---
 
 # Memory Review

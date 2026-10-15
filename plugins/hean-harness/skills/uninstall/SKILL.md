@@ -1,6 +1,7 @@
 ---
 name: uninstall
 description: Reverse every change setup made — strips only the marked alias block from the shell startup file, removes the rules and memories it copied (backing up edited ones), deletes the plugin's own files in the repository's .claude folder, deletes .mcp.json, uninstalls the plugins setup added and then hean-harness itself
+when_to_use: The user asks to remove `hean-harness` from this machine or repository, or to undo `setup` — "uninstall hean-harness", "remove the claude alias and rules", "undo what setup did", "clean up the hean install". It lists every change first and asks before reversing any.
 allowed-tools: ["Bash", "Read"]
 ---
 

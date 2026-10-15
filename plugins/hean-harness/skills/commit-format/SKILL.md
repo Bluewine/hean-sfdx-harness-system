@@ -1,6 +1,7 @@
 ---
 name: commit-format
 description: Switch the @WORK-ID commit subject format on or off in the current repository — updates the answer setup saved, installs or removes the commit-msg hook the plugin put there, and leaves every other installed file alone
+when_to_use: The user asks to turn the `@WORK-ID` commit subject format on or off, to enforce or stop enforcing work item references in commit messages, to install or remove the `commit-msg` hook, or to see whether the format is currently enforced — "turn on commit format", "stop enforcing the commit format", "is commit format on". Pass `on`, `off` or `status` as the skill argument when the request names one.
 argument-hint: "[on|off|status]"
 arguments: [state]
 allowed-tools: ["Bash", "Read"]
