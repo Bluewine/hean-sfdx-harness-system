@@ -34,6 +34,7 @@ Updated whenever a skill, agent, hook, or rule is added, removed, or renamed —
 | version-bump | Skills | documented |
 | hean | — | pending (exists, not in original scope) |
 | soql-bindvar-resolver | — | pending (exists, not in original scope) |
+| merge-pr | — | pending |
 | commit-walk-sync | — | excluded (ships as `SKILL.mdx`, not discoverable) |
 | sync-to-branch | — | excluded (ships as `SKILL.mdx`, not discoverable) |
 
