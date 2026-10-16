@@ -1,12 +1,12 @@
 ---
 name: update-pr
 description: Update an existing open PR body — detects root and merged child-branch story groups, regenerates per-story bullets, Sonar-fix and Framework-change bullets, re-derives runbook deployment steps while preserving manual ones, optionally recaptures screenshots, writes the body for review, then submits via gh pr edit
-when_to_use: Any request to update, refresh, regenerate or fix the body of an open pull request — "update the PR", "refresh the PR description", "the PR body is out of date", "add the new commits to the PR", "regenerate the PR bullets". Not for a deployment PR that `env-release-pr`, `uat-hotfix` or `version-bump` opens or edits as one of its own steps.
+when_to_use: Any request to update, refresh, regenerate or fix the body of an open pull request — "update the PR", "refresh the PR description", "the PR body is out of date", "add the new commits to the PR", "regenerate the PR bullets". Not for a deployment PR that `env-release-pr`, `hotfix` or `version-bump` opens or edits as one of its own steps.
 ---
 
 You are executing the `/update-pr` skill. Work through the phases below in order.
 
-Every request to update or refresh an open pull request's body runs this skill, whatever the PR's base branch, except a PR that env-release-pr, uat-hotfix or version-bump opens or edits as one of its own steps. Render the body from this skill's template, unless the user asks in their own words for a different body or template — then write the body as they ask, skip the template self-check, and keep every other phase.
+Every request to update or refresh an open pull request's body runs this skill, whatever the PR's base branch, except a PR that env-release-pr, hotfix or version-bump opens or edits as one of its own steps. Render the body from this skill's template, unless the user asks in their own words for a different body or template — then write the body as they ask, skip the template self-check, and keep every other phase.
 
 ## Phase 1 — Extract branch work ID
 

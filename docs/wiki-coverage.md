@@ -30,7 +30,8 @@ Updated whenever a skill, agent, hook, or rule is added, removed, or renamed —
 | update-pr | Skills | documented |
 | test-changed | — | pending (exists, not in original scope) |
 | jenkins-pre-post-deploy | Skills | documented |
-| uat-hotfix | Skills | documented |
+| uat-hotfix | Skills | excluded (turned off, SKILL.mdx) |
+| hotfix | — | pending |
 | version-bump | Skills | documented |
 | hean | — | pending (exists, not in original scope) |
 | soql-bindvar-resolver | — | pending (exists, not in original scope) |

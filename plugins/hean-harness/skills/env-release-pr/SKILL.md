@@ -1,7 +1,7 @@
 ---
 name: env-release-pr
 description: Release-train deployment PR for either environment — UAT (integration into release) or Production (release into master) — dedupes the commit range into one row per Linear story with title, assignee and sprint, names hotfix-deployed stories out loud, then opens or updates the PR
-when_to_use: Any request to open, create, raise, draft, refresh or update a deployment PR between the long-lived branches — "UAT deployment PR", "UAT Deployment {PROJECT}.{date}", "Production Release PR", "prod release", "open the release PR into master", "merge release into master", "deploy integration to UAT", "update the release PR body" — and any agent that needs one, passing uat or prod only when the request names the environment ("open the release PR" names none, so pass no argument). Not for story PRs from work-* or hotfix-* into integration, which create-pr opens, nor a PR uat-hotfix opens or edits as one of its own steps.
+when_to_use: Any request to open, create, raise, draft, refresh or update a deployment PR between the long-lived branches — "UAT deployment PR", "UAT Deployment {PROJECT}.{date}", "Production Release PR", "prod release", "open the release PR into master", "merge release into master", "deploy integration to UAT", "update the release PR body" — and any agent that needs one, passing uat or prod only when the request names the environment ("open the release PR" names none, so pass no argument). Not for story PRs from work-* or hotfix-* into integration, which create-pr opens, nor a PR hotfix opens or edits as one of its own steps.
 argument-hint: "[uat|prod] [PR number] [--assignee <login>] [--reviewer <login>]"
 arguments: [kind, pr]
 ---
@@ -20,7 +20,7 @@ This skill opens or updates the deployment PR between two long-lived branches, f
 
 Phase 0 settles the kind before any range is computed. Once it is settled, the branch pair is fixed: no request wording redirects it, including words that name a deployment target or environment.
 
-A PR from a `work-{WORK-ID}` or `hotfix-{WORK-ID}` branch into `integration` is a story PR, not a deployment PR. Do not use this skill for it. A PR `uat-hotfix` opens or edits as one of its own steps is not this skill's either. A UAT hotfix re-deploy requested outside `uat-hotfix` (`hotfix-{WORK-ID}` → `release`) is.
+A PR from a `work-{WORK-ID}` or `hotfix-{WORK-ID}` branch into `integration` is a story PR, not a deployment PR. Do not use this skill for it. A PR `hotfix` opens or edits as one of its own steps is not this skill's either. A UAT hotfix re-deploy requested outside `hotfix` (`hotfix-{WORK-ID}` → `release`) is.
 
 The same phases cover opening a new deployment PR and updating an existing one. Phase 1 decides which mode applies from the request's intent; Phases 6, 7, and 8 each behave differently under it. Every other phase is identical for both kinds and both modes, and the row set is derived the same way in all of them.
 

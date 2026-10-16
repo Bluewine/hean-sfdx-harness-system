@@ -39,7 +39,7 @@ import { settingsFile } from './settings.mjs';
 import { shQuote } from './shell.mjs';
 
 const BRANCH_MANIFEST = fileURLToPath(new URL('../../skills/branch-manifest/scripts/branch-manifest.mjs', import.meta.url));
-// Hotfix and back-merge branches (uat-hotfix names them) do not carry their own story manifest.
+// Hotfix and back-merge branches (the hotfix skill names them) do not carry their own story manifest.
 const SKIPPED_BRANCH = /-(HF|BM)$|^hotfix-/;
 // A commit made while one of these is in progress records work taken from elsewhere, not this story's.
 const IN_PROGRESS = ['MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'rebase-merge', 'rebase-apply'];
