@@ -86,7 +86,7 @@ const targets = text => text.split('\n').map(linkTarget).filter(Boolean);
         out === '- [a.md](a.md) — new hook\n- [mine](mine.md) — y\n', JSON.stringify(out));
 }
 {
-  const src = join(MEMORIES, 'project', 'feedback_avoid_deferred_wording_for_completed_moves.md');
+  const src = join(MEMORIES, 'general', 'feedback_avoid_deferred_wording_for_completed_moves.md');
   check('a quoted description is unquoted, with its escaped quotes kept',
         indexLine(src).includes('as "deferred" when'), indexLine(src));
 }
@@ -110,6 +110,8 @@ const repo = join(root, 'repo');
 mkdirSync(join(home, '.claude'), { recursive: true });
 mkdirSync(repo, { recursive: true });
 execFileSync('git', ['-C', repo, 'init', '-q', '-b', 'main']);
+// every memory, the agent ones included, goes only into an SFDX project
+writeFileSync(join(repo, 'sfdx-project.json'), '{"packageDirectories":[{"path":"force-app","default":true}]}\n');
 
 const env = { ...process.env, HOME: home, CLAUDE_CONFIG_DIR: join(home, '.claude') };
 // Scripts that live in their own skill's scripts folder.
@@ -123,7 +125,7 @@ const shipped = dir => readdirSync(dir).filter(f => f.endsWith('.md')).sort();
 const memDir = join(home, '.claude', 'projects', repo.replace(/[/.]/g, '-'), 'memory');
 const index = join(memDir, 'MEMORY.md');
 const agentIndex = join(repo, '.claude', 'agent-memory', 'hean-harness-sfdx-deployer', 'MEMORY.md');
-const projectShipped = shipped(join(MEMORIES, 'project'));
+const projectShipped = [...shipped(join(MEMORIES, 'general')), ...shipped(join(MEMORIES, 'project'))].sort();
 
 try {
   // What an earlier version left: the person's own lines, then its marked block,
@@ -189,6 +191,7 @@ try {
   mkdirSync(join(home2, '.claude'), { recursive: true });
   mkdirSync(repo2, { recursive: true });
   execFileSync('git', ['-C', repo2, 'init', '-q', '-b', 'main']);
+  writeFileSync(join(repo2, 'sfdx-project.json'), '{"packageDirectories":[{"path":"force-app","default":true}]}\n');
   const env2 = { ...env, HOME: home2, CLAUDE_CONFIG_DIR: join(home2, '.claude') };
   const memDir2 = join(home2, '.claude', 'projects', repo2.replace(/[/.]/g, '-'), 'memory');
   const index2 = join(memDir2, 'MEMORY.md');

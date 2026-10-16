@@ -19,5 +19,4 @@ scroll past to reach the file.
 came out cropped, say that in one line — a broken deliverable is worth flagging. Volunteer
 analysis only when the user asks a question or something is actually wrong.
 
-Applies to any artifact delivery, not only screenshots. Related:
-[[feedback_communication_style_explicit_labels_no_pronouns]].
+Applies to any artifact delivery, not only screenshots.

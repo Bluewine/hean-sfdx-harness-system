@@ -27,6 +27,7 @@ const home = join(work, 'home');
 const repo = join(work, 'repo');
 mkdirSync(join(repo, 'force-app'), { recursive: true });
 mkdirSync(home, { recursive: true });
+writeFileSync(join(repo, 'sfdx-project.json'), '{"packageDirectories":[{"path":"force-app","default":true}]}\n');
 writeFileSync(join(home, '.zshrc'), '# my own notes\nkeep me\n');
 execFileSync('git', ['init', '-q', repo]);
 

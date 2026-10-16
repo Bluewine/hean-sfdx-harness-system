@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { load, init } from './manifest.mjs';
 import { installDir, installFile, installGitConfig, getGitConfig } from './install.mjs';
 import { repoTracksHooks } from './gitignore.mjs';
+import { isSfdxRepo } from './paths.mjs';
 
 export const HOOKS_DIR = '.githooks';
 
@@ -117,7 +118,7 @@ export const PRE_COMMIT_SOURCE = join(PLUGIN_ROOT, 'assets', 'githooks', 'pre-co
  * reach the user.
  */
 export function applyPreCommit(repo, { replace = false, dryRun = false } = {}) {
-  if (!existsSync(join(repo, 'sfdx-project.json'))) return [];
+  if (!isSfdxRepo(repo)) return [];
   const hook = join(repo, HOOKS_DIR, 'pre-commit');
   if (repoTracksHooks(repo)) {
     return [`Manifest hook  ${HOOKS_DIR}/ is tracked by the repository, so no pre-commit hook is installed`,

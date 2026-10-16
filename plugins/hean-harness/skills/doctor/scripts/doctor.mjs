@@ -30,6 +30,7 @@ import { getGitConfig } from '../../../scripts/lib/install.mjs';
 import { readPreference, preferenceText } from '../../../scripts/lib/commit-lifecycle.mjs';
 import { indexedFiles, unindexed } from '../../../scripts/lib/memory-index.mjs';
 import { TYPES, readNaming, describe } from '../../../scripts/lib/naming.mjs';
+import { isSfdxRepo } from '../../../scripts/lib/paths.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN_ROOT = dirname(dirname(dirname(HERE)));
@@ -165,7 +166,7 @@ function main() {
   log('');
 
   const namingRepo = currentRepo() ?? repoRoot();
-  if (namingRepo && existsSync(join(namingRepo, 'sfdx-project.json'))) {
+  if (namingRepo && isSfdxRepo(namingRepo)) {
     log('Naming');
     const n = readNaming(namingRepo);
     for (const t of TYPES) log(`  ${describe(t, n[t])}`);

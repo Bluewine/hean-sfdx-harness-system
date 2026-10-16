@@ -34,7 +34,7 @@ import { fileURLToPath } from 'node:url';
 
 import { tryGit } from './command-line.mjs';
 import { MAX_BUFFER, WORK_ID } from './merge-base.mjs';
-import { claudeDir } from './paths.mjs';
+import { claudeDir, isSfdxRepo } from './paths.mjs';
 import { settingsFile } from './settings.mjs';
 import { shQuote } from './shell.mjs';
 
@@ -85,7 +85,7 @@ function indexBlob(root, rel, env) {
  * or rebase in progress, or a manifest git ignores.
  */
 export function manifestTarget(root) {
-  if (!existsSync(join(root, 'sfdx-project.json'))) return null;
+  if (!isSfdxRepo(root)) return null;
   if (!existsSync(settingsFile(root))) return null;
   const branch = tryGit(root, 'branch', '--show-current');
   const id = branch ? WORK_ID.exec(branch)?.[0] : null;

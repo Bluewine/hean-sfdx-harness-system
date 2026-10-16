@@ -3,7 +3,9 @@
  * Installs the rules, each at the scope it belongs to.
  *
  *   assets/rules/user/     ->  ~/.claude/rules/          every repository
- *   assets/rules/project/  ->  <repo>/.claude/rules/     this repository only
+ *   assets/rules/project/  ->  <repo>/.claude/rules/     this repository only; the Salesforce
+ *                                                        ones need sfdx-project.json, and
+ *                                                        ALWAYS_PROJECT are installed anywhere
  *   assets/claude-md/      ->  a block in ~/.claude/CLAUDE.md
  *
  * The split matters. User-scope rules are general conventions and apply anywhere.
@@ -19,12 +21,14 @@ import { dirname, join } from 'node:path';
 import { init } from '../../../scripts/lib/manifest.mjs';
 import { installFile, installBlock, installDir, installRepoFolder } from '../../../scripts/lib/install.mjs';
 import { MARKER } from '../../../scripts/lib/shell.mjs';
-import { claudeDir } from '../../../scripts/lib/paths.mjs';
+import { claudeDir, isSfdxRepo } from '../../../scripts/lib/paths.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN_ROOT = dirname(dirname(dirname(HERE)));
 const USER_SRC = join(PLUGIN_ROOT, 'assets', 'rules', 'user');
 const PROJ_SRC = join(PLUGIN_ROOT, 'assets', 'rules', 'project');
+// Not Salesforce rules: the commit subject format and the Linear story lookup apply in any repository.
+const ALWAYS_PROJECT = ['commit-message-format.md', 'linear-story-resolution.md'];
 const BLOCK_SRC = join(PLUGIN_ROOT, 'assets', 'claude-md', 'block.md');
 
 const CLAUDE_DIR = claudeDir();
@@ -80,9 +84,15 @@ function main() {
     process.exit(1);
   }
 
+  // Salesforce rules belong only where the repository is an SFDX project (`isSfdxRepo`).
+  const sfdx = isSfdxRepo(repo);
+  const skipNote = 'Salesforce rules skipped — this repository has no sfdx-project.json, so they do not apply';
+  const ruleFiles = sfdx ? projFiles : projFiles.filter(f => ALWAYS_PROJECT.includes(f));
+
   report('User rules', userFiles, USER_SRC, USER_DEST);
   log('');
-  report('Project rules', projFiles, PROJ_SRC, projDest);
+  report('Project rules', ruleFiles, PROJ_SRC, projDest);
+  if (!sfdx) log(skipNote);
   log('');
   log(`Block           into ${CLAUDE_MD}${existsSync(CLAUDE_MD) ? '' : '  (will be created)'}`);
   log('');
@@ -98,8 +108,9 @@ function main() {
   const folder = installRepoFolder(repo);
   if (!folder.recorded) log(`Not recording ${folder.target} for uninstall — it is Claude Code's own configuration`);
   installDir(projDest);
-  for (const f of projFiles) installFile(join(PROJ_SRC, f), join(projDest, f));
-  log(`Installed ${projFiles.length} Salesforce rules into this repository`);
+  for (const f of ruleFiles) installFile(join(PROJ_SRC, f), join(projDest, f));
+  log(sfdx ? `Installed ${ruleFiles.length} Salesforce rules into this repository`
+           : `Installed ${ruleFiles.length} general project rules; skipped the Salesforce rules — this repository has no sfdx-project.json`);
 
   if (existsSync(BLOCK_SRC)) {
     const body = readFileSync(BLOCK_SRC, 'utf8').trimEnd();

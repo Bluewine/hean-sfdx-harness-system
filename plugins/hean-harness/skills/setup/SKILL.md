@@ -79,6 +79,12 @@ Install the environment. Show the user what will change before changing it.
      only in a repository with `sfdx-project.json` whose `.githooks/` git does not track; say that a
      tracked `.githooks/` leaves terminal commits unchecked, while commits made in Claude Code are
      still checked. Repeat every `!! KEPT` line for it too.
+   - when the `Rule files` step says it skipped the Salesforce rules because the repository has no
+     `sfdx-project.json`, repeat that line and say only the commit format and Linear story rules
+     were installed into the repository.
+   - when the `Memories` step says it skipped the Salesforce memories because the repository has
+     no `sfdx-project.json`, repeat that line and say only the general memories were installed, and
+     no agent memories.
    - that the `Manifest check` step copied the check to `~/.claude/hean-harness/hooks/`, where the
      pre-commit hook runs it from
    - whether `npm install` ran, was skipped because `node_modules` was already there or the

@@ -34,4 +34,4 @@ contain.
 - Keep the content of a verified-but-uncommitted step recoverable outside the tree while it
   is the only copy.
 
-Related: [[feedback_always_use_developer_agent]], [[feedback_never_force_add_ignored]].
+Related: [[feedback_never_force_add_ignored]].

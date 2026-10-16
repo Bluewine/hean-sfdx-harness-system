@@ -207,6 +207,9 @@ try {
   mkdirSync(dirname(storyManifest), { recursive: true });
   writeFileSync(storyManifest, '<Package/>\n');
 
+  // the agent memories are installed only into an SFDX project, so make this one and install them
+  writeFileSync(join(repo, 'sfdx-project.json'), '{"packageDirectories":[{"path":"force-app","default":true}]}\n');
+  run('install-memories.mjs', ['--repo', repo]);
   // the user's own files in the repository .claude folder, which uninstall must keep
   const repoClaude = join(repo, '.claude');
   const agentMemory = join(repoClaude, 'agent-memory');
@@ -221,6 +224,9 @@ try {
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, text);
   }
+  // the Salesforce rules are installed only into an SFDX project, so make this one and install them
+  writeFileSync(join(repo, 'sfdx-project.json'), '{"packageDirectories":[{"path":"force-app","default":true}]}\n');
+  execFileSync('node', [join(SETUP, 'install-rules.mjs'), '--repo', repo], { env, encoding: 'utf8', stdio: 'pipe' });
   // one installed project rule and one installed user rule, edited after setup
   const installed = JSON.parse(readFileSync(manifestPath, 'utf8')).changes.filter(c => c.type === 'file-copy');
   const editedProjectRule = installed.find(c => dirname(c.target) === join(repoClaude, 'rules')).target;
@@ -505,6 +511,117 @@ try {
   check('the pre-commit hook is installed, executable, in an SFDX repository',
         existsSync(preP) && (statSync(preP).mode & 0o111) !== 0 && readFileSync(preP, 'utf8') === shippedHook('pre-commit'), outP);
   check('a repository without sfdx-project.json gets no pre-commit hook', !existsSync(join(repoH, '.githooks', 'pre-commit')));
+
+  // --- The Salesforce rules go only into a repository with sfdx-project.json --
+
+  const rulesOf = (repoDir, extra = []) => execFileSync('node', [join(SETUP, 'install-rules.mjs'), '--repo', repoDir, ...extra],
+    { env: envP, encoding: 'utf8', stdio: 'pipe' });
+  const plainRepo = join(root, 'plainRepo');
+  mkdirSync(plainRepo, { recursive: true });
+  execFileSync('git', ['-C', plainRepo, 'init', '-q', '-b', 'main']);
+  const dryPlain = rulesOf(plainRepo, ['--dry-run']);
+  check('a dry run without sfdx-project.json says the Salesforce rules are skipped',
+        dryPlain.includes('Salesforce rules skipped') && /Project rules\s+2 files/.test(dryPlain), dryPlain);
+  const outPlain = rulesOf(plainRepo);
+  const plainRules = existsSync(join(plainRepo, '.claude', 'rules')) ? readdirSync(join(plainRepo, '.claude', 'rules')).sort() : [];
+  check('a repository without sfdx-project.json gets only the commit format and Linear story project rules',
+        JSON.stringify(plainRules) === JSON.stringify(['commit-message-format.md', 'linear-story-resolution.md']) &&
+        outPlain.includes('skipped the Salesforce rules'), JSON.stringify(plainRules));
+  check('the user rules and the CLAUDE.md block are still installed without sfdx-project.json',
+        readdirSync(join(homeP, '.claude', 'rules')).length > 0 && readFileSync(join(homeP, '.claude', 'CLAUDE.md'), 'utf8').includes('hean-harness'), outPlain);
+  const sfdxRulesRepo = sfdxRepo('sfdxRulesRepo');
+  const outSfdx = rulesOf(sfdxRulesRepo);
+  check('a repository with sfdx-project.json gets the project rules',
+        existsSync(join(sfdxRulesRepo, '.claude', 'rules')) && readdirSync(join(sfdxRulesRepo, '.claude', 'rules')).length > 0 &&
+        /Installed [1-9]\d* Salesforce rules into this repository/.test(outSfdx), outSfdx);
+
+  // --- The Salesforce memories go only into a repository with sfdx-project.json
+
+  const homeM = join(root, 'homeM');
+  mkdirSync(join(homeM, '.claude'), { recursive: true });
+  const envM = { ...BASE_ENV, HOME: homeM, CLAUDE_CONFIG_DIR: join(homeM, '.claude') };
+  const MEM_SRC = join(dirname(SCRIPTS), 'assets', 'memories');
+  const shippedMd = dir => readdirSync(dir).filter(f => f.endsWith('.md')).sort();
+  const generalMem = shippedMd(join(MEM_SRC, 'general'));
+  const allMem = [...generalMem, ...shippedMd(join(MEM_SRC, 'project'))].sort();
+  const memoriesOf = (repoDir, extra = []) => execFileSync('node', [join(SETUP, 'install-memories.mjs'), '--repo', repoDir, ...extra],
+    { env: envM, encoding: 'utf8', stdio: 'pipe' });
+  const memDirOf = repoDir => join(homeM, '.claude', 'projects', repoDir.replace(/[/.]/g, '-'), 'memory');
+  const memFilesIn = repoDir => existsSync(memDirOf(repoDir))
+    ? readdirSync(memDirOf(repoDir)).filter(f => f.endsWith('.md') && f !== 'MEMORY.md').sort() : [];
+  const indexedIn = repoDir => readFileSync(join(memDirOf(repoDir), 'MEMORY.md'), 'utf8').split('\n')
+    .map(l => /^- \[.*?\]\(([^)]+)\)/.exec(l)?.[1]).filter(Boolean).sort();
+  const agentFoldersIn = repoDir => existsSync(join(repoDir, '.claude', 'agent-memory'))
+    ? readdirSync(join(repoDir, '.claude', 'agent-memory')) : [];
+  const doctorM = cwd => { try { return execFileSync('node', [skillScript('doctor.mjs')], { env: envM, encoding: 'utf8', stdio: 'pipe', cwd }); }
+                           catch (e) { return String(e.stdout ?? ''); } };
+  const SKIPPED_MEM = 'Salesforce memories skipped — this repository has no sfdx-project.json, so they do not apply';
+  check('the shipped memories are split into general and Salesforce ones',
+        generalMem.length > 0 && allMem.length > generalMem.length, `${generalMem.length} of ${allMem.length}`);
+
+  const plainM = join(root, 'plainM');
+  mkdirSync(plainM, { recursive: true });
+  execFileSync('git', ['-C', plainM, 'init', '-q', '-b', 'main']);
+  const dryM = memoriesOf(plainM, ['--dry-run']);
+  check('a dry run without sfdx-project.json says the Salesforce memories are skipped',
+        dryM.includes(SKIPPED_MEM) && dryM.includes(`Project memories   ${generalMem.length} files`) &&
+          dryM.includes('Agent memories     0 files across 0 agents') && !existsSync(memDirOf(plainM)), dryM);
+  const outM = memoriesOf(plainM);
+  check('a repository without sfdx-project.json gets only the general memories',
+        JSON.stringify(memFilesIn(plainM)) === JSON.stringify(generalMem) && outM.includes(SKIPPED_MEM),
+        `${memFilesIn(plainM).length} files`);
+  check('its MEMORY.md has one line for each general memory and none for a Salesforce one',
+        JSON.stringify(indexedIn(plainM)) === JSON.stringify(generalMem), `${indexedIn(plainM).length} lines`);
+  check('a repository without sfdx-project.json gets no agent memories', agentFoldersIn(plainM).length === 0,
+        JSON.stringify(agentFoldersIn(plainM)));
+  const doctorPlain = doctorM(plainM);
+  check('doctor reports no missing memories without sfdx-project.json',
+        !/\d+\s+(missing|absent)\b/.test(doctorPlain), doctorPlain.split('\n').filter(l => /missing|absent/.test(l)).join(' | '));
+
+  const sfdxM = sfdxRepo('sfdxM');
+  const dryS = memoriesOf(sfdxM, ['--dry-run']);
+  check('a dry run with sfdx-project.json lists every memory and skips nothing',
+        dryS.includes(`Project memories   ${allMem.length} files`) && !dryS.includes('skipped'), dryS);
+  memoriesOf(sfdxM);
+  check('a repository with sfdx-project.json gets every memory, each in its index',
+        JSON.stringify(memFilesIn(sfdxM)) === JSON.stringify(allMem) && JSON.stringify(indexedIn(sfdxM)) === JSON.stringify(allMem),
+        `${memFilesIn(sfdxM).length} files, ${indexedIn(sfdxM).length} lines`);
+  const shippedAgents = readdirSync(join(MEM_SRC, 'agent')).filter(a => statSync(join(MEM_SRC, 'agent', a)).isDirectory());
+  check('a repository with sfdx-project.json gets the agent memories',
+        agentFoldersIn(sfdxM).length === shippedAgents.length &&
+          agentFoldersIn(sfdxM).every(d => readdirSync(join(sfdxM, '.claude', 'agent-memory', d)).length > 1),
+        JSON.stringify(agentFoldersIn(sfdxM)));
+
+  // the user's own memories, which the rerun must keep
+  const ownAgentDir = join(sfdxM, '.claude', 'agent-memory', agentFoldersIn(sfdxM)[0]);
+  writeFileSync(join(ownAgentDir, 'my-own-agent-memory.md'), '# mine\n');
+  appendFileSync(join(memDirOf(sfdxM), 'MEMORY.md'), '- [Mine](my-own.md) — my own memory\n');
+  writeFileSync(join(memDirOf(sfdxM), 'my-own.md'), '# mine\n');
+
+  // setup again once the repository is no longer an SFDX project: clear, then install
+  rmSync(join(sfdxM, 'sfdx-project.json'));
+  execFileSync('node', [join(SETUP, 'clear-previous-install.mjs')], { env: envM, encoding: 'utf8', stdio: 'pipe' });
+  const rerunM = memoriesOf(sfdxM);
+  check('a rerun without sfdx-project.json removes the Salesforce memories it installed before',
+        JSON.stringify(memFilesIn(sfdxM)) === JSON.stringify([...generalMem, 'my-own.md'].sort()) && rerunM.includes(SKIPPED_MEM),
+        `${memFilesIn(sfdxM).length} files`);
+  check('the rerun leaves index lines only for the general memories and the user\'s own',
+        JSON.stringify(indexedIn(sfdxM)) === JSON.stringify([...generalMem, 'my-own.md'].sort()), `${indexedIn(sfdxM).length} lines`);
+  const agentLeft = agentFoldersIn(sfdxM).flatMap(d => readdirSync(join(sfdxM, '.claude', 'agent-memory', d)));
+  check('the rerun removes the agent memories and their indexes, keeping the user\'s own',
+        JSON.stringify(agentLeft) === JSON.stringify(['my-own-agent-memory.md']) && agentFoldersIn(sfdxM).length === 1,
+        JSON.stringify(agentLeft));
+  const manifestM = JSON.parse(readFileSync(join(homeM, '.claude', 'hean-harness', 'install-manifest.json'), 'utf8'));
+  check('the install record keeps no entry for a removed Salesforce memory',
+        !manifestM.changes.some(c => c.target.includes(join(sfdxM, '.claude', 'agent-memory') + '/') && c.type !== 'dir-create') &&
+          manifestM.changes.filter(c => c.type === 'file-copy' && c.target.startsWith(memDirOf(sfdxM))).length === generalMem.length);
+  const doctorRerun = doctorM(sfdxM);
+  check('doctor reports no missing memories after the rerun',
+        !/\d+\s+(missing|absent)\b/.test(doctorRerun), doctorRerun.split('\n').filter(l => /missing|absent/.test(l)).join(' | '));
+  execFileSync('node', [join(SCRIPTS, 'lib', 'manifest.mjs'), 'revert'], { env: envM, encoding: 'utf8', stdio: 'pipe' });
+  check('uninstall after the rerun leaves only the user\'s own memories',
+        JSON.stringify(memFilesIn(sfdxM)) === JSON.stringify(['my-own.md']) && JSON.stringify(memFilesIn(plainM)) === '[]' &&
+          JSON.stringify(indexedIn(sfdxM)) === JSON.stringify(['my-own.md']));
   runP(repoP, ['--commit-format', 'off']);
   check('switching the commit format off keeps pre-commit and core.hooksPath',
         !existsSync(join(repoP, '.githooks', 'commit-msg')) && existsSync(preP) && hooksPathOf(repoP) === '.githooks',

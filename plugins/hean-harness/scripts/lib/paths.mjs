@@ -48,3 +48,12 @@ export function userConfigFile(env = process.env) {
   if (existsSync(beside)) return beside;
   return (env.CLAUDE_CONFIG_DIR || '').trim() ? inside : beside;
 }
+
+/**
+ * True when this folder is the root of a Salesforce DX project: it holds
+ * sfdx-project.json. Only the folder itself is checked, never its parents;
+ * org-roles.mjs projectRoot() walks up instead. Kept here because the manifest
+ * check copied to the hooks folder may import only a fixed set of libraries,
+ * and this one is among them.
+ */
+export const isSfdxRepo = root => existsSync(join(root, 'sfdx-project.json'));

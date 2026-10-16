@@ -19,13 +19,14 @@
  *   (.sfdx/sfdx-config.json    the same settings under their older names)
  */
 
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { isLiteral } from './command-line.mjs';
 import { readSettings, writeSetting, settingsFile } from './settings.mjs';
+import { isSfdxRepo } from './paths.mjs';
 
 export const ROLES = ['development', 'pipeline', 'research', 'production'];
 export const RULE = '.claude/rules/org-roles.md';
@@ -71,7 +72,7 @@ export function connectedOrgs() {
 /** The SFDX project a folder belongs to: the nearest folder holding sfdx-project.json, or null. */
 export function projectRoot(dir) {
   for (let cur = dir; cur; cur = dirname(cur)) {
-    if (existsSync(join(cur, 'sfdx-project.json'))) return cur;
+    if (isSfdxRepo(cur)) return cur;
     if (dirname(cur) === cur) return null;
   }
   return null;

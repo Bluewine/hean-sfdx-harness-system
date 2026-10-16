@@ -28,4 +28,4 @@ wrong number, and the suite then goes green on the bug.
 - Sequence matters: land and commit the verified implementation, then refactor the specs
   against it. Doing both at once invites splitting the difference.
 
-Related: [[feedback_no_retrocompatibility_fully_adapt]], [[feedback_agent_routing_test_fixes]].
+Related: [[feedback_no_retrocompatibility_fully_adapt]].
