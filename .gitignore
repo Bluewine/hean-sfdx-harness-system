@@ -16,5 +16,6 @@ plugins/hean-harness/skills/create-pr/screenshots/
 !.claude/rules/
 .claude/rules/*
 !.claude/rules/wiki-coverage-tracking.md
+!.claude/rules/memory-placement.md
 .githooks/
 .mcp.json
