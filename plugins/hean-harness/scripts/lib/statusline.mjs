@@ -117,7 +117,8 @@ export function orgsText(records, login = username => orgOf(username), current =
     const icon = r.role === 'pipeline' ? (PIPELINE_ICON[branchRank(r.branch)] ?? '🚚') : (ROLE_ICON[r.role] ?? '❔');
     const who = auth ? (r.alias || r.username) : '-';
     const branch = shownBranch(r, current);
-    return `${icon} ${C(35, `${stageLabel(r)}:${who}${branch ? `[${branch}]` : ''}`)}`;
+    const lock = r.deploy === true ? '🔓' : '🔒';
+    return `${icon} ${C(35, `${stageLabel(r)}:${who}`)}${lock}${branch ? C(35, `[${branch}]`) : ''}`;
   };
   const ordered = orderOrgs(records);
   const chain = ordered.filter(r => r.role !== 'research').map(entry).join(' → ');
