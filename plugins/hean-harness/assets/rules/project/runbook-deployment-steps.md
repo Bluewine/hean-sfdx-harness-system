@@ -60,8 +60,39 @@ A top-level `return;` stops an anonymous Apex script, also inside `try`; use it 
 
 - **Compile version**: Jenkins runs each script as anonymous Apex at the default API version of the jsforce copy its pipeline libraries load. That version is older than the metadata deploy version.
 - **Requirement**: A script must compile at that version. A script that passes `sf apex run` locally can still fail in Jenkins with "No such column", "Invalid type" or "Variable does not exist". Dynamic SOQL does not avoid it.
-- **Newer elements**: Put logic that needs a field, type or method newer than that version into a `force-app` Apex class whose `apiVersion` is new enough, with its test class in the coverage target. The script only calls that class.
+- **Newer elements**: Put logic that needs a field, type or method newer than that version into a runbook Apex class (see "Runbook Apex classes") whose `apiVersion` is new enough. The class compiles at its own `apiVersion`; the script only calls its `run()` method.
 - **Automatic check**: The plugin's `runbook-compile-check.mjs` hook compiles each script against the saved development org after every write, at the pipeline's version, running nothing. When the pipeline's version can be read, it refuses a commit until the staged content of every script compiled. Check a script written another way with `node <plugin>/hooks/runbook-compile-check.mjs --check <file>`.
+
+## Runbook Apex classes
+
+Apply to every Apex class written for a pre-deploy or post-deploy stage. These rules never apply to a class under `force-app/`.
+
+- **Location**: Put the class and its `-meta.xml` in `runbooks/<stage>-deploy/metaData/classes/`. Never put a runbook class under `force-app/`. The stage's metadata step deploys it before the stage's `.apex` scripts run (Stage mechanics steps 1 and 2).
+- **Permanent class**: Only when the user says the class is permanent, put it under `force-app/` instead: `force-app/main/custom-features/<feature-name>/classes` when the work belongs to a feature folder, else `force-app/main/default/classes`. Choose the folder from the feature being built. When the feature or folder is not clear, propose the candidate folders and ask the user to choose one with `AskUserQuestion`. A permanent class then follows every `force-app` rule, including `sfcore-apex-pattern.md`, and needs a test class.
+- **Entry point**: Give the class one `public static void run()` method. The script calls it with one line: `<ClassName>.run();`.
+- **Scripts**: Never add a call to the stage's `00_` script (`00_predeployApexScript.apex`, `00_postdeployApexScript.apex`); it stays a placeholder. Add the call to the stage's `01_` script in `runbooks/<stage>-deploy/apex/`, below the calls already in it. When the stage has no `01_` script, create one named `01_<lowerCamelCaseTaskName>.apex`, and put every later runbook call of that stage in that same file. Never create any other `.apex` file. The sample scripts `01_sampleDataSetup.apex` and `02_sampleConfigSetup.apex` are not the `01_` script; never add calls to them.
+- **One class per task**: Give each isolated, unrelated task its own class. Never put two unrelated tasks in one class.
+- **Order**: When tasks must run in a fixed order, put their calls in the same script, one line each, in that order. Each call finishes before the next line starts. Line order never orders asynchronous work, because that work runs after the script's transaction ends.
+- **No framework**: Never use the factory pattern or any `SFCORE_` class. The class is deployed, run once and removed, so it never joins the code those patterns organise.
+- **SOQL**: Write SOQL inline in the class. Never query inside a loop.
+- **DML**: Use `Database.insert`, `Database.update`, `Database.upsert` or `Database.delete` with `allOrNone` set to `false`. Read every `SaveResult`, `UpsertResult` or `DeleteResult`, and log each failed record's Id or key with its `getErrors()`. Never use a DML statement (`insert records;`) or `allOrNone` `true`: the first failing record throws and hides which other records failed.
+- **try/catch**: Wrap the work in `run()` in `try`/`catch`. In `catch`, roll back to the savepoint when the task set one, and log the exception with `System.debug(LoggingLevel.ERROR, …)`. Whether `catch` then rethrows, so the stage and the deploy fail, depends on the task: ask the user before writing the `catch`, and never decide it alone.
+- **Tests**: Write no test class. Verify by deploying the class to the saved development deploy target and running the script there.
+- **Compile check**: Deploy the class to the saved development deploy target before adding its call to a script. `runbook-compile-check.mjs` compiles the script against that org, and a call to a class not yet there fails with "Invalid type".
+- **Removal**: List the class in the stage's destructive manifest when `deploy.yml` lists `<stage>.metadata-destruct` (Stage mechanics).
+- **Asynchronous work**: A class starts asynchronous work when it, or anything its DML fires, does any of these:
+  - calls `System.enqueueJob`, `Database.executeBatch`, an `@future` method or `System.schedule`;
+  - publishes a platform event with `EventBus.publish` (every subscriber, whether an Apex trigger or a flow, runs in its own transaction);
+  - inserts, updates or deletes records of an object with a record-triggered flow that has an asynchronous or scheduled path. For every object the class writes, run `hean-harness:flow-trigger-order <Object>` and read each flow's `async:` paths.
+- **Asynchronous work report**: Applies to runbook classes only; a `force-app` class is permanent and needs no orchestration. For each item found, print this line, and repeat it word for word in the final report to the caller:
+
+  `!! ASYNC — <ClassName>.run(): <what starts> (<EventBus.publish of Event__e | flow Flow_API_Name async path on Object | System.enqueueJob(JobClass)>). It runs after the script's transaction ends; later script lines do not wait for it, and its errors do not fail the deploy.`
+
+  Then stop implementing. Report what runs asynchronously and which later step depends on it, and ask the user to choose:
+  - **Stop here** (the expected answer): leave the class and the script entry as they are, unfinished, for the user to decide.
+  - **Run it by hand**: take the dependent calls out of the `.apex` script and list each one as a Manual row in the PR's deployment steps, in order, saying what to wait for between them (for example, "wait until the creation events are delivered"). Give each step its own entry point, and make the later step stop with a message when the earlier step's asynchronous work has not finished.
+  Never continue implementing without the user's answer.
+- **Questions from a subagent**: A subagent cannot ask the user. Inside one, stop and return each question this section asks (the permanent folder, whether `catch` rethrows, how to continue after asynchronous work) to the caller with its options; the caller asks the user and passes the answer back.
 
 ## Automatic rows
 
