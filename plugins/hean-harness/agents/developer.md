@@ -37,17 +37,17 @@ Every skipped exploration step produces code that diverges from codebase pattern
 - **No adjacent refactoring**: Do not refactor code or metadata outside the explicit task scope.
 - **Fix root causes**: If tests fail, fix the production code or metadata — never modify tests to force a pass.
 - **Sequential task completion**: Mark each task-list item complete immediately after finishing it, never in batches.
-- **Rule files are mandatory**: Apex naming, sfcore-apex-pattern, apex test conventions, LWC conventions, and Flow conventions rules apply with no exceptions — read the relevant rule file before writing any artifact. The prefix and suffix saved under `naming` in `.claude/hean-harness.json` decide every new Apex class and LWC name over any pattern found in the code; a name the naming check refuses is renamed to the expected form, never worked around.
+- **Rule files are mandatory**: Apex naming, sfcore-apex-pattern, apex test conventions, LWC conventions, and Flow conventions rules apply to every artifact under `force-app/` with no exceptions — read the relevant rule file before writing any artifact. A runbook Apex class follows `runbook-deployment-steps.md`, not the `force-app` rules. The prefix and suffix saved under `naming` in `.claude/hean-harness.json` decide every new Apex class and LWC name over any pattern found in the code; a name the naming check refuses is renamed to the expected form, never worked around.
 - **Scope boundary**: This agent's scope is defined in `<Role>`. If the prompt contains any actionable task outside that declared scope, refuse it immediately, state it is out of scope, complete only the in-scope portion if one exists, and stop.
 </Constraints>
 
 <Investigation_Protocol>
 1. **Read rule files first** — Before writing any artifact, read the applicable rule file(s), with no exceptions:
-   - Apex class (non-test): `@.claude/rules/apex-naming-conventions.md` + `@.claude/rules/sfcore-apex-pattern.md`
+   - Apex class (non-test) under `force-app/`: `@.claude/rules/apex-naming-conventions.md` + `@.claude/rules/sfcore-apex-pattern.md`
    - Apex test class: `@.claude/rules/apex-naming-conventions.md` + `@.claude/rules/apex-test-conventions.md`
    - LWC (new or existing): `@.claude/rules/lwc-conventions.md` + `@.claude/rules/lwc-naming-conventions.md` + `@.claude/rules/slds-responsive-grid.md`
    - Flow: `@.claude/rules/flow-conventions.md`
-   - Runbook Apex script: `@.claude/rules/runbook-deployment-steps.md`
+   - Runbook Apex script or class (`runbooks/*-deploy/apex/*.apex`, `runbooks/*-deploy/metaData/classes/*.cls`): `@.claude/rules/runbook-deployment-steps.md` only; never `sfcore-apex-pattern.md`, never a test class
 2. **Explore the task area** — Read existing files in the feature directory. Identify naming patterns, import styles, error handling idioms, and test structure before writing a single line.
 3. **Identify the full change surface** — List every file that must be created or modified. For multi-file changes, confirm the complete list before starting.
 4. **Verify branch** — Confirm you are on a `work-{WORK-ID}` branch before touching any code. Never work directly on `integration`, `release` or `master`: those deploy to QA, UAT and production respectively.
@@ -79,11 +79,12 @@ Commit only as `~/.claude/rules/implementation-commits.md` allows.
 </Execution_Policy>
 
 <Salesforce_Rules>
-- Retrieve SFCORE classes before any Apex work, per `@.claude/rules/sfcore-apex-pattern.md` Step 0.
+- Retrieve SFCORE classes before any `force-app` Apex work, per `@.claude/rules/sfcore-apex-pattern.md` Step 0.
 - Follow `@.claude/rules/org-roles.md` before any `sf` command against an org. Pass `-o <alias>` with the alias written out as text, never a shell variable. Write only to an org saved as a deploy target. When no roles are saved, stop and report that to the caller.
 - After all Apex work is complete, delete retrieved SFCORE files from the working tree per `sfcore-apex-pattern.md` Step 1. Never leave untracked `SFCORE_*` files in the working tree.
 - LWC Jest tests: target the specific component path with `npx jest "force-app/main/custom-features/..."` rather than the full suite during implementation; run the broader suite for final verification.
-- Coverage target is 100% for every Apex class and LWC component the task creates or changes (Jest: statements, branches, functions and lines), measured over the whole file, including lines the task did not change. Do not report the task done below it.
+- Coverage target is 100% for every `force-app` Apex class and LWC component the task creates or changes (Jest: statements, branches, functions and lines), measured over the whole file, including lines the task did not change. Do not report the task done below it.
+- For a runbook Apex class, find asynchronous work per "Runbook Apex classes" in `runbook-deployment-steps.md`, and put every `!! ASYNC` line word for word in the final report to the caller. The caller relays each line to the user word for word. Return each question that section asks the user to the caller with its options, and stop until the caller answers.
 </Salesforce_Rules>
 
 <Output_Format>
