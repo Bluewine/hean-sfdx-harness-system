@@ -6,9 +6,9 @@ Notes for building and maintaining this plugin. Users do not need to read this.
 
 Rules can reach Claude Code three ways. They differ in how reliably Claude Code follows them.
 
-1. **System prompt file.** Passed with `--append-system-prompt-file` on the command line. The text
-   arrives in the system prompt itself. This is the strongest of the three. It needs the shell
-   alias, so it does not apply when someone runs `claude` without it, such as in a script.
+1. **System prompt file.** Arrives through an `@~/.claude/hean-harness/global-system-prompt.md`
+   import at the top of `~/.claude/CLAUDE.md`. The import is chosen so every session gets the
+   prompt, with or without the shell alias, such as in a script.
 2. **The user's `CLAUDE.md`.** Arrives with the first message of a session. Weaker than the system
    prompt, but it applies whether or not the alias is used.
 3. **Rule files.** Arrive the same way as `CLAUDE.md`. A rule limited to certain file paths does
@@ -16,7 +16,7 @@ Rules can reach Claude Code three ways. They differ in how reliably Claude Code 
    that must always hold.
 
 This plugin uses all three. The system prompt file holds the rules that must always hold. The
-most important of those are repeated in `CLAUDE.md` so they still apply without the alias.
+`CLAUDE.md` block repeats the most important of those in case the import cannot load.
 
 ## Uninstall
 
