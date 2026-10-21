@@ -121,6 +121,17 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "You check one reply that Claude has just written to a user, against the user's rules for asking questions. Hook input: $ARGUMENTS\n\nStep 1. If stop_hook_active is true, respond {\"ok\": true}.\nStep 2. Read last_assistant_message. If it asks the user no question that requests a decision, a confirmation or a choice, respond {\"ok\": true}. An offer to do a next step where no option is in doubt, such as \"Say X and I will do Y\" or \"Want me to commit this?\", is not such a question.\nStep 3. Otherwise check each such question against these rules. Fail only on a clear violation:\na. The situation the question comes from is described in the same message, above the question: the records or things involved, the facts found, and the point that cannot be decided. A question that points to \"the example above\", \"question N\" or an earlier reply without repeating what it says fails.\nb. The message states what cannot be decided and why. \"Is that what you want?\", \"Is that right?\" or \"Correct?\" with no statement of what is in doubt fails.\nc. When the user's earlier words are quoted, the message says where the user wrote them.\nd. A name that can belong to more than one kind of thing carries its kind, for example \"the `Seattle Site` Location\"; a field carries its object, for example `Location.Operating_Hours__c`.\ne. Each question asks for one decision, and each option says what happens if it is chosen.\nf. The message has at most three open questions.\ng. If an abstract phrase stands in for a literal result, such as \"a state of its own\" or \"points to flagging it\", the question fails.\nStep 4. If every question passes, respond {\"ok\": true}. Otherwise respond {\"ok\": false, \"reason\": \"<which rule letters failed, for which question, in one or two sentences>. Rewrite only the question part of your last reply so it follows the sections 'Asking the reader a question' and 'Response shape'. Do not repeat the rest of the reply.\"}",
+            "timeout": 30
+          }
+        ]
+      }
     ]
   }
 }
