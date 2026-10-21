@@ -47,7 +47,9 @@ Claude Code configuration for Salesforce SFDX projects: rules, agents, skills, m
 ### After setup
 
 Setup lists every change and asks before making it. At the end it adds a `claude` alias to your
-shell's startup file and prints the command that loads it.
+shell's startup file and prints the command that starts Claude Code with it. The rules load from
+`~/.claude/CLAUDE.md`, which setup fills with a block at the top that imports them, so they load
+with or without the alias.
 
 1. Exit Claude Code with `/exit`.
 2. Reload your shell. Setup prints the exact command; typical ones:

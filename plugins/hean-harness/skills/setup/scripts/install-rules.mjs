@@ -114,8 +114,8 @@ function main() {
 
   if (existsSync(BLOCK_SRC)) {
     const body = readFileSync(BLOCK_SRC, 'utf8').trimEnd();
-    const r = installBlock(CLAUDE_MD, MARKER, body, 'html');
-    log(r.existed ? `Added the block to ${CLAUDE_MD}, leaving your own content alone`
+    const r = installBlock(CLAUDE_MD, MARKER, body, 'html', { top: true });
+    log(r.existed ? `Added the block to ${CLAUDE_MD}, at the top, leaving your own content alone`
                   : `Created ${CLAUDE_MD} with the block`);
   }
   log('');

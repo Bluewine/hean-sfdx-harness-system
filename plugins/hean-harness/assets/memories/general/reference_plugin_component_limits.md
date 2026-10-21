@@ -15,8 +15,8 @@ Claude Code loads `skills/`, `agents/`, `commands/`, `hooks/hooks.json`, `.mcp.j
   `subagentStatusLine`. Setup writes the setting and it holds a launcher that finds the plugin's
   current version folder through `installed_plugins.json`, so the script stays in the plugin and
   updates with it. A mod cannot draw in the status line row.
-- **System prompt content** — `--append-system-prompt-file` is a CLI flag, so it can only be
-  wired through a shell alias, never by installing a plugin.
+- **System prompt content** — a plugin cannot add always-on instructions. Setup puts a block at
+  the top of `~/.claude/CLAUDE.md` that imports a Markdown file with `@~/.claude/...`.
 
 **Why:** plugins contribute context through skills, agents and hooks by design. Anything else
 must be written onto the user's machine by a script the plugin ships.

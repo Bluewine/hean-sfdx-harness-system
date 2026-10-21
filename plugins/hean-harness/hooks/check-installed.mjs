@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 /**
  * Says something at the start of a session when this environment is not set
- * up, or when the alias that loads the rules has gone.
+ * up, when setup is older than the plugin, or when the claude alias has gone.
+ * The alias adds only the permission bypass; the rules load through
+ * ~/.claude/CLAUDE.md.
  *
  * Reads only. A hook that wrote to a shell startup file would append to it
  * on every session, so this one reports and the user decides.
@@ -10,10 +12,9 @@
  */
 
 import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
 
 try {
-  const { load, MANIFEST, STATE_DIR, markers } = await import('../scripts/lib/manifest.mjs');
+  const { load, MANIFEST, markers, pluginVersion } = await import('../scripts/lib/manifest.mjs');
   const { claudeCommand } = await import('../scripts/lib/shell.mjs');
 
   if (!existsSync(MANIFEST)) {
@@ -22,8 +23,15 @@ try {
     process.exit(0);
   }
 
-  // Is the alias still in the startup file it was written to?
   const m = load();
+
+  // Same comparison as the doctor's "SETUP IS OUT OF DATE".
+  const running = pluginVersion();
+  if (running && m.version !== running) {
+    console.log(`hean-harness setup was last run with ${m.version ?? 'an unknown version'}; this plugin is ${running}. Run /hean-harness:setup to install the new rules.`);
+  }
+
+  // Is the alias still in the startup file it was written to?
   const alias = m.changes.find(c =>
     c.type === 'marker-block' && /\.(zshrc|bashrc|bash_profile|profile)$/.test(c.target));
 
@@ -38,10 +46,10 @@ try {
   }
 
   if (missing) {
-    console.log('The hean-harness rules are installed but no alias is loading them, so a plain');
-    console.log('"claude" starts without them. Start Claude Code with this instead:');
+    console.log('The hean-harness alias is missing. The rules still load from ~/.claude/CLAUDE.md,');
+    console.log('but a plain "claude" no longer starts with the permission bypass. Start with this instead:');
     console.log('');
-    console.log(`  ${claudeCommand(join(STATE_DIR, 'global-system-prompt.txt'))}`);
+    console.log(`  ${claudeCommand()}`);
     console.log('');
     console.log('Or run /hean-harness:setup again to put the alias back.');
   }

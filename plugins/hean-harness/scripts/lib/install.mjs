@@ -82,9 +82,14 @@ export function installFile(source, dest) {
  * install then uninstall gives back the file byte for byte. No other line is
  * touched, and the result is read back; on a mismatch the backup is put back.
  *
+ * With top, the block goes first in the file, followed by one blank line when
+ * other content follows. A block found elsewhere is moved to the top, and a
+ * file that does not exist is created holding only the block. The entry records
+ * top, so uninstall removes that blank line with the block.
+ *
  * A malformed or duplicated block throws before anything is recorded or written.
  */
-export function installBlock(file, marker, body, style = 'hash') {
+export function installBlock(file, marker, body, style = 'hash', { top = false } = {}) {
   const existed = existsSync(file);
   const found = existed ? findBlock(file, marker, style) : null;
   const saved = existed ? backup(file) : null;
@@ -94,11 +99,23 @@ export function installBlock(file, marker, body, style = 'hash') {
   // anything the user wrote into it since. Recorded before the edit, so an
   // interrupted run still leaves something to reverse.
   record({ type: 'marker-block', target: file, marker, style,
-           backup: saved, existedBefore: existed });
+           backup: saved, existedBefore: existed, ...(top ? { top: true } : {}) });
 
   const blk = block(marker, body, style);      // "\n<open>...<close>\n"
   let next;
-  if (found) {
+  if (top) {
+    // what is left of the file once any block of ours is taken out, as stripBlock would leave it
+    const rest = existed ? readFileSync(file, 'utf8').split('\n') : [];
+    if (found) {
+      const { start, end } = found;
+      rest.splice(start, end - start + 1);
+      if (start === 0 && rest.length > 1 && rest[0].trim() === '') rest.splice(0, 1);
+      else if (start > 0 && rest[start - 1]?.trim() === '') rest.splice(start - 1, 1);
+    }
+    const remainder = rest.join('\n');
+    if (!existed) mkdirSync(dirname(file), { recursive: true });
+    next = blk.slice(1) + (remainder === '' ? '' : '\n' + remainder);
+  } else if (found) {
     const { lines, start, end } = found;
     next = [...lines.slice(0, start), ...blk.slice(1, -1).split('\n'), ...lines.slice(end + 1)].join('\n');
   } else if (existed) {

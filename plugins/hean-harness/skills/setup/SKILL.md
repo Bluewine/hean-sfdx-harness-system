@@ -94,7 +94,8 @@ Install the environment. Show the user what will change before changing it.
      When one was already there, name it and say nothing was changed.
 
 5. When the summary says the alias was not written, the user's shell is one the installer does not
-   write to. Everything else still installed. Give them both options the script printed, in this
+   write to. Everything else still installed, and the rules still load through `~/.claude/CLAUDE.md`.
+   Give them both options the script printed, in this
    order: the command to start Claude Code with right now, which needs no setup, and the line to
    add to their shell startup file if they would rather type just `claude` in future. Show the
    command in full. Do not write their startup file yourself.

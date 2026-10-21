@@ -31,8 +31,8 @@ Report the state of the installation. Change nothing.
      setup again refreshes them. Give the "last setup" date with it.
 
 3. When the report ends with a command to start Claude Code with, give the user that command in
-   full. It means the alias is not in place, so typing plain `claude` starts a session with none
-   of the rules loaded. This matters more than anything else in the report, so lead with it.
+   full. It means the alias is not in place, so typing plain `claude` starts without the alias flags.
+   The rules still load, because `~/.claude/CLAUDE.md` imports them. Lead with the command.
 
 4. When everything is in order, say so plainly and stop. Do not suggest changes nobody needs.
 

@@ -281,15 +281,20 @@ export function findBlock(file, marker, style = 'hash') {
  * mismatch the original content is put back and the call throws.
  *
  * backupFirst copies the file aside before editing and returns the copy's path.
+ *
+ * top says the writer put the block first and added one blank line after it,
+ * so a block still on the first line takes that blank line with it.
  */
-export function stripBlock(file, marker, style = 'hash', { backupFirst = false } = {}) {
+export function stripBlock(file, marker, style = 'hash', { backupFirst = false, top = false } = {}) {
   const found = findBlock(file, marker, style);
   if (!found) return { found: false, backup: null };
   const { lines, start, end } = found;
 
   const out = [...lines.slice(0, start), ...lines.slice(end + 1)];
   // the writer puts one blank separator line before the opening marker
-  if (start > 0 && out[start - 1] !== undefined && out[start - 1].trim() === '') out.splice(start - 1, 1);
+  if (top && start === 0) {
+    if (out[0] !== undefined && out.length > 1 && out[0].trim() === '') out.splice(0, 1);
+  } else if (start > 0 && out[start - 1] !== undefined && out[start - 1].trim() === '') out.splice(start - 1, 1);
   const before = lines.join('\n');
   const after = out.join('\n');
 
@@ -429,7 +434,7 @@ export function revert({ dryRun = false, keep = [], only = null } = {}) {
             else r.note = 'block already absent';
           } else {
             const { found, backup: saved } = stripBlock(c.target, c.marker, c.style,
-                                                       { backupFirst: true });
+                                                       { backupFirst: true, top: c.top === true });
             if (!found) r.note = 'block already absent';
             if (saved) r.backup = saved;
             // we created this file; drop it only if the user put nothing in it

@@ -48,33 +48,33 @@ export function detectShell({ env = process.env, home = homedir(), os = platform
   };
 }
 
-/**
- * The command that starts Claude Code with the rules loaded.
- *
- * The alias wraps this, and it is also what someone types by hand when the
- * alias could not be installed. One definition, so the two cannot differ.
- * The path to the rules file must already be absolute.
- */
 export function shQuote(value) {
   // Single quotes, because inside them the shell expands nothing. A single
   // quote in the value itself closes the quoting, so it is spliced back in as
-  // an escaped quote. Without this, a home directory containing a space splits
-  // into two arguments and the rules file is never loaded — silently, because
-  // the alias still exists and still starts Claude Code.
+  // an escaped quote. Without this, a value containing a space, such as a home
+  // directory path, splits into two arguments — silently, because the alias
+  // still exists and still starts Claude Code.
   return `'${String(value).replace(/'/g, `'\\''`)}'`;
 }
 
-export function claudeCommand(promptPath, { skipPermissions = true } = {}) {
+/**
+ * The command that starts Claude Code.
+ *
+ * The alias wraps this, and it is also what someone types by hand when the
+ * alias could not be installed. One definition, so the two cannot differ.
+ * The rules are not passed here: ~/.claude/CLAUDE.md imports them, so a plain
+ * `claude` loads them too.
+ */
+export function claudeCommand({ skipPermissions = true } = {}) {
   const flags = [
-    skipPermissions ? '--dangerously-skip-permissions' : null,
-    `--append-system-prompt-file ${shQuote(promptPath)}`
+    skipPermissions ? '--dangerously-skip-permissions' : null
   ].filter(Boolean).join(' ');
-  return `claude ${flags}`;
+  return flags ? `claude ${flags}` : 'claude';
 }
 
 /** The alias line written into the shell startup file. */
-export function aliasLine(promptPath, opts) {
-  return `alias claude="${claudeCommand(promptPath, opts)}"`;
+export function aliasLine(opts) {
+  return `alias claude="${claudeCommand(opts)}"`;
 }
 
 export { MARKER, SUPPORTED };

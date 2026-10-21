@@ -25,7 +25,6 @@ import { load, MANIFEST, markers, pluginVersion } from '../../../scripts/lib/man
 import { allChecks, reportChecks, currentRepo } from '../../../scripts/lib/environment.mjs';
 import { claudeCommand } from '../../../scripts/lib/shell.mjs';
 import { repoRoot, missingLines } from '../../../scripts/lib/gitignore.mjs';
-import { STATE_DIR } from '../../../scripts/lib/manifest.mjs';
 import { getGitConfig } from '../../../scripts/lib/install.mjs';
 import { readPreference, preferenceText } from '../../../scripts/lib/commit-lifecycle.mjs';
 import { indexedFiles, unindexed } from '../../../scripts/lib/memory-index.mjs';
@@ -200,16 +199,16 @@ function main() {
   log(envBad === 0 ? '  Everything the environment needs is in place.'
                    : `  ${envBad} environment item${envBad > 1 ? "s" : ""} need${envBad > 1 ? "" : "s"} attention.`);
 
-  // Without the alias, typing "claude" starts a session with no rules loaded,
-  // so give the command that works without it rather than only naming the fault.
+  // The rules load from ~/.claude/CLAUDE.md, so a missing alias costs only the
+  // permission bypass. Give the command that works without it.
   if (installed && aliasState !== 'ok') {
     log('');
     log(aliasState === null
-      ? '  No alias was installed, so plain "claude" starts without the rules.'
-      : '  The alias is no longer in your shell startup file, so plain "claude" starts without the rules.');
+      ? '  No alias was installed, so plain "claude" starts without the alias flags.'
+      : '  The alias is no longer in your shell startup file, so plain "claude" starts without the alias flags.');
     log('  Start Claude Code with this instead, or run setup again to put the alias back:');
     log('');
-    log(`    ${claudeCommand(join(STATE_DIR, 'global-system-prompt.txt'))}`);
+    log(`    ${claudeCommand()}`);
   }
 }
 

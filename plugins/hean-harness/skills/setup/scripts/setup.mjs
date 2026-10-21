@@ -11,7 +11,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { STATE_DIR, markSetupRun } from '../../../scripts/lib/manifest.mjs';
+import { load, markSetupRun } from '../../../scripts/lib/manifest.mjs';
 import { claudeCommand } from '../../../scripts/lib/shell.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -65,6 +65,11 @@ const STEPS = [
   { name: 'Ignored paths', script: 'init-gitignore.mjs',       wantsRepo: true }
 ];
 
+// A previous install that copied global-system-prompt.txt left terminals whose alias
+// still passes that file to claude. Clearing deletes it, so read the record first.
+const hadTxtPrompt = !dryRun && (load().changes ?? []).some(c =>
+  c.type === 'file-copy' && /global-system-prompt\.txt$/.test(c.target));
+
 const line = '─'.repeat(64);
 const results = [];
 
@@ -101,15 +106,18 @@ for (const r of results) {
 if (dryRun) {
   console.log('\nDry run. Nothing was changed.');
 } else if (results.some(r => r.code === 2)) {
-  // The alias could not be written, so "claude" on its own will not load the
-  // rules. Repeat the command to type instead, rather than leaving it buried
-  // further up the output.
-  console.log('\nEverything else is installed. The alias is the only part missing, so');
-  console.log('start Claude Code with this command instead of plain "claude":');
+  // The alias could not be written, so "claude" on its own starts without the
+  // alias flags. Repeat the command to type instead, rather than leaving it
+  // buried further up the output.
+  console.log('\nEverything else is installed, and the rules load from ~/.claude/CLAUDE.md. The alias is');
+  console.log('the only part missing, so start Claude Code with this command instead of plain "claude":');
   console.log('');
-  console.log(`  ${claudeCommand(join(STATE_DIR, 'global-system-prompt.txt'))}`);
+  console.log(`  ${claudeCommand()}`);
   console.log('');
   console.log('The step above also shows the line to add if you would rather set it up once.');
 } else {
   console.log('\nReload your shell with the command shown above, or open a new terminal.');
+  if (hadTxtPrompt) {
+    console.log('!! Every terminal opened before this run still has the old claude alias and fails with "Append system prompt file not found" until you reload its shell (source the startup file or open a new terminal).');
+  }
 }
