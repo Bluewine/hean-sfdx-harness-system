@@ -64,6 +64,7 @@ Updated whenever a skill, agent, hook, or rule is added, removed, or renamed —
 | runbook-compile-check.mjs | Hooks | documented |
 | manifest-commit-check.mjs | Hooks | documented |
 | runbook-stage-gate.mjs | Hooks | documented |
+| flow-collection-filter-gate.mjs | Hooks | pending |
 | naming-check.mjs | Hooks | documented |
 | statusline-meter.mjs | Hooks | documented |
 

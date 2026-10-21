@@ -265,6 +265,19 @@ Each faultable element's `faultConnector` targets an assignment that builds an e
 </variables>
 ```
 
+## Collection Filter conditions
+
+Apply to every `FilterCollectionProcessor` (Collection Filter) element.
+
+- **Left side**: Every `<conditions><leftValueReference>` is the element's `<assignNextValueToReference>` value itself, when the collection holds plain values such as text, or that value followed by a dot and a field, for example `currentItem_Filter_Active_Records.Status__c`. Flow Builder cannot display any other resource there (a flow variable, a formula, a constant, another element's output); it marks the condition invalid, and saving the flow in Flow Builder then needs a fix by hand.
+- **Flow-level values**: When the filter combines a flow variable, formula or constant with fields of the current item, set `<conditionLogic>formula_evaluates_to_true</conditionLogic>` and write the whole test in `<formula>`, referencing `{!<currentItem>.<Field>}` and the flow resource. Remove every `<conditions>` element. Wrap a picklist field in `TEXT()`.
+- **Detection**: A deploy, a check-only deploy and a runtime test all pass with the invalid form; only Flow Builder shows it. The plugin's `flow-collection-filter-gate.mjs` hook and the git `pre-commit` hook setup installs refuse a commit that records it.
+
+```xml
+<conditionLogic>formula_evaluates_to_true</conditionLogic>
+<formula>OR(NOT({!UseActiveOnly}), TEXT({!currentItem_Filter_Active_Records.Status__c}) = &quot;Active&quot;)</formula>
+```
+
 ## Entry criteria filters
 
 When adding `IsChanged` filters to a record-triggered flow's `<start>` element, order the `<filters>` blocks alphabetically by `<field>` name. This is consistent with the overall alphabetical XML ordering rule and keeps diffs clean when fields are added or removed.
