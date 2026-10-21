@@ -10,7 +10,7 @@
  * Runs against a throwaway home directory. Touches nothing of yours.
  */
 
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, statSync, chmodSync,
          readdirSync, appendFileSync, symlinkSync } from 'node:fs';
@@ -674,9 +674,9 @@ try {
   chmodSync(lfsHook, 0o755);
   const outL = runP(repoL, ['--commit-format', 'on']);
   check('a working hook in .git/hooks keeps core.hooksPath unset', hooksPathOf(repoL) === undefined, String(hooksPathOf(repoL)));
-  check('the hooks left working are named on a !! line, with the manifest check for terminal commits off',
+  check('the hooks left working are named on a !! line, with the manifest and Collection Filter checks for terminal commits off',
         outL.split('\n').some(l => l.startsWith('!! ') && l.includes('post-checkout')) &&
-          outL.includes('manifest check for terminal commits is off'), outL);
+          outL.includes('manifest check and Collection Filter check for terminal commits is off'), outL);
   check('the commit-msg hook says the commit format check for terminal commits is off too',
         outL.includes('commit format check for terminal commits is off') && !outL.includes('Set core.hooksPath'), outL);
 
@@ -685,12 +685,19 @@ try {
   check('the manifest check and branch-manifest are copied to the fixed folder',
         existsSync(join(checkDir, 'scripts', 'lib', 'manifest-check.mjs')) &&
           existsSync(join(checkDir, 'skills', 'branch-manifest', 'scripts', 'branch-manifest.mjs')));
+  check('the Collection Filter check is copied to the fixed folder',
+        existsSync(join(checkDir, 'scripts', 'lib', 'flow-collection-filter.mjs')));
   // outside a repository both scripts stop early; an import the copy lacks would fail instead
   const copied = execFileSync('node', [join(checkDir, 'scripts', 'lib', 'manifest-check.mjs'), '--git-hook'],
     { env: envP, encoding: 'utf8', stdio: 'pipe', cwd: root }) +
     execFileSync('node', [join(checkDir, 'skills', 'branch-manifest', 'scripts', 'branch-manifest.mjs')],
       { env: envP, encoding: 'utf8', stdio: 'pipe', cwd: root });
   check('the fixed copy runs with only the files copied', copied.startsWith('Error: ') && !copied.includes('Cannot find'), copied);
+  // outside a repository the check fails open; an import the copy lacks would crash instead
+  const filterRun = spawnSync('node', [join(checkDir, 'scripts', 'lib', 'flow-collection-filter.mjs'), '--git-hook'],
+    { env: envP, encoding: 'utf8', cwd: root });
+  check('the fixed copy of the Collection Filter check loads with only the files copied',
+        filterRun.status === 0 && !filterRun.stderr.includes('ERR_MODULE_NOT_FOUND'), filterRun.stderr);
 
   execFileSync('node', [join(SCRIPTS, 'lib', 'manifest.mjs'), 'revert'], { env: envP, encoding: 'utf8', stdio: 'pipe' });
   check('uninstall deletes an unchanged pre-commit and unsets core.hooksPath',

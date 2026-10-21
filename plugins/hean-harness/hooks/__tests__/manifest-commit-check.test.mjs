@@ -439,6 +439,69 @@ c = commit(['-m', 'H']);
 check('a fixed-path copy that fails to load lets the commit through', c.status === 0 && head() !== beforeH, c.stderr);
 writeFileSync(copiedCheck, goodCheck);
 
+console.log('Collection Filter check through the git pre-commit hook');
+const FLOWS = 'force-app/main/default/flows';
+const filterFlow = left => `<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>65.0</apiVersion>
+    <collectionProcessors>
+        <name>Sample_Filter</name>
+        <elementSubtype>FilterCollectionProcessor</elementSubtype>
+        <assignNextValueToReference>currentItem_Sample_Filter</assignNextValueToReference>
+        <collectionProcessorType>FilterCollectionProcessor</collectionProcessorType>
+        <collectionReference>Sample_Records</collectionReference>
+        <conditionLogic>and</conditionLogic>
+        <conditions>
+            <leftValueReference>${left}</leftValueReference>
+            <operator>EqualTo</operator>
+            <rightValue><stringValue>Active</stringValue></rightValue>
+        </conditions>
+    </collectionProcessors>
+</Flow>
+`;
+check('the fixed-folder copy holds the Collection Filter check',
+      existsSync(join(CONFIG, 'hean-harness', 'hooks', 'scripts', 'lib', 'flow-collection-filter.mjs')));
+// a branch with no work id in its name, so the manifest check has nothing to list and only the flow check speaks
+const fr = makeRepo('flows', 'scratch');
+write(fr, '.githooks/pre-commit', readFileSync(join(dirname(HOOKS), 'assets', 'githooks', 'pre-commit'), 'utf8'));
+chmodSync(join(fr, '.githooks', 'pre-commit'), 0o755);
+git(fr, 'config', 'core.hooksPath', '.githooks');
+git(fr, 'config', 'commit.gpgsign', 'false');
+const fcommit = (msg, extraEnv = {}) =>
+  spawnSync('git', ['-C', fr, 'commit', '-q', '-m', msg], { env: { ...termEnv, ...extraEnv }, encoding: 'utf8' });
+const fhead = () => git(fr, 'rev-parse', 'HEAD');
+write(fr, `${FLOWS}/Sample.flow-meta.xml`, filterFlow('UseActiveOnly'));
+git(fr, 'add', FLOWS);
+const beforeF = fhead();
+c = fcommit('bad flow');
+check('a terminal commit of a flow with an invalid Collection Filter condition is refused',
+      c.status !== 0 && fhead() === beforeF && c.stderr.includes('Flow Builder cannot display') &&
+        c.stderr.includes(`${FLOWS}/Sample.flow-meta.xml: Sample_Filter: left side \`UseActiveOnly\`, expected \`currentItem_Sample_Filter\` or \`currentItem_Sample_Filter.<Field>\``), c.stderr);
+c = fcommit('bad flow again');
+check('the same refusal holds on a retry', c.status !== 0 && fhead() === beforeF, c.stderr);
+const beforeS = fhead();
+c = fcommit('bad flow in Claude Code', { CLAUDE_CODE_CHILD_SESSION: '1' });
+check('the git hook leaves a flow commit Claude Code runs to its own hook', c.status === 0 && fhead() !== beforeS, c.stderr);
+git(fr, 'reset', '-q', '--soft', 'HEAD~1');
+write(fr, `${FLOWS}/Sample.flow-meta.xml`, filterFlow('currentItem_Sample_Filter.Status__c'));
+git(fr, 'add', FLOWS);
+const beforeOk = fhead();
+c = fcommit('good flow');
+check('a terminal commit of a flow with a valid Collection Filter condition goes through',
+      c.status === 0 && fhead() !== beforeOk && c.stderr === '', c.stderr);
+write(fr, `${CLASSES}/Z.cls`, 'public class Z {}\n');
+write(fr, `${CLASSES}/Z.cls-meta.xml`, '<?xml version="1.0" encoding="UTF-8"?>\n<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata"><apiVersion>65.0</apiVersion><status>Active</status></ApexClass>\n');
+write(fr, `${FLOWS}/Sample.flow-meta.xml`, filterFlow('UseActiveOnly'));
+git(fr, 'add', '-A');
+c = fcommit('class and bad flow');
+check('a refused flow does not depend on the manifest check passing', c.status !== 0 && c.stderr.includes('Flow Builder cannot display'), c.stderr);
+const flowCheck = join(CONFIG, 'hean-harness', 'hooks', 'scripts', 'lib', 'flow-collection-filter.mjs');
+const goodFlowCheck = readFileSync(flowCheck, 'utf8');
+writeFileSync(flowCheck, `import './a-library-the-copy-lacks.mjs';\n${goodFlowCheck}`);
+c = fcommit('crashing check');
+check('a Collection Filter check that fails to load lets the commit through', c.status === 0, c.stderr);
+writeFileSync(flowCheck, goodFlowCheck);
+
 rmSync(sandbox, { recursive: true, force: true });
 console.log(`\n  ${pass} passed, ${fail} failed, ${pass + fail} total`);
 process.exit(fail ? 1 : 0);

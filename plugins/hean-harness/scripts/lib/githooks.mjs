@@ -110,7 +110,7 @@ const PLUGIN_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 export const PRE_COMMIT_SOURCE = join(PLUGIN_ROOT, 'assets', 'githooks', 'pre-commit');
 
 /**
- * Put the pre-commit hook that checks the per-story manifest in place, and
+ * Put the pre-commit hook that checks the per-story manifest and Collection Filter conditions in place, and
  * point git at it. Only in an SFDX repository whose .githooks/ folder git does
  * not track: a tracked folder is the repository's, and commits made there in
  * Claude Code are still checked by the plugin's hook. Independent of the
@@ -121,8 +121,8 @@ export function applyPreCommit(repo, { replace = false, dryRun = false } = {}) {
   if (!isSfdxRepo(repo)) return [];
   const hook = join(repo, HOOKS_DIR, 'pre-commit');
   if (repoTracksHooks(repo)) {
-    return [`Manifest hook  ${HOOKS_DIR}/ is tracked by the repository, so no pre-commit hook is installed`,
-            '               the per-story manifest is checked only for commits made in Claude Code'];
+    return [`Pre-commit hook  ${HOOKS_DIR}/ is tracked by the repository, so no pre-commit hook is installed`,
+            '                 the per-story manifest and Collection Filter conditions are checked only for commits made in Claude Code'];
   }
   const state = hookState(hook, PRE_COMMIT_SOURCE);
   const write = writesHook(state, replace);
@@ -130,9 +130,9 @@ export function applyPreCommit(repo, { replace = false, dryRun = false } = {}) {
   // a kept hook setup did not write stays as inactive as it was
   const setPath = hooksPath === undefined && (write || state !== 'foreign');
   const live = setPath ? liveGitHooks(repo) : [];
-  const out = [`Manifest hook  ${hook}`, `               ${describeHook(state, replace)}`];
+  const out = [`Pre-commit hook  ${hook}`, `                 ${describeHook(state, replace)}`];
   if (!write && state !== 'current' && state !== 'missing') out.push(...keptLines(hook, state));
-  if (live.length) out.push(...hooksPathKeptLines(repo, live, 'manifest check'));
+  if (live.length) out.push(...hooksPathKeptLines(repo, live, 'manifest check and Collection Filter check'));
   if (dryRun) return out;
 
   init();

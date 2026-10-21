@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Copies the per-story manifest check to a fixed folder,
- * <config>/hean-harness/hooks/, where the git pre-commit hook setup installs
- * runs it from.
+ * Copies the per-story manifest check and the Collection Filter check to a
+ * fixed folder, <config>/hean-harness/hooks/, where the git pre-commit hook
+ * setup installs runs them from.
  *
  * The plugin's own folder moves when the plugin updates, so a git hook
  * pointing there breaks after the next update. The files keep the plugin's
@@ -20,7 +20,8 @@ import { installDir, installFile } from '../../../scripts/lib/install.mjs';
 
 const PLUGIN_ROOT = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url)))));
 const DEST = join(STATE_DIR, 'hooks');
-// manifest-check.mjs and everything it loads, directly or through branch-manifest.mjs
+// manifest-check.mjs and everything it loads, directly or through branch-manifest.mjs,
+// then flow-collection-filter.mjs, whose imports are all listed before it
 const FILES = [
   'scripts/lib/manifest-check.mjs',
   'scripts/lib/command-line.mjs',
@@ -28,7 +29,8 @@ const FILES = [
   'scripts/lib/paths.mjs',
   'scripts/lib/settings.mjs',
   'scripts/lib/shell.mjs',
-  'skills/branch-manifest/scripts/branch-manifest.mjs'
+  'skills/branch-manifest/scripts/branch-manifest.mjs',
+  'scripts/lib/flow-collection-filter.mjs'
 ];
 const dryRun = process.argv.includes('--dry-run');
 const log = (...a) => console.log(...a);
@@ -36,10 +38,11 @@ const log = (...a) => console.log(...a);
 function main() {
   const missing = FILES.filter(f => !existsSync(join(PLUGIN_ROOT, f)));
   if (missing.length) {
-    console.error(`Cannot find the manifest check files that ship with this plugin: ${missing.join(', ')}`);
+    console.error(`Cannot find the check files that ship with this plugin: ${missing.join(', ')}`);
     process.exit(1);
   }
-  log(`Check          ${join(DEST, FILES[0])}`);
+  log(`Checks         ${join(DEST, FILES[0])}`);
+  log(`               ${join(DEST, FILES[FILES.length - 1])}`);
   log('               run by the .githooks/pre-commit hook setup installs in SFDX repositories');
   log('');
   if (dryRun) { log('Dry run. Nothing was changed.'); return; }
