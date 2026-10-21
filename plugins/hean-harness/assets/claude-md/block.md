@@ -1,8 +1,10 @@
+@~/.claude/hean-harness/global-system-prompt.md
+
 ## Rules
 
-These apply in every session. The full copy is in
-`~/.claude/hean-harness/global-system-prompt.txt`, which the `claude` alias loads. This block
-repeats the ones that matter most, so they still apply when the alias is not used.
+The line above imports the full rules from `~/.claude/hean-harness/global-system-prompt.md`.
+They must apply in every session, always. This block repeats the ones that matter most, so they
+still apply if the import cannot load.
 
 ### Always
 
@@ -31,6 +33,6 @@ repeats the ones that matter most, so they still apply when the alias is not use
 
 - Say what the task is, in one sentence, before starting.
 - If part of the work is blocked, finish the rest and say what was left out and why.
-- Ask everything you need to ask at the start.
+- Ask everything you need to ask at the start, at most three questions per message.
 
 Longer conventions are in `~/.claude/rules/`.
