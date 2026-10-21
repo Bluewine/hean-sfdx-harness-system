@@ -8,7 +8,7 @@
  * Run: node scripts/__tests__/statusline.test.mjs
  */
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, utimesSync, realpathSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readdirSync, writeFileSync, readFileSync, rmSync, existsSync, utimesSync, realpathSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -59,49 +59,89 @@ try {
   ];
   const loggedIn = new Set(['me@acme.com', 'me@acme.com.qa', 'me@acme.com.dev', 'me@acme.com.reint', 'me@acme.com.res']);
   const login = u => loggedIn.has(u) ? { isSandbox: u !== 'me@acme.com' } : null;
-  const chain = strip(lib.orgsText(records, login, 'main'));
+  // The full list, one plain row per saved org, as the strip above the prompt shows it.
+  const rows = list => list.join(' / ');
+  const all = rows(lib.orgRows(records, login, 'main'));
   check('off a work branch: dev shows no branch, build shows the saved work-*, research comes last',
-        chain === '🛠️ dev:hean-dev🔒 → 🧱 build:hean-reint🔒[work-*] → 🧪 qa:hean-qa🔒[integration] → ' +
-                  '🎭 uat:-🔒[release] → 🏦 prod:hean-prod🔒[master] │ 🔭 research:hean-res🔒', chain);
-  const onWork = strip(lib.orgsText(records, login, 'work-DEXRWO-500'));
+        all === '🛠️ dev:hean-dev🔒 / 🧱 build:hean-reint🔒[work-*] / 🧪 qa:hean-qa🔒[integration] / ' +
+                '🎭 uat:-🔒[release] / 🏦 prod:hean-prod🔒[master] / 🔭 research:hean-res🔒', all);
+  const onWork = rows(lib.orgRows(records, login, 'work-ABC-500'));
   check('on a work branch: dev and build show the session\'s branch',
-        onWork === '🛠️ dev:hean-dev🔒[work-DEXRWO-500] → 🧱 build:hean-reint🔒[work-DEXRWO-500] → 🧪 qa:hean-qa🔒[integration] → ' +
-                   '🎭 uat:-🔒[release] → 🏦 prod:hean-prod🔒[master] │ 🔭 research:hean-res🔒', onWork);
-  check('each org\'s label, alias and branch are purple',
-        lib.orgsText(records, login, 'main').includes('\u001b[35mdev:hean-dev\u001b[0m'));
-  const noAlias = strip(lib.orgsText([{ alias: null, username: 'me@acme.com.dev', role: 'development', branch: null }], login, 'main'));
+        onWork === '🛠️ dev:hean-dev🔒[work-ABC-500] / 🧱 build:hean-reint🔒[work-ABC-500] / 🧪 qa:hean-qa🔒[integration] / ' +
+                   '🎭 uat:-🔒[release] / 🏦 prod:hean-prod🔒[master] / 🔭 research:hean-res🔒', onWork);
+  check('the full list carries no colour codes', !all.includes('\u001b['));
+  const noAlias = rows(lib.orgRows([{ alias: null, username: 'me@acme.com.dev', role: 'development', branch: null }], login, 'main'));
   check('a logged-in org with no alias shows its username', noAlias === '🛠️ dev:me@acme.com.dev🔒', noAlias);
-  const others = strip(lib.orgsText([
+  const others = rows(lib.orgRows([
     { alias: 'z', username: 'me@acme.com.zz', role: 'pipeline', branch: 'zeta' },
     { alias: 'a', username: 'me@acme.com.aa', role: 'pipeline', branch: 'alpha' }
   ], () => ({ isSandbox: true }), 'main'));
   check('pipeline orgs on other branches sort alphabetically, use 🚚 and are labelled by their branch',
-        others === '🚚 alpha:a🔒[alpha] → 🚚 zeta:z🔒[zeta]', others);
-  const noBranch = strip(lib.orgsText([{ alias: 'p', username: 'me@acme.com.p', role: 'pipeline', branch: null }],
+        others === '🚚 alpha:a🔒[alpha] / 🚚 zeta:z🔒[zeta]', others);
+  const noBranch = rows(lib.orgRows([{ alias: 'p', username: 'me@acme.com.p', role: 'pipeline', branch: null }],
     () => ({ isSandbox: true }), 'work-A'));
   check('a pipeline org with no saved branch is labelled pipeline with no branch',
         noBranch === '🚚 pipeline:p🔒', noBranch);
-  const researchOnly = strip(lib.orgsText([{ alias: 'r', username: 'me@acme.com.r', role: 'research', branch: null }],
-    () => ({ isSandbox: true }), 'main'));
-  check('research alone has no leading separator', researchOnly === '🔭 research:r🔒', researchOnly);
-  const mixed = strip(lib.orgsText([
+  const mixedRecords = [
     { alias: 'd', username: 'me@acme.com.dev', role: 'development', branch: null, deploy: true },
     { alias: 'u', username: 'me@acme.com.uat', role: 'pipeline', branch: 'release', deploy: false },
     { alias: 'm', username: 'me@acme.com.m', role: 'pipeline', branch: 'zeta' },
     { alias: 'r', username: 'me@acme.com.r', role: 'research', branch: null, deploy: true }
-  ], () => ({ isSandbox: true }), 'work-A'));
+  ];
+  const mixed = rows(lib.orgRows(mixedRecords, () => ({ isSandbox: true }), 'work-A'));
   check('the lock follows the org name: open only for deploy true, locked when false or missing',
-        mixed === '🛠️ dev:d🔓[work-A] → 🎭 uat:u🔒[release] → 🚚 zeta:m🔒[zeta] │ 🔭 research:r🔓', mixed);
+        mixed === '🛠️ dev:d🔓[work-A] / 🎭 uat:u🔒[release] / 🚚 zeta:m🔒[zeta] / 🔭 research:r🔓', mixed);
+  check('no saved roles give an empty list', lib.orgRows([], login).length === 0);
+
+  // Row 2: the deploy targets only, then how many other saved orgs are connected.
+  const devDeploys = records.map(r => r.role === 'development' ? { ...r, deploy: true } : r);
+  const one = strip(lib.orgsText(devDeploys, login, 'main'));
+  check('row 2 shows the one deploy org, then the other connected orgs counted',
+        one === '🛠️ dev:hean-dev🔓 · +4 connected orgs', one);
+  check('the deploy org\'s label and alias are purple',
+        lib.orgsText(devDeploys, login, 'main').includes('\u001b[35mdev:hean-dev\u001b[0m'));
+  const two = strip(lib.orgsText(mixedRecords, () => ({ isSandbox: true }), 'work-A'));
+  check('row 2 shows two deploy orgs as the full row groups them, then the count',
+        two === '🛠️ dev:d🔓[work-A] │ 🔭 research:r🔓 · +2 connected orgs', two);
+  const none = strip(lib.orgsText(records, login, 'main'));
+  check('row 2 with no deploy org says so, then counts every connected org',
+        none === 'no deploy org · +5 connected orgs', none);
+  const single = strip(lib.orgsText([
+    { alias: 'd', username: 'me@acme.com.dev', role: 'development', branch: null, deploy: true },
+    { alias: 'q', username: 'me@acme.com.qa', role: 'pipeline', branch: 'integration' },
+    { alias: 'u', username: 'me@acme.com.uat', role: 'pipeline', branch: 'release' }
+  ], login, 'main'));
+  check('one other connected org is counted in the singular, and an org not logged in is not counted',
+        single === '🛠️ dev:d🔓 · +1 connected org', single);
+  const alone = strip(lib.orgsText([{ alias: 'd', username: 'me@acme.com.dev', role: 'development', branch: null, deploy: true }], login, 'main'));
+  check('no other connected org counts zero', alone === '🛠️ dev:d🔓 · +0 connected orgs', alone);
+  check('the count of other orgs is what the strip shows',
+        lib.otherConnected(devDeploys, login) === 4 && lib.otherConnected(records, () => null) === 0);
   check('no saved roles names the skill that saves them',
         lib.orgsText([], login) === '🔌 no org roles saved · /hean-harness:org-roles');
   check('saved roles with none logged in say no org is connected',
-        lib.orgsText(records, () => null) === '🔌 no org connected');
+        lib.orgsText(devDeploys, () => null) === '🔌 no org connected');
+
+  // The file the strip above the prompt reads.
+  const listDir = join(sandbox, 'orgs');
+  mkdirSync(listDir, { recursive: true });
+  lib.writeOrgList('sess-9', lib.orgRows(devDeploys, login, 'main'), 4, listDir);
+  const listed = JSON.parse(readFileSync(join(listDir, 'sess-9.orgs.json'), 'utf8'));
+  check('the org list file holds every saved org in order and the count',
+        listed.orgs.length === 6 && listed.orgs[0] === '🛠️ dev:hean-dev🔓' && listed.orgs[5] === '🔭 research:hean-res🔒' &&
+        listed.more === 4, JSON.stringify(listed));
+  check('the org list is complete after a write and no temp file is left',
+        readdirSync(listDir).join() === 'sess-9.orgs.json' && Array.isArray(listed.orgs));
+  lib.writeOrgList('../evil', ['x'], 0, listDir);
+  lib.writeOrgList('.hidden', ['x'], 0, listDir);
+  check('a session id with a slash or a leading dot writes no org list',
+        !existsSync(join(sandbox, 'evil.orgs.json')) && !existsSync(join(listDir, '.hidden.orgs.json')));
 
   // ── lines 2 and 3 ──────────────────────────────────────────────────────────
   check('line 2 outside a project is the commit part alone',
         strip(lib.line2(null, null)) === '💾 commits: not set');
   check('line 2 joins the commit part and the orgs',
-        strip(lib.line2({ mode: 'main', commits: 'yes' }, records, login, 'main')) === `💾 commits: per task │ ${chain}`);
+        strip(lib.line2({ mode: 'main', commits: 'yes' }, devDeploys, login, 'main')) === `💾 commits: per task │ ${one}`);
   const l3 = strip(lib.line3({ model: 'Opus 5.5', effort: 'high', costUsd: 4.18 },
                              { new: 180412, cached: 2396257, turn: { up: 0, down: 0 } }));
   check('line 3 shows model, effort, the meter and the dollars',
@@ -111,13 +151,19 @@ try {
   check('line 3 leaves the dollars out when the cost is absent',
         strip(lib.line3({ model: 'Opus 5.5', costUsd: NaN }, null)) === '🧠 Opus 5.5 │ 🚕 –');
 
+  const l3Named = strip(lib.line3({ model: 'Opus 5.5', effort: 'medium', costUsd: 38.94, sessionName: 'my session' }, null));
+  check('line 3 starts with the session name',
+        l3Named === '🏷️ my session │ 🧠 Opus 5.5 · ⚡ medium │ 🚕 – · ≈$38.94', l3Named);
+  check('line 3 shows the name alone before the meter when the model is absent',
+        strip(lib.line3({ sessionName: 's', costUsd: NaN }, null)) === '🏷️ s │ 🚕 –');
+
   // ── line 1 ─────────────────────────────────────────────────────────────────
   const l1 = strip(lib.line1({ dir: '~/git/repo', branch: 'work-A', worktree: 'A-wt', org: 'dev', usedPct: 12,
-                               ctxWindow: 200000, turn: { up: 74210, down: 1830 }, sessionName: 's' }));
+                               ctxWindow: 200000, turn: { up: 74210, down: 1830 }, }));
   check('line 1 in a worktree with a turn under way',
-        l1 === '➜  📁 ~/git/repo 🌿 work-A (A-wt) ☁️ dev 📊 12% (24.0k/200.0k) │ ↑74.2k ↓1.8k 🏷️ s', l1);
+        l1 === '➜  📁 ~/git/repo 🌿 work-A (A-wt) ☁️ dev 📊 12% (24.0k/200.0k) │ ↑74.2k ↓1.8k', l1);
   const l1Plain = strip(lib.line1({ dir: '~/git/repo', branch: 'main', usedPct: 12, ctxWindow: 200000 }));
-  check('line 1 leaves out the worktree, org, turn and name when they have no value',
+  check('line 1 leaves out the worktree, org and turn when they have no value',
         l1Plain === '➜  📁 ~/git/repo 🌿 main 📊 12% (24.0k/200.0k)', l1Plain);
 
   // ── meter file ─────────────────────────────────────────────────────────────
@@ -141,10 +187,13 @@ try {
   const old = (now - 31 * 86_400_000) / 1000;
   writeFileSync(join(pruneDir, 'old.json'), '{}');
   writeFileSync(join(pruneDir, 'new.json'), '{}');
+  writeFileSync(join(pruneDir, 'old.orgs.json'), '{}');
   utimesSync(join(pruneDir, 'old.json'), old, old);
+  utimesSync(join(pruneDir, 'old.orgs.json'), old, old);
   rmSync(join(pruneDir, '.pruned'), { force: true });
   lib.prepareMeterDir(pruneDir, now);
   check('a meter file older than 30 days is deleted', !existsSync(join(pruneDir, 'old.json')));
+  check('an org list file older than 30 days is deleted', !existsSync(join(pruneDir, 'old.orgs.json')));
   check('a recent meter file is kept', existsSync(join(pruneDir, 'new.json')));
   writeFileSync(join(pruneDir, 'old2.json'), '{}');
   utimesSync(join(pruneDir, 'old2.json'), old, old);
@@ -186,8 +235,12 @@ try {
   check('the script exits 0', r.status === 0, r.stderr);
   check('line 1 shows the path from ~, the branch, the default org, the context and the turn',
         s1 === '➜  📁 ~/repo 🌿 work-ABC ☁️ hean-dev 📊 10% (100.0k/1.0M) │ ↑2.0k ↓300', s1);
-  check('line 2 shows the commit preference and the project\'s orgs',
-        s2 === '💾 commits: per task │ 🛠️ dev:hean-dev🔓[work-ABC] → 🧪 qa:-🔒[integration]', s2);
+  check('line 2 shows the commit preference, the deploy org and the count of other connected orgs',
+        s2 === '💾 commits: per task │ 🛠️ dev:hean-dev🔓[work-ABC] · +0 connected orgs', s2);
+  const shared = JSON.parse(readFileSync(join(stateDir, 'meter', 's1.orgs.json'), 'utf8'));
+  check('the script writes every saved org and the count for the strip above the prompt',
+        JSON.stringify(shared.orgs) === JSON.stringify(['🛠️ dev:hean-dev🔓[work-ABC]', '🧪 qa:-🔒[integration]']) &&
+        shared.more === 0, JSON.stringify(shared));
   check('line 3 shows the model, the effort, the meter and the dollars',
         s3 === '🧠 Opus 5.5 · ⚡ high │ 🚕 5.0k new + 20.0k cached · ≈$1.50', s3);
 
@@ -201,6 +254,9 @@ try {
   const plainLines = strip(runScript(fixture(plain)).stdout).split('\n');
   check('a repository that is no SFDX project and has no roles shows only the commit part',
         plainLines[1] === '💾 commits: per task', plainLines[1]);
+  const plainShared = JSON.parse(readFileSync(join(stateDir, 'meter', 's1.orgs.json'), 'utf8'));
+  check('a session with no saved roles writes an empty org list',
+        plainShared.orgs.length === 0 && plainShared.more === 0, JSON.stringify(plainShared));
 
   git('-c', 'user.name=t', '-c', 'user.email=t@t', '-C', repo, 'commit', '-q', '--allow-empty', '-m', 'init');
   const wt = join(home, 'repo-wt');
@@ -210,7 +266,7 @@ try {
         wtLine.includes('📁 ~/repo-wt 🌿 work-WT (repo-wt)'), wtLine);
   const wtOrgs = strip(runScript(fixture(wt)).stdout).split('\n')[1];
   check('a linked worktree reads the main checkout\'s org roles and shows its own work branch',
-        wtOrgs === '💾 commits: per task │ 🛠️ dev:hean-dev🔓[work-WT] → 🧪 qa:-🔒[integration]', wtOrgs);
+        wtOrgs === '💾 commits: per task │ 🛠️ dev:hean-dev🔓[work-WT] · +0 connected orgs', wtOrgs);
   git('-C', wt, 'checkout', '-q', '--detach');
   const sha = git('-C', wt, 'rev-parse', '--short', 'HEAD');
   const detached = strip(runScript(fixture(wt)).stdout).split('\n')[0];

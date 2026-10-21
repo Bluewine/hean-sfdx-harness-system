@@ -11,7 +11,7 @@
  * reads that file and never computes a token count itself.
  */
 
-import { readFileSync, readdirSync, statSync, mkdirSync, rmSync, writeFileSync, existsSync, utimesSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, mkdirSync, rmSync, writeFileSync, existsSync, utimesSync, renameSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, sep } from 'node:path';
 
@@ -35,7 +35,7 @@ export function homePath(dir, home = homedir()) {
 
 // ── Line 1 ──────────────────────────────────────────────────────────────────
 
-export function line1({ dir, branch, worktree, org, usedPct, ctxWindow, turn, sessionName }) {
+export function line1({ dir, branch, worktree, org, usedPct, ctxWindow, turn }) {
   let s = `${C(32, '➜')} `;
   if (dir) s += ` ${C('1;36', `📁 ${dir}`)}`;
   if (branch) s += ` ${C(36, `🌿 ${branch}${worktree ? ` (${worktree})` : ''}`)}`;
@@ -45,7 +45,6 @@ export function line1({ dir, branch, worktree, org, usedPct, ctxWindow, turn, se
     if (ctxWindow > 0) s += ` ${C(37, `(${fmtNum(Math.round((usedPct / 100) * ctxWindow))}/${fmtNum(ctxWindow)})`)}`;
   }
   if (turn) s += ` ${SEP} ${C(94, `↑${fmtNum(turn.up)}`)} ${C(92, `↓${fmtNum(turn.down)}`)}`;
-  if (sessionName) s += ` ${C(35, `🏷️ ${sessionName}`)}`;
   return s;
 }
 
@@ -108,23 +107,38 @@ function shownBranch(record, current) {
   return record.branch ?? '';
 }
 
+// One org as the status line draws it; paint false gives the same text without colour codes.
+function orgEntry(r, login, current, paint = true) {
+  const p = paint ? C : (_, text) => text;
+  const icon = r.role === 'pipeline' ? (PIPELINE_ICON[branchRank(r.branch)] ?? '🚚') : (ROLE_ICON[r.role] ?? '❔');
+  const who = login(r.username) ? (r.alias || r.username) : '-';
+  const branch = shownBranch(r, current);
+  const lock = r.deploy === true ? '🔓' : '🔒';
+  return `${icon} ${p(35, `${stageLabel(r)}:${who}`)}${lock}${branch ? p(35, `[${branch}]`) : ''}`;
+}
+
+/** Every saved org, one plain row each, in the order the status line reads them: the strip above the prompt lists these. */
+export function orgRows(records, login = username => orgOf(username), current = '') {
+  return orderOrgs(records).map(r => orgEntry(r, login, current, false));
+}
+
+/** How many saved orgs that are no deploy target are logged in. */
+export function otherConnected(records, login = username => orgOf(username)) {
+  return records.filter(r => r.deploy !== true && login(r.username)).length;
+}
+
+// Row 2 shows only the orgs agents may deploy to, then a count of the other
+// connected orgs. The full list is in the strip above the prompt, which the
+// statusline-meter mod draws from the file writeOrgList writes.
 export function orgsText(records, login = username => orgOf(username), current = '') {
   if (records.length === 0) return '🔌 no org roles saved · /hean-harness:org-roles';
-  let connected = false;
-  const entry = r => {
-    const auth = login(r.username);
-    if (auth) connected = true;
-    const icon = r.role === 'pipeline' ? (PIPELINE_ICON[branchRank(r.branch)] ?? '🚚') : (ROLE_ICON[r.role] ?? '❔');
-    const who = auth ? (r.alias || r.username) : '-';
-    const branch = shownBranch(r, current);
-    const lock = r.deploy === true ? '🔓' : '🔒';
-    return `${icon} ${C(35, `${stageLabel(r)}:${who}`)}${lock}${branch ? C(35, `[${branch}]`) : ''}`;
-  };
-  const ordered = orderOrgs(records);
-  const chain = ordered.filter(r => r.role !== 'research').map(entry).join(' → ');
-  const research = ordered.filter(r => r.role === 'research').map(entry).join(' · ');
-  if (!connected) return '🔌 no org connected';
-  return [chain, research].filter(Boolean).join(` ${SEP} `);
+  if (!records.some(r => login(r.username))) return '🔌 no org connected';
+  const deploy = orderOrgs(records).filter(r => r.deploy === true);
+  const chain = deploy.filter(r => r.role !== 'research').map(r => orgEntry(r, login, current)).join(' → ');
+  const research = deploy.filter(r => r.role === 'research').map(r => orgEntry(r, login, current)).join(' · ');
+  const shown = [chain, research].filter(Boolean).join(` ${SEP} `) || 'no deploy org';
+  const n = otherConnected(records, login);
+  return `${shown} · +${n} connected ${n === 1 ? 'org' : 'orgs'}`;
 }
 
 export function line2(preference, records, login, current) {
@@ -134,11 +148,12 @@ export function line2(preference, records, login, current) {
 
 // ── Line 3 ──────────────────────────────────────────────────────────────────
 
-export function line3({ model, effort, costUsd }, meter) {
+export function line3({ model, effort, costUsd, sessionName }, meter) {
+  const name = sessionName ? `${C(35, `🏷️ ${sessionName}`)} ${SEP} ` : '';
   const left = [model && `🧠 ${model}`, effort && `⚡ ${effort}`].filter(Boolean).join(' · ');
   const tokens = meter ? `🚕 ${fmtNum(meter.new)} new + ${fmtNum(meter.cached)} cached` : '🚕 –';
   const cost = Number.isFinite(costUsd) ? ` · ≈$${costUsd.toFixed(2)}` : '';
-  return `${left ? `${left} ${SEP} ` : ''}${tokens}${cost}`;
+  return `${name}${left ? `${left} ${SEP} ` : ''}${tokens}${cost}`;
 }
 
 // ── Meter file ──────────────────────────────────────────────────────────────
@@ -156,6 +171,24 @@ export function readMeter(sessionId, dir = METER_DIR) {
     if (!ok(m.new) || !ok(m.cached) || !ok(m.turn?.up) || !ok(m.turn?.down)) return null;
     return { new: m.new, cached: m.cached, turn: { up: m.turn.up, down: m.turn.down } };
   } catch { return null; }
+}
+
+/**
+ * Write the full org list and the count of other connected orgs for the strip
+ * the statusline-meter mod draws above the prompt. The mod has no Node APIs and
+ * cannot run sf, so it reads this file. It sits beside the meter files, named
+ * <session>.orgs.json, so prepareMeterDir prunes it with them.
+ */
+export function writeOrgList(sessionId, orgs, more, dir = METER_DIR) {
+  if (!SESSION_ID.test(String(sessionId)) || String(sessionId).startsWith('.')) return;
+  const target = join(dir, `${sessionId}.orgs.json`);
+  const temp = join(dir, `${sessionId}.orgs.${process.pid}.tmp.json`);
+  try {
+    writeFileSync(temp, JSON.stringify({ orgs, more, updatedAt: Date.now() }));
+    renameSync(temp, target);
+  } catch {
+    try { rmSync(temp, { force: true }); } catch { /* nothing more to do */ }
+  }
 }
 
 /**

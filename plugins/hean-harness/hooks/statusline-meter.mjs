@@ -14,12 +14,19 @@
  *
  * The status line creates the meter folder and prunes it: $.fs can neither
  * create a folder nor delete a file.
+ *
+ * This module also draws the org strip in the band above the prompt. Row 2 of
+ * the status line shows only the deploy-target orgs; the strip opens the full
+ * list on its [9] button. The list comes from <session>.orgs.json, which the
+ * status line writes beside the meter file: the mod has no Node APIs to read
+ * the org roles or the sf CLI's logins itself.
  */
 
 const SESSION_ID = /^[A-Za-z0-9._-]+$/
 
 let totals = fresh()
 let file = null
+let stripOpen = false
 
 function fresh() {
   return { new: 0, cached: 0, turn: { up: 0, down: 0 } }
@@ -66,8 +73,26 @@ async function save($) {
   }
 }
 
+// The org list the status line last wrote. A missing file is an empty list, so
+// the strip draws nothing; null means the file exists but cannot be read or parsed.
+async function readOrgList($) {
+  try {
+    const meter = await meterFile($)
+    if (!meter) return null
+    const path = meter.replace(/\.json$/, '.orgs.json')
+    if (!(await $.fs.exists(path))) return { orgs: [], more: 0 }
+    const saved = JSON.parse(String(await $.fs.read(path)))
+    const ok = Array.isArray(saved?.orgs) && saved.orgs.every(o => typeof o === 'string') &&
+      Number.isInteger(saved.more) && saved.more >= 0
+    return ok ? { orgs: saved.orgs, more: saved.more } : null
+  } catch {
+    return null
+  }
+}
+
 export function register(on) {
   on('session.start', async ($, e, next) => {
+    stripOpen = false
     await load($)
     return next(e)
   })
@@ -104,5 +129,30 @@ export function register(on) {
       await save($)
     }
     return next(e)
+  })
+
+  // The org strip. A digit hotkey on a band button also fires when 9 is typed
+  // alone into an empty prompt, so [9] opens and closes it without focusing the band.
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (e.props?.hasSurvey) return next(e)
+    const list = await readOrgList($)
+    if (list && list.orgs.length === 0) return next(e)
+    const { Box, Text, Button } = $.ui.resolve(e)
+    const open = stripOpen && list !== null
+    const label = list === null ? '[9] orgs (+?)' : open ? '[9] hide orgs' : `[9] orgs (+${list.more})`
+    const toggle = Button({
+      key: 'hean-orgs',
+      label,
+      hotkey: '9',
+      // With no list to show, a press only reads the file again.
+      onPress: () => {
+        stripOpen = list === null ? false : !stripOpen
+        $.ui.invalidate('ui.render')
+      },
+    })
+    // What the mods after this one draw in the band stays, under the strip.
+    const theirs = await next(e)
+    const rows = open ? list.orgs.map(org => Text({ children: [org] })) : []
+    return Box({ flexDirection: 'column', children: [...rows, toggle, ...(theirs ? [theirs] : [])] })
   })
 }

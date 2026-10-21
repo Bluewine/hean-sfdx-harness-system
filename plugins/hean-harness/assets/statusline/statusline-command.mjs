@@ -2,9 +2,10 @@
 /**
  * The status line: three lines.
  *
- *   1. path from ~, branch (and worktree), default org, context, the current turn's tokens, session name
- *   2. the saved commit preference, then the project's orgs from development to production
- *   3. model and effort, then the session's tokens and dollars
+ *   1. path from ~, branch (and worktree), default org, context, the current turn's tokens
+ *   2. the saved commit preference, then the orgs agents may deploy to and a count of the other connected orgs
+ *      (the full list goes to a file the statusline-meter mod reads to draw the strip above the prompt)
+ *   3. session name, model and effort, then the session's tokens and dollars
  *
  * Node rather than shell, because the shell version needed jq, bc and awk, any
  * of which a Salesforce developer may lack, and a missing one blanked the line.
@@ -22,9 +23,9 @@ import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { basename, resolve } from 'node:path';
 
-import { line1, line2, line3, homePath, readMeter, prepareMeterDir } from '../../scripts/lib/statusline.mjs';
+import { line1, line2, line3, homePath, readMeter, prepareMeterDir, orgRows, otherConnected, writeOrgList } from '../../scripts/lib/statusline.mjs';
 import { readPreference } from '../../scripts/lib/commit-lifecycle.mjs';
-import { readRoles, projectRoot, defaultOrg } from '../../scripts/lib/org-roles.mjs';
+import { readRoles, projectRoot, defaultOrg, orgOf } from '../../scripts/lib/org-roles.mjs';
 
 let input = {};
 try { input = JSON.parse(readFileSync(0, 'utf8')); } catch { input = {}; }
@@ -80,19 +81,26 @@ const lines = [
     org: root ? (safe(() => defaultOrg(root)?.name, '') ?? '') : '',
     usedPct: usedRaw === '' ? NaN : Number(usedRaw),
     ctxWindow: Number(get('context_window.context_window_size', 0)) || 0,
-    turn: meter?.turn ?? null,
-    sessionName: String(get('session_name', ''))
+    turn: meter?.turn ?? null
   }), ''),
   safe(() => {
     const preference = safe(() => readPreference(), null);
     const roles = root ? Object.values(safe(() => readRoles(root), {})) : [];
     const showOrgs = root && (roles.length > 0 || projectRoot(cwd) !== null);
-    return line2(preference, showOrgs ? roles : null, undefined, branch);
+    // Each org's login is read once for row 2 and the strip's file both.
+    const seen = new Map();
+    const login = username => {
+      if (!seen.has(username)) seen.set(username, safe(() => orgOf(username), null));
+      return seen.get(username);
+    };
+    safe(() => writeOrgList(sessionId, orgRows(roles, login, branch), otherConnected(roles, login)));
+    return line2(preference, showOrgs ? roles : null, login, branch);
   }, ''),
   safe(() => line3({
     model: String(get('model.display_name', '')),
     effort: String(get('effort.level', '')),
-    costUsd: Number(get('cost.total_cost_usd', NaN))
+    costUsd: Number(get('cost.total_cost_usd', NaN)),
+    sessionName: String(get('session_name', ''))
   }, meter), '')
 ].filter(Boolean);
 

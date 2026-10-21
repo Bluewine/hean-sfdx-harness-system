@@ -89,3 +89,120 @@ test('without HOME, USERPROFILE locates the meter file', async ($, on) => {
   expect(written.length).toBe(1)
   expect(written[0].endsWith('C:/Users/u/.claude/hean-harness/meter/sess-1.json')).toBe(true)
 })
+
+// ── The org strip above the prompt ───────────────────────────────────────────
+
+const ORGS = '/home/u/.claude/hean-harness/meter/sess-1.orgs.json'
+const BAND = {
+  plugin: 'hean-harness',
+  surface: 'terminal' as const,
+  component: 'AbovePrompt' as const,
+  props: { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 100, scroll: { offset: 0, bodyRows: 20 }, view: {} }
+}
+const LIST = JSON.stringify({ orgs: ['🛠️ dev:d🔓[work-A]', '🧪 qa:q🔒[integration]', '🔭 research:r🔒'], more: 2, updatedAt: 1 })
+
+// The engine draws nothing of its own in the band; the test's hook stands for that, or for a mod after ours.
+function beneath(on: any, text: string | null = null) {
+  on('ui.render', { component: 'AbovePrompt' }, ($: any, e: any) => {
+    const { Box, Text } = $.ui.resolve(e)
+    return text === null ? Box({ children: [] }) : Text({ children: [text] })
+  })
+}
+
+const rowsOf = async (ui: any) => (await ui.findAll({ type: 'Text' })).map((t: any) => t.text).filter((t: string) => t.includes(':'))
+
+test('closed, the strip is one button with the count of other connected orgs', async ($, on) => {
+  stub(on, { files: new Map([[ORGS, LIST]]) })
+  beneath(on)
+  const ui = await $.ui.mount(BAND)
+  const button = await ui.find({ key: 'hean-orgs' })
+  expect(button?.props.label).toBe('[9] orgs (+2)')
+  expect(button?.props.hotkey).toBe('9')
+  expect(await rowsOf(ui)).toEqual([])
+  await ui.unmount()
+})
+
+test('pressing the button lists every saved org, and pressing it again closes the list', async ($, on) => {
+  stub(on, { files: new Map([[ORGS, LIST]]) })
+  beneath(on)
+  const ui = await $.ui.mount(BAND)
+  await ui.press({ key: 'hean-orgs' })
+  expect(await rowsOf(ui)).toEqual(['🛠️ dev:d🔓[work-A]', '🧪 qa:q🔒[integration]', '🔭 research:r🔒'])
+  expect((await ui.find({ key: 'hean-orgs' }))?.props.label).toBe('[9] hide orgs')
+  await ui.press({ key: 'hean-orgs' })
+  expect(await rowsOf(ui)).toEqual([])
+  expect((await ui.find({ key: 'hean-orgs' }))?.props.label).toBe('[9] orgs (+2)')
+  await ui.unmount()
+})
+
+test('the strip reads the file again when it redraws', async ($, on) => {
+  const files = stub(on, { files: new Map([[ORGS, LIST]]) })
+  beneath(on)
+  const ui = await $.ui.mount(BAND)
+  files.set(ORGS, JSON.stringify({ orgs: ['🛠️ dev:d🔓'], more: 1 }))
+  await ui.redraw()
+  expect((await ui.find({ key: 'hean-orgs' }))?.props.label).toBe('[9] orgs (+1)')
+  await ui.unmount()
+})
+
+const unreadable: [string, Map<string, string>][] = [
+  ['half written', new Map([[ORGS, '{"orgs": [']])],
+  ['not the expected shape', new Map([[ORGS, '{"orgs": "x", "more": 1}']])]
+]
+for (const [what, files] of unreadable) {
+  test(`an org list that is ${what} shows only the button, with an unknown count`, async ($, on) => {
+    stub(on, { files })
+    beneath(on)
+    const ui = await $.ui.mount(BAND)
+    expect((await ui.find({ key: 'hean-orgs' }))?.props.label).toBe('[9] orgs (+?)')
+    await ui.press({ key: 'hean-orgs' })
+    expect(await rowsOf(ui)).toEqual([])
+    expect((await ui.find({ key: 'hean-orgs' }))?.props.label).toBe('[9] orgs (+?)')
+    await ui.unmount()
+  })
+}
+
+test('a missing org list draws nothing', async ($, on) => {
+  stub(on, { files: new Map() })
+  beneath(on)
+  const ui = await $.ui.mount(BAND)
+  expect(await ui.find({ key: 'hean-orgs' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a new session starts with the strip closed', async ($, on) => {
+  stub(on, { files: new Map([[ORGS, LIST]]) })
+  beneath(on)
+  const ui = await $.ui.mount(BAND)
+  await ui.press({ key: 'hean-orgs' })
+  expect((await ui.find({ key: 'hean-orgs' }))?.props.label).toBe('[9] hide orgs')
+  await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' })
+  await ui.redraw()
+  expect((await ui.find({ key: 'hean-orgs' }))?.props.label).toBe('[9] orgs (+2)')
+  await ui.unmount()
+})
+
+test('a session with no saved org roles draws nothing', async ($, on) => {
+  stub(on, { files: new Map([[ORGS, JSON.stringify({ orgs: [], more: 0 })]]) })
+  beneath(on)
+  const ui = await $.ui.mount(BAND)
+  expect(await ui.find({ key: 'hean-orgs' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('what another mod draws in the band stays, beside the strip', async ($, on) => {
+  stub(on, { files: new Map([[ORGS, LIST]]) })
+  beneath(on, 'from another mod')
+  const ui = await $.ui.mount(BAND)
+  expect(await ui.find({ type: 'Text', text: 'from another mod' })).toBeDefined()
+  expect((await ui.find({ key: 'hean-orgs' }))?.props.label).toBe('[9] orgs (+2)')
+  await ui.unmount()
+})
+
+test('a survey in the band is left alone', async ($, on) => {
+  stub(on, { files: new Map([[ORGS, LIST]]) })
+  beneath(on)
+  const ui = await $.ui.mount({ ...BAND, props: { ...BAND.props, hasSurvey: true } })
+  expect(await ui.find({ key: 'hean-orgs' })).toBeUndefined()
+  await ui.unmount()
+})
