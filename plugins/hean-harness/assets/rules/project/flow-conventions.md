@@ -278,6 +278,14 @@ Apply to every `FilterCollectionProcessor` (Collection Filter) element.
 <formula>OR(NOT({!UseActiveOnly}), TEXT({!currentItem_Filter_Active_Records.Status__c}) = &quot;Active&quot;)</formula>
 ```
 
+## Feature toggles in flows
+
+Apply when the org has the feature toggle package: the `FeatureToggleInvocableAction` Apex action and the `Feature_Toggle__mdt` custom metadata type (with `Child_Feature_Toggle__mdt` for child toggles).
+
+- **Every flow except a record-triggered before-save flow** reads a toggle only with an action call to `FeatureToggleInvocableAction` (`actionType` `apex`). Pass `parentToggleLabel` with the parent toggle's developer name, and `childToggleLabel` too when a child toggle decides. Read the output `isActive`; a null `isActive` (the action sets it null and fills `errorMessage` when it fails) counts as off. Never read `Feature_Toggle__mdt` or `Child_Feature_Toggle__mdt` with Get Records in these flows: with "Restrict access to custom metadata types" on, a flow that runs as the user fails on that query ("sObject type 'Feature_Toggle__mdt' is not supported"). A record-triggered after-save or scheduled flow runs in system context, but the action keeps one way of reading toggles in every flow that can call it.
+- **A record-triggered before-save flow** cannot call actions, so it reads toggles with Get Records: at most one Get Records on `Feature_Toggle__mdt`, and one on `Child_Feature_Toggle__mdt` only when a child toggle decides. Reuse the result; never add a second lookup of the same type.
+- **Detection**: the plugin's `flow-feature-toggle-gate.mjs` hook refuses a commit that adds or changes a toggle read that breaks these rules, when the saved development org has the package.
+
 ## Entry criteria filters
 
 When adding `IsChanged` filters to a record-triggered flow's `<start>` element, order the `<filters>` blocks alphabetically by `<field>` name. This is consistent with the overall alphabetical XML ordering rule and keeps diffs clean when fields are added or removed.
