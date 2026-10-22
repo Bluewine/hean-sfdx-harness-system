@@ -153,6 +153,11 @@ export function register(on) {
     // What the mods after this one draw in the band stays, under the strip.
     const theirs = await next(e)
     const rows = open ? list.orgs.map(org => Text({ children: [org] })) : []
-    return Box({ flexDirection: 'column', children: [...rows, toggle, ...(theirs ? [theirs] : [])] })
+    // The strip's own box is right-aligned; the other mods' content keeps the band's left edge.
+    const strip = Box({ key: 'hean-orgs-strip', flexDirection: 'column', alignItems: 'flex-end', children: [...rows, toggle] })
+    // alignItems reaches the band's right edge only if this box is as wide as the band.
+    const cols = e.props?.bodyColumns
+    const width = typeof cols === 'number' && cols > 0 ? cols : '100%'
+    return Box({ key: 'hean-orgs-band', flexDirection: 'column', width, children: [strip, ...(theirs ? [theirs] : [])] })
   })
 }

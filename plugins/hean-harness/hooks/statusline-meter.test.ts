@@ -122,6 +122,53 @@ test('closed, the strip is one button with the count of other connected orgs', a
   await ui.unmount()
 })
 
+test('the strip sits at the right end of the band, closed and open', async ($, on) => {
+  stub(on, { files: new Map([[ORGS, LIST]]) })
+  beneath(on)
+  const ui = await $.ui.mount(BAND)
+  const strip = async () => await ui.find({ type: 'Box', key: 'hean-orgs-strip' })
+  expect((await strip())?.props.alignItems).toBe('flex-end')
+  expect((await strip())?.props.flexDirection).toBe('column')
+  await ui.press({ key: 'hean-orgs' })
+  expect((await strip())?.props.alignItems).toBe('flex-end')
+  expect(await rowsOf(ui)).toHaveLength(3)
+  await ui.unmount()
+})
+
+test('the strip box is as wide as the band, closed and open', async ($, on) => {
+  stub(on, { files: new Map([[ORGS, LIST]]) })
+  beneath(on)
+  const ui = await $.ui.mount(BAND)
+  const band = async () => await ui.find({ type: 'Box', key: 'hean-orgs-band' })
+  expect((await band())?.props.width).toBe(100)
+  await ui.press({ key: 'hean-orgs' })
+  expect((await band())?.props.width).toBe(100)
+  await ui.unmount()
+})
+
+test('without a usable bodyColumns the band box takes the full width', async ($, on) => {
+  stub(on, { files: new Map([[ORGS, LIST]]) })
+  beneath(on)
+  for (const bodyColumns of [undefined, 0, -3, 'x']) {
+    const ui = await $.ui.mount({ ...BAND, props: { ...BAND.props, bodyColumns } })
+    expect((await ui.find({ type: 'Box', key: 'hean-orgs-band' }))?.props.width).toBe('100%')
+    await ui.press({ key: 'hean-orgs' })
+    expect((await ui.find({ type: 'Box', key: 'hean-orgs-band' }))?.props.width).toBe('100%')
+    await ui.unmount()
+  }
+})
+
+test('what another mod draws sits outside the strip box', async ($, on) => {
+  stub(on, { files: new Map([[ORGS, LIST]]) })
+  beneath(on, 'from another mod')
+  const ui = await $.ui.mount(BAND)
+  const strip = await ui.find({ type: 'Box', key: 'hean-orgs-strip' })
+  expect(strip?.text).toContain('[9] orgs')
+  expect(strip?.text).not.toContain('from another mod')
+  expect(await ui.find({ type: 'Text', text: 'from another mod' })).toBeDefined()
+  await ui.unmount()
+})
+
 test('pressing the button lists every saved org, and pressing it again closes the list', async ($, on) => {
   stub(on, { files: new Map([[ORGS, LIST]]) })
   beneath(on)
