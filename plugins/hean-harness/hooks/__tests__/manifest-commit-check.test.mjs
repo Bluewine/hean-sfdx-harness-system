@@ -70,8 +70,10 @@ const env = { ...process.env, CLAUDE_CONFIG_DIR: CONFIG, PATH: `${BIN}:${process
 const CLASSES = 'force-app/main/default/classes';
 const write = (repo, rel, text) => { mkdirSync(dirname(join(repo, rel)), { recursive: true }); writeFileSync(join(repo, rel), text); };
 const git = (repo, ...args) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-const addClass = (repo, name) => {
-  write(repo, `${CLASSES}/${name}.cls`, `public class ${name} {}\n`);
+/** A class; with a work ID, one whose class comment passes the Apex class header check on that story's branch. */
+const addClass = (repo, name, workId) => {
+  const header = workId ? `/**\n * ${name}.\n *\n * @since 2026-01-01 ${workId}\n */\n` : '';
+  write(repo, `${CLASSES}/${name}.cls`, `${header}public class ${name} {}\n`);
   write(repo, `${CLASSES}/${name}.cls-meta.xml`, '<ApexClass/>\n');
 };
 /** Run a command a refusal printed, as Claude would type it in the given folder. */
@@ -374,7 +376,7 @@ const commit = (args, extraEnv = {}) =>
   spawnSync('git', ['-C', term, 'commit', '-q', ...args], { env: { ...termEnv, ...extraEnv }, encoding: 'utf8' });
 const head = () => git(term, 'rev-parse', 'HEAD');
 
-addClass(term, 'B');
+addClass(term, 'B', 'GH-2');
 git(term, 'add', CLASSES);
 const before = head();
 let c = commit(['-m', 'B']);
@@ -389,12 +391,12 @@ has('the git hook says to commit again', c.stderr, 'then commit again');
 check('the git hook prints one command', commandsOf(c.stderr).length === 1, JSON.stringify(commandsOf(c.stderr)));
 run(sandbox, commandsOf(c.stderr)[0]);
 check('the retried terminal commit goes through', commit(['-m', 'B']).status === 0);
-write(term, `${CLASSES}/A.cls`, 'public class A { Integer k; }\n');
+write(term, `${CLASSES}/A.cls`, '/**\n * A.\n *\n * @changes 2026-01-01 GH-2: Added a field\n */\npublic class A { Integer k; }\n');
 c = commit(['-am', 'A']);
 check('commit -a is checked against the index git builds', c.status !== 0 && c.stderr.includes('ApexClass: A'), c.stderr);
 run(sandbox, commandsOf(c.stderr)[0]);
 check('commit -a goes through after the printed command', commit(['-am', 'A']).status === 0);
-addClass(term, 'C');
+addClass(term, 'C', 'GH-2');
 git(term, 'add', CLASSES);
 const cPaths = [`${CLASSES}/C.cls`, `${CLASSES}/C.cls-meta.xml`];
 c = commit(['-m', 'C', '--', ...cPaths]);
@@ -409,18 +411,18 @@ check('a terminal commit with nothing left to list is refused with git rm -f',
       c.status !== 0 && c.stderr.includes('nothing left to list') &&
         commandsOf(c.stderr)[0] === `git -C '${term}' rm -f ${TM}`, c.stderr);
 git(term, 'reset', '-q', '--hard');
-addClass(term, 'D');
+addClass(term, 'D', 'GH-2');
 git(term, 'add', CLASSES);
 c = commit(['-m', 'D'], { PATH: NO_SF_PATH });
 check('a terminal commit goes through when sf is missing', c.status === 0 && c.stderr.includes(NOT_CHECKED), c.stderr);
-addClass(term, 'E');
+addClass(term, 'E', 'GH-2');
 git(term, 'add', CLASSES);
 const copyDir = join(CONFIG, 'hean-harness', 'hooks');
 renameSync(copyDir, `${copyDir}.away`);
 c = commit(['-m', 'E']);
 check('the git hook does nothing once the check is gone', c.status === 0 && c.stderr === '', c.stderr);
 renameSync(`${copyDir}.away`, copyDir);
-addClass(term, 'G');
+addClass(term, 'G', 'GH-2');
 git(term, 'add', CLASSES);
 c = commit(['-m', 'G'], { HOME: sandbox, CLAUDE_CONFIG_DIR: '~/config' });
 check('the git hook finds the check under a CLAUDE_CONFIG_DIR given as ~/…',
@@ -429,7 +431,7 @@ const beforeG = head();
 c = commit(['-m', 'G'], { CLAUDE_CODE_CHILD_SESSION: '1' });
 check('the git hook skips a commit Claude Code runs, which its own hook has checked',
       c.status === 0 && c.stderr === '' && head() !== beforeG, c.stderr);
-addClass(term, 'H');
+addClass(term, 'H', 'GH-2');
 git(term, 'add', CLASSES);
 const copiedCheck = join(copyDir, 'scripts', 'lib', 'manifest-check.mjs');
 const goodCheck = readFileSync(copiedCheck, 'utf8');
@@ -501,6 +503,94 @@ writeFileSync(flowCheck, `import './a-library-the-copy-lacks.mjs';\n${goodFlowCh
 c = fcommit('crashing check');
 check('a Collection Filter check that fails to load lets the commit through', c.status === 0, c.stderr);
 writeFileSync(flowCheck, goodFlowCheck);
+
+console.log('Feature toggle check through the git pre-commit hook');
+const toggleFlow = trigger => `<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>65.0</apiVersion>
+    <recordLookups>
+        <name>Get_Toggle</name>
+        <object>Feature_Toggle__mdt</object>
+    </recordLookups>
+    <start>
+        <triggerType>${trigger}</triggerType>
+    </start>
+</Flow>
+`;
+const TOGGLE_ORG = '00DXX0000000001';
+const toggleCache = join(CONFIG, 'hean-harness', 'feature-toggle-package', `${TOGGLE_ORG}.json`);
+const toggleCheck = join(CONFIG, 'hean-harness', 'hooks', 'scripts', 'lib', 'flow-feature-toggle.mjs');
+check('the fixed-folder copy holds the feature toggle check', existsSync(toggleCheck));
+write(fr, '.claude/hean-harness.json', JSON.stringify({ orgs: { [TOGGLE_ORG]: { alias: 'dev', username: 'dev@example.com.dev', role: 'development', deploy: true, branch: null } } }));
+git(fr, 'reset', '-q', '--hard', 'HEAD');
+git(fr, 'clean', '-qfd', '--', 'force-app');
+write(fr, `${FLOWS}/Toggle.flow-meta.xml`, toggleFlow('RecordAfterSave'));
+git(fr, 'add', `${FLOWS}/Toggle.flow-meta.xml`);
+const beforeT = fhead();
+c = fcommit('toggle read, nothing cached');
+check('a toggle read goes through when no answer is cached, because the hook never calls the org',
+      c.status === 0 && fhead() !== beforeT && c.stderr === '', c.stderr);
+git(fr, 'reset', '-q', '--soft', 'HEAD~1');
+mkdirSync(dirname(toggleCache), { recursive: true });
+writeFileSync(toggleCache, JSON.stringify({ installed: false, checkedAt: Date.now() }));
+c = fcommit('toggle read, package absent');
+check('a toggle read goes through when the cached answer says the package is not installed',
+      c.status === 0 && fhead() !== beforeT && c.stderr === '', c.stderr);
+git(fr, 'reset', '-q', '--soft', 'HEAD~1');
+writeFileSync(toggleCache, JSON.stringify({ installed: true, checkedAt: Date.now() }));
+c = fcommit('toggle read, package installed');
+check('a toggle read outside a before-save flow is refused when the package is installed',
+      c.status !== 0 && fhead() === beforeT && c.stderr.includes('break the flow rule "Feature toggles in flows"') &&
+        c.stderr.includes(`${FLOWS}/Toggle.flow-meta.xml: Get_Toggle: Get Records on Feature_Toggle__mdt outside a before-save flow`), c.stderr);
+c = fcommit('toggle read in Claude Code', { CLAUDE_CODE_CHILD_SESSION: '1' });
+check('the git hook leaves a toggle commit Claude Code runs to its own hook', c.status === 0 && fhead() !== beforeT, c.stderr);
+git(fr, 'reset', '-q', '--soft', 'HEAD~1');
+write(fr, `${FLOWS}/Toggle.flow-meta.xml`, toggleFlow('RecordBeforeSave'));
+git(fr, 'add', `${FLOWS}/Toggle.flow-meta.xml`);
+c = fcommit('toggle read, before-save');
+check('one toggle read in a before-save flow goes through', c.status === 0 && fhead() !== beforeT && c.stderr === '', c.stderr);
+git(fr, 'reset', '-q', '--soft', 'HEAD~1');
+write(fr, `${FLOWS}/Toggle.flow-meta.xml`, toggleFlow('RecordAfterSave'));
+git(fr, 'add', `${FLOWS}/Toggle.flow-meta.xml`);
+const goodToggleCheck = readFileSync(toggleCheck, 'utf8');
+writeFileSync(toggleCheck, `import './a-library-the-copy-lacks.mjs';\n${goodToggleCheck}`);
+c = fcommit('crashing toggle check');
+check('a feature toggle check that fails to load lets the commit through', c.status === 0, c.stderr);
+writeFileSync(toggleCheck, goodToggleCheck);
+
+console.log('Apex class header check through the git pre-commit hook');
+const headerCheckFile = join(CONFIG, 'hean-harness', 'hooks', 'scripts', 'lib', 'apex-class-header.mjs');
+const CLS = 'force-app/main/default/classes/Fresh.cls';
+const clsText = tags => `/**\n * Does the work.\n *${tags.map(t => `\n * ${t}`).join('')}\n */\npublic with sharing class Fresh {\n}\n`;
+check('the fixed-folder copy holds the Apex class header check', existsSync(headerCheckFile));
+git(fr, 'reset', '-q', '--hard', 'HEAD');
+git(fr, 'clean', '-qfd', '--', 'force-app');
+// a back-merge branch name holds a work ID the header check reads, and the manifest check skips it
+git(fr, 'checkout', '-q', '-b', 'work-ABC-123-BM');
+write(fr, CLS, clsText(['Initial setup']));
+git(fr, 'add', CLS);
+const beforeA = fhead();
+c = fcommit('new class, bad header');
+check('a new class with no @since and "Initial setup" is refused',
+      c.status !== 0 && fhead() === beforeA && c.stderr.includes('does not follow "Class header"') &&
+        c.stderr.includes(`${CLS}: no "@since <date> ABC-123"`), c.stderr);
+c = fcommit('new class in Claude Code', { CLAUDE_CODE_CHILD_SESSION: '1' });
+check('the git hook leaves an Apex class commit Claude Code runs to its own hook', c.status === 0 && fhead() !== beforeA, c.stderr);
+git(fr, 'reset', '-q', '--soft', 'HEAD~1');
+write(fr, CLS, clsText(['@since 2026-10-22 ABC-123']));
+git(fr, 'add', CLS);
+c = fcommit('new class, good header');
+check('a new class ending with @since for the branch story goes through', c.status === 0 && fhead() !== beforeA && c.stderr === '', c.stderr);
+git(fr, 'reset', '-q', '--soft', 'HEAD~1');
+write(fr, CLS, clsText(['Initial setup']));
+git(fr, 'add', CLS);
+const goodHeaderCheck = readFileSync(headerCheckFile, 'utf8');
+writeFileSync(headerCheckFile, `import './a-library-the-copy-lacks.mjs';\n${goodHeaderCheck}`);
+c = fcommit('crashing header check');
+check('an Apex class header check that fails to load lets the commit through', c.status === 0, c.stderr);
+writeFileSync(headerCheckFile, goodHeaderCheck);
+git(fr, 'reset', '-q', '--hard', 'HEAD');
+git(fr, 'clean', '-qfd', '--', 'force-app');
 
 rmSync(sandbox, { recursive: true, force: true });
 console.log(`\n  ${pass} passed, ${fail} failed, ${pass + fail} total`);

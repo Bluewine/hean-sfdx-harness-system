@@ -674,9 +674,9 @@ try {
   chmodSync(lfsHook, 0o755);
   const outL = runP(repoL, ['--commit-format', 'on']);
   check('a working hook in .git/hooks keeps core.hooksPath unset', hooksPathOf(repoL) === undefined, String(hooksPathOf(repoL)));
-  check('the hooks left working are named on a !! line, with the manifest and Collection Filter checks for terminal commits off',
+  check('the hooks left working are named on a !! line, with the manifest, Collection Filter, feature toggle and Apex class header checks for terminal commits off',
         outL.split('\n').some(l => l.startsWith('!! ') && l.includes('post-checkout')) &&
-          outL.includes('manifest check and Collection Filter check for terminal commits is off'), outL);
+          outL.includes('manifest check, Collection Filter check, feature toggle check and Apex class header check for terminal commits is off'), outL);
   check('the commit-msg hook says the commit format check for terminal commits is off too',
         outL.includes('commit format check for terminal commits is off') && !outL.includes('Set core.hooksPath'), outL);
 
@@ -698,6 +698,19 @@ try {
     { env: envP, encoding: 'utf8', cwd: root });
   check('the fixed copy of the Collection Filter check loads with only the files copied',
         filterRun.status === 0 && !filterRun.stderr.includes('ERR_MODULE_NOT_FOUND'), filterRun.stderr);
+  check('the feature toggle check and the org roles library it reads are copied to the fixed folder',
+        existsSync(join(checkDir, 'scripts', 'lib', 'flow-feature-toggle.mjs')) &&
+          existsSync(join(checkDir, 'scripts', 'lib', 'org-roles.mjs')));
+  const toggleRun = spawnSync('node', [join(checkDir, 'scripts', 'lib', 'flow-feature-toggle.mjs'), '--git-hook'],
+    { env: envP, encoding: 'utf8', cwd: root });
+  check('the fixed copy of the feature toggle check loads with only the files copied',
+        toggleRun.status === 0 && !toggleRun.stderr.includes('ERR_MODULE_NOT_FOUND'), toggleRun.stderr);
+  check('the Apex class header check is copied to the fixed folder',
+        existsSync(join(checkDir, 'scripts', 'lib', 'apex-class-header.mjs')));
+  const headerRun = spawnSync('node', [join(checkDir, 'scripts', 'lib', 'apex-class-header.mjs'), '--git-hook'],
+    { env: envP, encoding: 'utf8', cwd: root });
+  check('the fixed copy of the Apex class header check loads with only the files copied',
+        headerRun.status === 0 && !headerRun.stderr.includes('ERR_MODULE_NOT_FOUND'), headerRun.stderr);
 
   execFileSync('node', [join(SCRIPTS, 'lib', 'manifest.mjs'), 'revert'], { env: envP, encoding: 'utf8', stdio: 'pipe' });
   check('uninstall deletes an unchanged pre-commit and unsets core.hooksPath',

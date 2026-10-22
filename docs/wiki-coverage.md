@@ -65,6 +65,8 @@ Updated whenever a skill, agent, hook, or rule is added, removed, or renamed —
 | manifest-commit-check.mjs | Hooks | documented |
 | runbook-stage-gate.mjs | Hooks | documented |
 | flow-collection-filter-gate.mjs | Hooks | pending |
+| flow-feature-toggle-gate.mjs | Hooks | pending |
+| apex-class-header-gate.mjs | Hooks | pending |
 | naming-check.mjs | Hooks | documented |
 | statusline-meter.mjs | Hooks | documented |
 

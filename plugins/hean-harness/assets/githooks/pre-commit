@@ -1,11 +1,17 @@
 #!/bin/sh
 #
-# Runs two checks and refuses the commit when either refuses it:
+# Runs four checks and refuses the commit when any refuses it:
 # - the per-story manifest, .claude/manifest/<WORK-ID>.xml, must list what the
 #   commit records; the refusal prints the command that copies the rebuilt
 #   file into place;
 # - every Collection Filter condition a flow records must be one Flow Builder
-#   can display.
+#   can display;
+# - a flow must not add Get Records reads of the feature toggle types where
+#   the flow rule "Feature toggles in flows" forbids them, when the toggle
+#   package is installed in the development org (a cached answer; this hook
+#   never calls the org);
+# - an Apex class must carry a class comment that follows "Class header" in
+#   apex-docstring-comments.md, on a branch whose name holds a work ID.
 # Installed by hean-harness setup in an SFDX repository whose .githooks/
 # folder git does not track.
 #
@@ -23,6 +29,8 @@ config="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 case "$config" in "~") config="$HOME" ;; "~/"*) config="$HOME/${config#\~/}" ;; esac
 manifest="$config/hean-harness/hooks/scripts/lib/manifest-check.mjs"
 filter="$config/hean-harness/hooks/scripts/lib/flow-collection-filter.mjs"
+toggle="$config/hean-harness/hooks/scripts/lib/flow-feature-toggle.mjs"
+header="$config/hean-harness/hooks/scripts/lib/apex-class-header.mjs"
 command -v node >/dev/null 2>&1 || exit 0
 refused=0
 if [ -f "$manifest" ]; then
@@ -31,6 +39,14 @@ if [ -f "$manifest" ]; then
 fi
 if [ -f "$filter" ]; then
   node "$filter" --git-hook
+  [ $? -eq 3 ] && refused=1
+fi
+if [ -f "$toggle" ]; then
+  node "$toggle" --git-hook
+  [ $? -eq 3 ] && refused=1
+fi
+if [ -f "$header" ]; then
+  node "$header" --git-hook
   [ $? -eq 3 ] && refused=1
 fi
 [ "$refused" -eq 1 ] && exit 1

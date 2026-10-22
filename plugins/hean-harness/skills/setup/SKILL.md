@@ -75,7 +75,7 @@ Install the environment. Show the user what will change before changing it.
      kept hook or `.mcp.json` is not missed. When the step says `core.hooksPath` points
      elsewhere, repeat the command it printed.
    - whether the `Pre-commit hook` lines say `.githooks/pre-commit` was added, updated, replaced or
-     kept. That hook checks the per-story manifest and Collection Filter conditions for commits typed in a terminal. It is installed
+     kept. That hook checks the per-story manifest, Collection Filter conditions, feature toggle reads and Apex class headers for commits typed in a terminal; the feature toggle check there uses the org answer saved by an earlier Claude Code commit and makes no org call from a terminal. It is installed
      only in a repository with `sfdx-project.json` whose `.githooks/` git does not track; say that a
      tracked `.githooks/` leaves terminal commits unchecked, while commits made in Claude Code are
      still checked. Repeat every `!! KEPT` line for it too.

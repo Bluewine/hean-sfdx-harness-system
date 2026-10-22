@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Copies the per-story manifest check and the Collection Filter check to a
- * fixed folder, <config>/hean-harness/hooks/, where the git pre-commit hook
+ * Copies the per-story manifest check, the Collection Filter check, the
+ * feature toggle check and the Apex class header check to a fixed folder, <config>/hean-harness/hooks/, where the git pre-commit hook
  * setup installs runs them from.
  *
  * The plugin's own folder moves when the plugin updates, so a git hook
@@ -21,7 +21,8 @@ import { installDir, installFile } from '../../../scripts/lib/install.mjs';
 const PLUGIN_ROOT = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url)))));
 const DEST = join(STATE_DIR, 'hooks');
 // manifest-check.mjs and everything it loads, directly or through branch-manifest.mjs,
-// then flow-collection-filter.mjs, whose imports are all listed before it
+// then flow-collection-filter.mjs, flow-feature-toggle.mjs and apex-class-header.mjs, whose imports
+// are all listed before them
 const FILES = [
   'scripts/lib/manifest-check.mjs',
   'scripts/lib/command-line.mjs',
@@ -30,7 +31,10 @@ const FILES = [
   'scripts/lib/settings.mjs',
   'scripts/lib/shell.mjs',
   'skills/branch-manifest/scripts/branch-manifest.mjs',
-  'scripts/lib/flow-collection-filter.mjs'
+  'scripts/lib/flow-collection-filter.mjs',
+  'scripts/lib/org-roles.mjs',
+  'scripts/lib/flow-feature-toggle.mjs',
+  'scripts/lib/apex-class-header.mjs'
 ];
 const dryRun = process.argv.includes('--dry-run');
 const log = (...a) => console.log(...a);
