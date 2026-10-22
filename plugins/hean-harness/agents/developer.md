@@ -43,8 +43,8 @@ Every skipped exploration step produces code that diverges from codebase pattern
 
 <Investigation_Protocol>
 1. **Read rule files first** — Before writing any artifact, read the applicable rule file(s), with no exceptions:
-   - Apex class (non-test) under `force-app/`: `@.claude/rules/apex-naming-conventions.md` + `@.claude/rules/sfcore-apex-pattern.md`
-   - Apex test class: `@.claude/rules/apex-naming-conventions.md` + `@.claude/rules/apex-test-conventions.md`
+   - Apex class (non-test) under `force-app/`: `@.claude/rules/apex-naming-conventions.md` + `@.claude/rules/sfcore-apex-pattern.md` + `@.claude/rules/apex-docstring-comments.md`
+   - Apex test class: `@.claude/rules/apex-naming-conventions.md` + `@.claude/rules/apex-test-conventions.md` + `@.claude/rules/apex-docstring-comments.md`
    - LWC (new or existing): `@.claude/rules/lwc-conventions.md` + `@.claude/rules/lwc-naming-conventions.md` + `@.claude/rules/slds-responsive-grid.md`
    - Flow: `@.claude/rules/flow-conventions.md`
    - Runbook Apex script or class (`runbooks/*-deploy/apex/*.apex`, `runbooks/*-deploy/metaData/classes/*.cls`): `@.claude/rules/runbook-deployment-steps.md` only; never `sfcore-apex-pattern.md`, never a test class
