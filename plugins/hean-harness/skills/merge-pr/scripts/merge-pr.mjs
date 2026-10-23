@@ -35,6 +35,38 @@ export function buildMessage({ title, body, number, headOwner, headRef, settings
   return { subject, body: text };
 }
 
+/** { host, owner, repo } (lower case) from a git remote URL in the git@host:owner/repo, ssh://[user@]host[:port]/owner/repo or http(s)://[user[:token]@]host/owner/repo form, or null. */
+export function repoFromRemote(remoteUrl) {
+  const t = (remoteUrl ?? '').trim();
+  const m = /^git@([^:/]+):([^/]+)\/([^/]+?)(?:\.git)?\/?$/i.exec(t)
+    ?? /^(?:ssh|https?):\/\/(?:[^@/]+@)?([^/:@]+)(?::\d+)?\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/i.exec(t);
+  return m ? { host: m[1].toLowerCase(), owner: m[2].toLowerCase(), repo: m[3].toLowerCase() } : null;
+}
+
+/**
+ * The UAT PR line printed after a merge into integration.
+ * prRepo: { host, owner, repo } of the merged PR; remoteUrl: this folder's origin URL or null;
+ * list: (repoArg) => { ok, out, err }, called only when this folder is a checkout of the PR's repository.
+ */
+export function uatLine({ prRepo, remoteUrl, list }) {
+  const here = repoFromRemote(remoteUrl);
+  const want = { host: prRepo.host.toLowerCase(), owner: prRepo.owner.toLowerCase(), repo: prRepo.repo.toLowerCase() };
+  if (!here || here.host !== want.host || here.owner !== want.owner || here.repo !== want.repo) {
+    return `UAT PR: skipped — this folder is not a checkout of ${prRepo.owner}/${prRepo.repo}`;
+  }
+  const res = list(`${prRepo.host}/${prRepo.owner}/${prRepo.repo}`);
+  let prs = null;
+  if (res.ok) { try { prs = JSON.parse(res.out); } catch { prs = null; } }
+  if (!Array.isArray(prs)) {
+    const first = (res.ok ? 'unreadable output' : res.err).split('\n')[0] || 'unknown error';
+    return `UAT PR: lookup failed — ${first}`;
+  }
+  if (prs.length === 0) return 'UAT PR: none open';
+  if (prs.length === 1) return `UAT PR: ${prs[0].url}`;
+  const nums = prs.map(p => p.number).sort((a, b) => a - b).map(n => `#${n}`).join(', ');
+  return `UAT PR: several open (${nums}), not updated`;
+}
+
 function gh(args) {
   const r = spawnSync('gh', args, { encoding: 'utf8' });
   return { ok: r.status === 0, out: r.stdout ?? '', err: (r.stderr || r.error?.message || '').trim() };
@@ -56,7 +88,7 @@ function main(argv) {
   if (!loc) fail(1, `ERROR: not a pull request URL: ${url}`);
 
   const view = gh(['pr', 'view', url, '--json',
-    'number,title,body,state,isDraft,reviewDecision,headRefName,headRefOid,headRepositoryOwner,url']);
+    'number,title,body,state,isDraft,reviewDecision,headRefName,headRefOid,headRepositoryOwner,baseRefName,url']);
   if (!view.ok) fail(1, `ERROR: gh pr view failed: ${view.err}`);
   let pr;
   try { pr = JSON.parse(view.out); } catch { fail(1, 'ERROR: gh pr view returned unreadable output'); }
@@ -94,6 +126,15 @@ function main(argv) {
   if (state === 'MERGED') {
     console.log(`Merged: ${msg.subject}`);
     console.log(`SHA: ${sha || 'unknown'}`);
+    if (pr.baseRefName === 'integration') {
+      const origin = spawnSync('git', ['remote', 'get-url', 'origin'], { encoding: 'utf8' });
+      console.log(uatLine({
+        prRepo: { host: loc[1], owner: loc[2], repo: loc[3] },
+        remoteUrl: origin.status === 0 ? origin.stdout : null,
+        list: repoArg => gh(['pr', 'list', '--repo', repoArg, '--base', 'release', '--head', 'integration',
+          '--state', 'open', '--json', 'number,url'])
+      }));
+    }
   } else {
     console.log(`Queued: ${msg.subject}`);
   }

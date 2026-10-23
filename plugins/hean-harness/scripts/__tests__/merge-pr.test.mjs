@@ -35,24 +35,37 @@ const a = process.argv.slice(2);
 fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(a) + '\\n');
 const c = JSON.parse(fs.readFileSync(${JSON.stringify(cfgFile)}, 'utf8'));
 if (a[0] === 'pr' && a[1] === 'view' && a.includes('mergeCommit,state')) { console.log(JSON.stringify({ mergeCommit: { oid: 'abc123merge' }, state: c.after || 'MERGED' })); }
+else if (a[0] === 'pr' && a[1] === 'list') { if (c.list === 'fail') { console.error('list blocked\\nsecond line'); process.exit(1); } console.log(c.list === 'garbage' ? 'not json' : JSON.stringify(c.list)); }
 else if (a[0] === 'pr' && a[1] === 'view') { console.log(JSON.stringify(c.pr)); }
 else if (a[0] === 'api') { if (c.repo === 'fail') { console.error('boom'); process.exit(1); } console.log(JSON.stringify(c.repo)); }
 else if (a[0] === 'pr' && a[1] === 'merge') { if (c.mergeFails) { console.error('merge blocked by protection'); process.exit(1); } }
 `);
 chmodSync(join(bin, 'gh'), 0o755);
 
+const git = (cwd, ...args) => spawnSync('git', args, { cwd, encoding: 'utf8' });
+function makeRepo(name, origin) {
+  const dir = join(root, name);
+  mkdirSync(dir);
+  git(dir, 'init', '-q');
+  if (origin) git(dir, 'remote', 'add', 'origin', origin);
+  return dir;
+}
+const MATCHING = makeRepo('matching', 'https://github.com/acme/widgets');
+const ELSEWHERE = makeRepo('elsewhere', 'https://github.com/other/place.git');
+const NOT_A_REPO = mkdtempSync(join(tmpdir(), 'hean-merge-pr-norepo-'));
+
 const URL = 'https://github.com/acme/widgets/pull/684';
 const PR = {
   number: 684, title: '@ABC-123: Add the dedupe check', body: 'Body text', state: 'OPEN', isDraft: false,
   reviewDecision: 'APPROVED', headRefName: 'work-ABC-123', headRefOid: 'deadbeef',
-  headRepositoryOwner: { login: 'dev1' }, url: URL
+  headRepositoryOwner: { login: 'dev1' }, baseRefName: 'main', url: URL
 };
 const CLASSIC = { merge_commit_title: null, merge_commit_message: null };
 
-function run(args, { pr = {}, repo = CLASSIC, mergeFails = false, after = 'MERGED' } = {}) {
-  writeFileSync(cfgFile, JSON.stringify({ pr: { ...PR, ...pr }, repo, mergeFails, after }));
+function run(args, { pr = {}, repo = CLASSIC, mergeFails = false, after = 'MERGED', list = [], cwd = MATCHING } = {}) {
+  writeFileSync(cfgFile, JSON.stringify({ pr: { ...PR, ...pr }, repo, mergeFails, after, list }));
   writeFileSync(log, '');
-  const r = spawnSync('node', [SCRIPT, ...args], { encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
+  const r = spawnSync('node', [SCRIPT, ...args], { encoding: 'utf8', cwd, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
   const calls = readFileSync(log, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l));
   return { code: r.status, out: r.stdout.trim(), calls, merge: calls.find(c => c[0] === 'pr' && c[1] === 'merge') };
 }
@@ -126,7 +139,43 @@ try {
 
   check('api call carries --hostname', (r => r.calls.some(c => c[0] === 'api' && c[1] === '--hostname' && c[2] === 'github.com' && c[3] === 'repos/acme/widgets'))(run([URL])));
   check('GHE host is passed through', (r => r.calls.some(c => c[0] === 'api' && c[2] === 'ghe.example.com'))(run(['https://ghe.example.com/acme/widgets/pull/5'])));
+
+  console.log('UAT PR lookup');
+  const INT = { baseRefName: 'integration' };
+  const listCalls = x => x.calls.filter(c => c[0] === 'pr' && c[1] === 'list');
+  const lastLine = x => x.out.split('\n').pop();
+  r = run([URL], { pr: INT, list: [{ number: 690, url: 'https://github.com/acme/widgets/pull/690' }] });
+  check('one open PR: its URL, last line, exit 0', r.code === 0 && lastLine(r) === 'UAT PR: https://github.com/acme/widgets/pull/690' && /^SHA: /m.test(r.out), r.out);
+  const lc = listCalls(r)[0];
+  check('list call arguments', listCalls(r).length === 1 && lc.join(' ') === 'pr list --repo github.com/acme/widgets --base release --head integration --state open --json number,url', JSON.stringify(lc));
+  r = run([URL], { pr: INT, list: [] });
+  check('no open PR', r.code === 0 && lastLine(r) === 'UAT PR: none open', r.out);
+  r = run([URL], { pr: INT, list: [{ number: 695, url: 'u2' }, { number: 690, url: 'u1' }] });
+  check('several open PRs: ascending numbers', r.code === 0 && lastLine(r) === 'UAT PR: several open (#690, #695), not updated', r.out);
+  r = run([URL], { pr: INT, list: 'fail' });
+  check('list fails: first error line, exit 0', r.code === 0 && lastLine(r) === 'UAT PR: lookup failed — list blocked', r.out);
+  r = run([URL], { pr: INT, list: 'garbage' });
+  check('unreadable list output', r.code === 0 && /^UAT PR: lookup failed — /.test(lastLine(r)), r.out);
+  r = run([URL], { pr: { baseRefName: 'main' }, list: [{ number: 1, url: 'u' }] });
+  check('base not integration: no UAT line, no list call', r.code === 0 && !/UAT PR/.test(r.out) && listCalls(r).length === 0, r.out);
+  r = run([URL], { pr: INT, after: 'OPEN', list: [{ number: 1, url: 'u' }] });
+  check('queued: no UAT line, no list call', r.code === 0 && /^Queued:/m.test(r.out) && !/UAT PR/.test(r.out) && listCalls(r).length === 0, r.out);
+  r = run([URL, '--dry-run'], { pr: INT, list: [{ number: 1, url: 'u' }] });
+  check('dry run: no UAT line, no list call', r.code === 0 && !/UAT PR/.test(r.out) && listCalls(r).length === 0, r.out);
+  r = run([URL], { pr: INT, cwd: ELSEWHERE });
+  check('origin points elsewhere: skipped, no list call', r.code === 0 && lastLine(r) === 'UAT PR: skipped — this folder is not a checkout of acme/widgets' && listCalls(r).length === 0, r.out);
+  r = run([URL], { pr: INT, cwd: NOT_A_REPO });
+  check('outside a git repository: skipped, no list call', r.code === 0 && lastLine(r) === 'UAT PR: skipped — this folder is not a checkout of acme/widgets' && listCalls(r).length === 0, r.out);
+
+  console.log('repoFromRemote');
+  const want = { host: 'github.com', owner: 'acme', repo: 'widgets' };
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  for (const u of ['git@github.com:acme/widgets.git', 'git@github.com:acme/widgets', 'https://github.com/acme/widgets.git', 'https://github.com/acme/widgets', 'https://GitHub.com/ACME/Widgets\n', 'ssh://git@github.com/acme/widgets.git', 'ssh://git@github.com:22/acme/widgets', 'https://user@github.com/acme/widgets.git', 'https://user:token@github.com/acme/widgets']) {
+    check(`parses ${u.trim()}`, same(lib.repoFromRemote(u), want), JSON.stringify(lib.repoFromRemote(u)));
+  }
+  check('unparseable gives null', lib.repoFromRemote('nonsense') === null && lib.repoFromRemote(null) === null);
 } finally {
+  rmSync(NOT_A_REPO, { recursive: true, force: true });
   if (root.startsWith(tmpdir())) rmSync(root, { recursive: true, force: true });
 }
 
