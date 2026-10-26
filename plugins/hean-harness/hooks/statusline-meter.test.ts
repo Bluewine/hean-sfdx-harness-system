@@ -126,36 +126,45 @@ test('the strip sits at the right end of the band, closed and open', async ($, o
   stub(on, { files: new Map([[ORGS, LIST]]) })
   beneath(on)
   const ui = await $.ui.mount(BAND)
-  const strip = async () => await ui.find({ type: 'Box', key: 'hean-orgs-strip' })
-  expect((await strip())?.props.alignItems).toBe('flex-end')
-  expect((await strip())?.props.flexDirection).toBe('column')
+  const check = async () => {
+    const band = await ui.find({ type: 'Box', key: 'hean-orgs-band' })
+    expect(band?.props.width).toBeUndefined()
+    const strip = band?.children[0]
+    expect(strip.props.key).toBe('hean-orgs-strip')
+    expect(strip.props.flexDirection).toBe('row')
+    expect(strip.props.justifyContent).toBe('flex-end')
+    const column = strip.children[0]
+    expect(column.props.flexDirection).toBe('column')
+    expect(column.props.alignItems).toBe('flex-end')
+    const buttonRow = column.children[column.children.length - 1]
+    expect(buttonRow.props.flexDirection).toBe('row')
+    expect(buttonRow.props.justifyContent).toBe('flex-end')
+    expect(buttonRow.children[0].type).toBe('Button')
+    return column
+  }
+  expect((await check()).children).toHaveLength(1)
   await ui.press({ key: 'hean-orgs' })
-  expect((await strip())?.props.alignItems).toBe('flex-end')
+  expect((await check()).children).toHaveLength(4)
   expect(await rowsOf(ui)).toHaveLength(3)
   await ui.unmount()
 })
 
-test('the strip box is as wide as the band, closed and open', async ($, on) => {
+test('no Box above the button has a width prop, closed and open (Claude Code refuses a Box with width above a Button)', async ($, on) => {
   stub(on, { files: new Map([[ORGS, LIST]]) })
-  beneath(on)
+  beneath(on, 'from another mod')
   const ui = await $.ui.mount(BAND)
-  const band = async () => await ui.find({ type: 'Box', key: 'hean-orgs-band' })
-  expect((await band())?.props.width).toBe(100)
-  await ui.press({ key: 'hean-orgs' })
-  expect((await band())?.props.width).toBe(100)
-  await ui.unmount()
-})
-
-test('without a usable bodyColumns the band box takes the full width', async ($, on) => {
-  stub(on, { files: new Map([[ORGS, LIST]]) })
-  beneath(on)
-  for (const bodyColumns of [undefined, 0, -3, 'x']) {
-    const ui = await $.ui.mount({ ...BAND, props: { ...BAND.props, bodyColumns } })
-    expect((await ui.find({ type: 'Box', key: 'hean-orgs-band' }))?.props.width).toBe('100%')
-    await ui.press({ key: 'hean-orgs' })
-    expect((await ui.find({ type: 'Box', key: 'hean-orgs-band' }))?.props.width).toBe('100%')
-    await ui.unmount()
+  const hasButton = (n: any): boolean => n.type === 'Button' || (n.children ?? []).some(hasButton)
+  const widthAboveButton = (n: any): number => {
+    const own = n.type === 'Box' && hasButton(n) && n.props?.width !== undefined ? 1 : 0
+    return own + (n.children ?? []).reduce((sum: number, c: any) => sum + widthAboveButton(c), 0)
   }
+  const band = async () => await ui.find({ type: 'Box', key: 'hean-orgs-band' })
+  expect(hasButton((await band())!)).toBe(true)
+  expect(widthAboveButton((await band())!)).toBe(0)
+  await ui.press({ key: 'hean-orgs' })
+  expect(hasButton((await band())!)).toBe(true)
+  expect(widthAboveButton((await band())!)).toBe(0)
+  await ui.unmount()
 })
 
 test('what another mod draws sits outside the strip box', async ($, on) => {

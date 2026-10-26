@@ -153,11 +153,10 @@ export function register(on) {
     // What the mods after this one draw in the band stays, under the strip.
     const theirs = await next(e)
     const rows = open ? list.orgs.map(org => Text({ children: [org] })) : []
-    // The strip's own box is right-aligned; the other mods' content keeps the band's left edge.
-    const strip = Box({ key: 'hean-orgs-strip', flexDirection: 'column', alignItems: 'flex-end', children: [...rows, toggle] })
-    // alignItems reaches the band's right edge only if this box is as wide as the band.
-    const cols = e.props?.bodyColumns
-    const width = typeof cols === 'number' && cols > 0 ? cols : '100%'
-    return Box({ key: 'hean-orgs-band', flexDirection: 'column', width, children: [strip, ...(theirs ? [theirs] : [])] })
+    // AbovePrompt refuses a Box with a width prop above a Button; a row Box with justifyContent pushes right.
+    const button = Box({ flexDirection: 'row', justifyContent: 'flex-end', children: [toggle] })
+    const column = Box({ flexDirection: 'column', alignItems: 'flex-end', children: [...rows, button] })
+    const strip = Box({ key: 'hean-orgs-strip', flexDirection: 'row', justifyContent: 'flex-end', children: [column] })
+    return Box({ key: 'hean-orgs-band', flexDirection: 'column', children: [strip, ...(theirs ? [theirs] : [])] })
   })
 }
