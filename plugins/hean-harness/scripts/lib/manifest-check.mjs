@@ -10,8 +10,9 @@
  * layout, to <config>/hean-harness/hooks/, because the plugin's folder moves
  * on every update and a git hook pointing there would break. So this file
  * imports only command-line.mjs, merge-base.mjs, paths.mjs, settings.mjs and
- * shell.mjs, and finds branch-manifest.mjs relative to itself. --git-hook runs it as git's
- * pre-commit hook (assets/githooks/pre-commit).
+ * shell.mjs, and finds branch-manifest.mjs relative to itself, which it runs in
+ * its own process. --git-hook runs it as git's pre-commit hook
+ * (assets/githooks/pre-commit).
  *
  * A stale manifest is never rewritten in the repository. The rebuilt file is
  * written under <config>/hean-harness/manifest-check/ and the refusal names
@@ -30,15 +31,19 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { tryGit } from './command-line.mjs';
 import { MAX_BUFFER, WORK_ID } from './merge-base.mjs';
 import { claudeDir, isSfdxRepo } from './paths.mjs';
-import { settingsFile } from './settings.mjs';
+import { checkoutOf, settingsFile } from './settings.mjs';
 import { shQuote } from './shell.mjs';
 
 const BRANCH_MANIFEST = fileURLToPath(new URL('../../skills/branch-manifest/scripts/branch-manifest.mjs', import.meta.url));
+// branch-manifest runs in this process; a copy that cannot be loaded runs as its own node process instead,
+// so it fails the way it always did
+let branchManifest = null;
+try { ({ branchManifest } = await import(pathToFileURL(BRANCH_MANIFEST).href)); } catch { /* started as a process below */ }
 // Hotfix and back-merge branches (the hotfix skill names them) do not carry their own story manifest.
 const SKIPPED_BRANCH = /-(HF|BM)$|^hotfix-/;
 // A commit made while one of these is in progress records work taken from elsewhere, not this story's.
@@ -46,10 +51,55 @@ const IN_PROGRESS = ['MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'rebase-me
 
 /** Whether a merge, cherry-pick, revert or rebase is in progress, so a commit records work taken from elsewhere. */
 export function operationInProgress(root) {
-  return IN_PROGRESS.some(name => {
-    const p = tryGit(root, 'rev-parse', '--git-path', name);
-    return !!p && existsSync(resolve(root, p));
-  });
+  // one git call answers for every name: --git-path prints one path per line, in the order asked
+  const paths = tryGit(root, 'rev-parse', ...IN_PROGRESS.flatMap(name => ['--git-path', name]));
+  return !!paths && paths.split('\n').some(p => !!p.trim() && existsSync(resolve(root, p.trim())));
+}
+
+/**
+ * What the checks read about the repository at root, read once, on first use: { root, branch(),
+ * inProgress(), settingsFile(), indexFile(), commonDir(), staged() }. One git call answers them all. When it cannot (a detached
+ * HEAD, an unborn branch, a git without --path-format), each is asked on its own, as before, and
+ * indexFile() is undefined. pre-commit-checks.mjs hands one to all four checks, the hook one per commit.
+ */
+export function factsFor(root, known) {
+  let where = known, branch, inProgress, staged;
+  const ask = () => {
+    if (where === undefined) where = parseFacts(gitLines(root, FACT_ARGS));
+    return where;
+  };
+  return {
+    root,
+    branch: () => (branch === undefined ? (branch = ask()?.branch ?? tryGit(root, 'branch', '--show-current')) : branch),
+    inProgress: () => (inProgress === undefined
+      ? (inProgress = ask() ? where.marks.some(p => !!p && existsSync(p)) : operationInProgress(root))
+      : inProgress),
+    settingsFile: () => (ask() ? join(checkoutOf(where.common, root), '.claude', 'hean-harness.json') : settingsFile(root)),
+    indexFile: () => ask()?.index,
+    commonDir: () => ask()?.common,
+    // git's answer listing the staged files but deletions, as the Collection Filter and feature toggle checks read them
+    staged: () => (staged ??= spawnSync('git', ['-C', root, 'diff', '--cached', '--name-only', '--diff-filter=d', '-z'],
+                                       { encoding: 'utf8', maxBuffer: MAX_BUFFER }))
+  };
+}
+
+// What factsFor asks git, in one rev-parse: the branch, then the common git directory, the in-progress markers and the index
+const FACT_ARGS = ['--symbolic-full-name', 'HEAD', '--path-format=absolute', '--git-common-dir',
+                   ...[...IN_PROGRESS, 'index'].flatMap(name => ['--git-path', name])];
+const gitLines = (dir, args) => tryGit(dir, 'rev-parse', ...args)?.split('\n').map(l => l.trim());
+/** factsFor's answers from FACT_ARGS's lines, or null when HEAD is not a branch or git answered something else. */
+const parseFacts = lines => (lines?.length === IN_PROGRESS.length + 3 && lines[0].startsWith('refs/heads/')
+  ? { branch: lines[0].slice('refs/heads/'.length), common: lines[1], marks: lines.slice(2, -1), index: lines.at(-1) }
+  : null);
+
+/**
+ * The same for the repository holding cwd; root is null outside one. The top folder comes in the same git
+ * call; when that call fails (an unborn branch, outside a work tree), it is asked on its own, as before.
+ */
+export function repoFacts(cwd = process.cwd()) {
+  const lines = gitLines(cwd, ['--show-toplevel', ...FACT_ARGS]);
+  if (lines?.length === IN_PROGRESS.length + 4) return factsFor(lines[0], parseFacts(lines.slice(1)));
+  return factsFor(tryGit(cwd, 'rev-parse', '--show-toplevel'));
 }
 
 /** How long the check may take. Claude Code stops the hook at 60 seconds; this ends first and says so. Tests shorten it. */
@@ -78,23 +128,23 @@ function indexBlob(root, rel, env) {
 }
 
 /**
- * The manifest a commit in this repository must keep current, { id, rel }, or
+ * The manifest a commit in this repository must keep current, { id, rel, branch, common }, or
  * null when commits here are not checked: no sfdx-project.json, setup never
  * ran here (no .claude/hean-harness.json in the main checkout), no work ID in
  * the branch name, a hotfix or back-merge branch, a merge, cherry-pick, revert
  * or rebase in progress, or a manifest git ignores.
  */
-export function manifestTarget(root) {
+export function manifestTarget(root, facts = factsFor(root)) {
   if (!isSfdxRepo(root)) return null;
-  if (!existsSync(settingsFile(root))) return null;
-  const branch = tryGit(root, 'branch', '--show-current');
+  if (!existsSync(facts.settingsFile())) return null;
+  const branch = facts.branch();
   const id = branch ? WORK_ID.exec(branch)?.[0] : null;
   if (!id || SKIPPED_BRANCH.test(branch)) return null;
-  if (operationInProgress(root)) return null;
+  if (facts.inProgress()) return null;
   const rel = `.claude/manifest/${id}.xml`;
   // check-ignore exits 0 when ignored, which tryGit returns as ''; --no-index so a tracked manifest counts too
   if (tryGit(root, 'check-ignore', '-q', '--no-index', rel) !== null) return null;
-  return { id, rel };
+  return { id, rel, branch, common: facts.commonDir() };
 }
 
 /** The items under one section heading of branch-manifest's output. */
@@ -132,12 +182,22 @@ export function checkManifest({ root, target, indexFile = null, deadline = Date.
     const late = { kind: 'unchecked', reason: `the rebuild took longer than ${deadlineText()}` };
     const left = deadline - Date.now();
     if (left <= 0) return late;
-    const r = spawnSync(process.execPath,
-      [BRANCH_MANIFEST, '--from-index', '--name', target.id, '--output-dir', scratch],
-      { cwd: root, env, encoding: 'utf8', timeout: left, maxBuffer: MAX_BUFFER });
-    if (r.error?.code === 'ETIMEDOUT' || r.signal) return late;
-    if (r.error) return { kind: 'unchecked', reason: `branch-manifest could not run (${r.error.message})` };
-    const out = r.stdout ?? '';
+    let out;
+    try {
+      out = branchManifest?.({ root, branch: target.branch, common: target.common, env, deadline, 'from-index': true, name: target.id, 'output-dir': scratch });
+    } catch (e) {
+      if (e.deadline) return late;
+      // a program that cannot be started: the run as its own process says so in the words it always used
+      if (!e.spawnFailed) throw e;
+    }
+    if (out === undefined) {
+      const r = spawnSync(process.execPath,
+        [BRANCH_MANIFEST, '--from-index', '--name', target.id, '--output-dir', scratch],
+        { cwd: root, env, encoding: 'utf8', timeout: Math.max(1, deadline - Date.now()), maxBuffer: MAX_BUFFER });
+      if (r.error?.code === 'ETIMEDOUT' || r.signal) return late;
+      if (r.error) return { kind: 'unchecked', reason: `branch-manifest could not run (${r.error.message})` };
+      out = r.stdout ?? '';
+    }
     const first = out.split('\n')[0];
     if (first.startsWith('Error: ')) return { kind: 'unchecked', reason: first.slice('Error: '.length) };
     const status = /^Manifest: .* (created|updated|unchanged|not written)/.exec(first)?.[1];
@@ -218,23 +278,29 @@ export function refusalText(target, result, next, retry = null, { terminal = fal
  * the commit through. Every message goes to standard error, which git shows. As in Claude Code, nothing is
  * written into the repository. A failure of the check itself lets the commit
  * through, as every other "cannot run" case does.
+ *
+ * runGitHook() returns that exit code instead of exiting, so
+ * pre-commit-checks.mjs can run the four pre-commit checks in one node process;
+ * facts, from repoFacts(), are what the checks share instead of each asking git.
  */
-if (process.argv[1] && basename(process.argv[1]) === 'manifest-check.mjs' && process.argv.includes('--git-hook')) {
+export function runGitHook(facts) {
   try {
     // git names the index relative to the top of the working tree, where it starts the hook; the calls below use -C
     if (process.env.GIT_INDEX_FILE) process.env.GIT_INDEX_FILE = resolve(process.env.GIT_INDEX_FILE);
-    const root = tryGit(process.cwd(), 'rev-parse', '--show-toplevel');
-    const target = root && manifestTarget(root);
-    if (!target) process.exit(0);
+    facts ??= repoFacts();
+    const root = facts.root;
+    const target = root && manifestTarget(root, facts);
+    if (!target) return 0;
     const result = checkManifest({ root, target, indexFile: process.env.GIT_INDEX_FILE ?? null });
-    if (result.kind === 'unchecked') { process.stderr.write(`${notChecked(result.reason)}\n`); process.exit(0); }
-    if (result.kind !== 'stale' && result.kind !== 'empty') process.exit(0);
+    if (result.kind === 'unchecked') { process.stderr.write(`${notChecked(result.reason)}\n`); return 0; }
+    if (result.kind !== 'stale' && result.kind !== 'empty') return 0;
     const scratchFile = result.kind === 'stale' ? writeManifest(root, target, result.xml) : null;
     const next = stageCommand(root, target, result.kind, scratchFile);
     process.stderr.write(`${refusalText(target, result, next, null, { terminal: true })}\n`);
-    process.exit(3);
+    return 3;
   } catch (e) {
     process.stderr.write(`${notChecked(e.message)}\n`);
-    process.exit(0);
+    return 0;
   }
 }
+if (process.argv[1] && basename(process.argv[1]) === 'manifest-check.mjs' && process.argv.includes('--git-hook')) process.exit(runGitHook());

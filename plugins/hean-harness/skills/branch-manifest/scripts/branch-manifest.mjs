@@ -15,27 +15,41 @@
 //   the repository's, or the one GIT_INDEX_FILE names, so a caller can check a commit before git makes it.
 // Every outcome, errors included, is printed to stdout with exit code 0, so the skill that injects this
 // output always receives it. Tests: bash <skill-dir>/__tests__/branch-manifest.test.sh
+// branchManifest() runs the same rebuild inside another process and returns that text: the per-story
+// manifest check calls it instead of starting node again on every commit.
 import { spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import {
   MAX_BUFFER,
   WORK_ID,
-  git,
-  gitOut,
+  deadlineError,
+  spawnError,
+  git as gitIn,
+  gitOut as gitOutIn,
   nulList,
   resolveMergeBase
 } from "../../../scripts/lib/merge-base.mjs";
+
+// The folder, environment and deadline of a run inside another process, which cannot change its own
+// folder; empty on the command line, which runs in the repository's top folder. Every git call, sf call
+// and file read or write below goes through them.
+let at = {};
+const git = (args, input) => gitIn(args, input, at);
+const gitOut = (args) => gitOutIn(args, at);
+const here = (path) => (at.cwd ? resolve(at.cwd, path) : path);
 
 const USAGE =
   "Usage: branch-manifest.mjs [--base <branch>] [--name <manifest-name>] [--output-dir <dir>] [--from-index] [--args-stdin]";
@@ -81,16 +95,16 @@ function manifestName(explicit, branch) {
 }
 
 function packageDirectories() {
-  if (!existsSync("sfdx-project.json"))
+  if (!existsSync(here("sfdx-project.json")))
     throw new Error("sfdx-project.json not found at the repository root");
   return JSON.parse(
-    readFileSync("sfdx-project.json", "utf8")
+    readFileSync(here("sfdx-project.json"), "utf8")
   ).packageDirectories.map((dir) => dir.path);
 }
 
 function forceIgnored(paths) {
-  if (!paths.length || !existsSync(".forceignore")) return new Set();
-  const excludes = join(process.cwd(), ".forceignore");
+  if (!paths.length || !existsSync(here(".forceignore"))) return new Set();
+  const excludes = join(at.cwd ?? process.cwd(), ".forceignore");
   const result = git(
     [
       "-c",
@@ -112,7 +126,7 @@ function bundleDirectory(file, fromIndex) {
     if (!BUNDLE_FOLDERS.has(parts[i])) continue;
     const dir = parts.slice(0, i + 2).join("/");
     if (fromIndex) return gitOut(["ls-files", "-z", "--", dir]) ? dir : null;
-    return existsSync(dir) && statSync(dir).isDirectory() ? dir : null;
+    return existsSync(here(dir)) && statSync(here(dir)).isDirectory() ? dir : null;
   }
   return null;
 }
@@ -133,12 +147,34 @@ function changedPaths(mergeBase, filter, dirs, fromIndex) {
   );
 }
 
-function sourcePaths(mergeBase, dirs, fromIndex) {
-  const changed = changedPaths(mergeBase, "ACMT", dirs, fromIndex);
+// Every path changed since the merge-base, from one git diff: { changed (ACMT), deleted (D) }, each in
+// git's order, as changedPaths lists them. When git fails, changedPaths runs to throw the same error.
+function changes(mergeBase, dirs, fromIndex) {
+  const result = git([
+    "diff",
+    ...(fromIndex ? ["--cached"] : []),
+    "--name-status",
+    "--no-renames",
+    "-z",
+    mergeBase,
+    "--",
+    ...dirs
+  ]);
+  if (result.status !== 0) changedPaths(mergeBase, "ACMT", dirs, fromIndex);
+  const parts = nulList(result.stdout);
+  const changed = [];
+  const deleted = [];
+  for (let i = 0; i + 1 < parts.length; i += 2) {
+    if ("ACMT".includes(parts[i])) changed.push(parts[i + 1]);
+    else if (parts[i] === "D") deleted.push(parts[i + 1]);
+  }
+  return { changed, deleted };
+}
+
+function sourcePaths({ changed, deleted }, dirs, fromIndex) {
   const untracked = fromIndex
     ? []
     : nulList(gitOut(["ls-files", "--others", "--exclude-standard", "-z", "--", ...dirs]));
-  const deleted = changedPaths(mergeBase, "D", dirs, fromIndex);
   const ignored = forceIgnored(deleted);
   const bundles = deleted
     .filter((file) => !ignored.has(file))
@@ -181,7 +217,7 @@ function labelChanges(mergeBase, files, fromIndex) {
   for (const file of files) {
     const before = parseLabels(atRef(mergeBase, file));
     const after = parseLabels(
-      fromIndex ? atRef("", file) : existsSync(file) ? readFileSync(file, "utf8") : null
+      fromIndex ? atRef("", file) : existsSync(here(file)) ? readFileSync(here(file), "utf8") : null
     );
     for (const [fullName, value] of after)
       if (before.get(fullName) !== value) changed.add(fullName);
@@ -233,10 +269,14 @@ function generate(paths, outDir) {
       [...args, ...remaining.flatMap((p) => ["--source-dir", p])],
       {
         encoding: "utf8",
-        env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0" },
-        maxBuffer: MAX_BUFFER
+        cwd: at.cwd,
+        env: { ...(at.env ?? process.env), NO_COLOR: "1", FORCE_COLOR: "0" },
+        maxBuffer: MAX_BUFFER,
+        ...(at.deadline ? { timeout: Math.max(1, at.deadline - Date.now()) } : {})
       }
     );
+    if (at.deadline && result.error?.code === "ETIMEDOUT") throw deadlineError();
+    if (at.deadline && result.error && spawnError(result.error)) throw spawnError(result.error);
     if (result.error) throw new Error(`cannot run sf: ${result.error.message}`);
     if (result.status === 0)
       return {
@@ -278,22 +318,47 @@ function section(title, items, note = "") {
   return items.length ? [heading, ...items.map((item) => `  ${item}`)] : [];
 }
 
-function run() {
+function cli() {
   const options = readOptions();
-  const fromIndex = options["from-index"];
   // git reads a relative GIT_INDEX_FILE against its working folder, which the chdir below changes
   if (process.env.GIT_INDEX_FILE)
     process.env.GIT_INDEX_FILE = resolve(process.env.GIT_INDEX_FILE);
   process.chdir(gitOut(["rev-parse", "--show-toplevel"]).trim());
-  const branch = gitOut(["branch", "--show-current"]).trim();
+  return run(options);
+}
+
+/**
+ * The rebuild run inside another process: the text the command line prints, its "Error: " line included.
+ * root and branch are the repository's top folder and current branch, which the caller has already read,
+ * and common its absolute common git directory when the caller knows it;
+ * env is git's environment (GIT_INDEX_FILE names the index), deadline a time in milliseconds since the
+ * epoch; options are the command line's (name, output-dir, from-index, base). Past the deadline it stops
+ * and throws an error whose deadline property is true; when the system cannot start git or sf, it stops and
+ * throws one whose spawnFailed property is true.
+ */
+export function branchManifest({ root, branch, common, env, deadline, ...options }) {
+  // as the command line does before it changes folder
+  const index = env?.GIT_INDEX_FILE ? { GIT_INDEX_FILE: resolve(root, env.GIT_INDEX_FILE) } : {};
+  at = { cwd: root, env: env && { ...env, ...index }, deadline, common };
+  try {
+    return `${run({ "output-dir": join(".claude", "manifest"), "from-index": false, ...options }, branch)}\n`;
+  } catch (error) {
+    if (error.deadline || error.spawnFailed) throw error;
+    return `Error: ${error.message}\n`;
+  } finally {
+    at = {};
+  }
+}
+
+function run(options, branch = gitOut(["branch", "--show-current"]).trim()) {
+  const fromIndex = options["from-index"];
   const name = manifestName(options.name, branch);
-  const mergeBase = resolveMergeBase(options.base, branch);
+  const mergeBase = resolveMergeBase(options.base, branch, at);
   const target = join(options["output-dir"], `${name}.xml`);
   const dirs = packageDirectories();
-  const paths = sourcePaths(mergeBase.sha, dirs, fromIndex);
-  const deletedLabelFiles = changedPaths(mergeBase.sha, "D", dirs, fromIndex).filter((file) =>
-    LABELS_FILE.test(file)
-  );
+  const sinceBase = changes(mergeBase.sha, dirs, fromIndex);
+  const paths = sourcePaths(sinceBase, dirs, fromIndex);
+  const deletedLabelFiles = sinceBase.deleted.filter((file) => LABELS_FILE.test(file));
   const labelFiles = [
     ...new Set([...paths.filter((file) => LABELS_FILE.test(file)), ...deletedLabelFiles])
   ];
@@ -307,14 +372,14 @@ function run() {
   }
   const xml = applyLabelScope(generated.xml, labels.members);
   const current = members(xml);
-  const previous = existsSync(target) ? readFileSync(target, "utf8") : null;
+  const previous = existsSync(here(target)) ? readFileSync(here(target), "utf8") : null;
   let status = "not written; no Salesforce metadata was added or modified";
   if (current.length) {
     status =
       previous === null ? "created" : previous === xml ? "unchanged" : "updated";
     if (status !== "unchanged") {
-      mkdirSync(options["output-dir"], { recursive: true });
-      writeFileSync(target, xml);
+      mkdirSync(here(options["output-dir"]), { recursive: true });
+      writeFileSync(here(target), xml);
     }
   }
   const lines = [
@@ -352,8 +417,19 @@ function run() {
   return lines.join("\n");
 }
 
-try {
-  process.stdout.write(`${run()}\n`);
-} catch (error) {
-  process.stdout.write(`Error: ${error.message}\n`);
+/** Whether node runs this file itself, not a module that imports it. */
+function isMain() {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isMain()) {
+  try {
+    process.stdout.write(`${cli()}\n`);
+  } catch (error) {
+    process.stdout.write(`Error: ${error.message}\n`);
+  }
 }

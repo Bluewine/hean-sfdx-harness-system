@@ -23,9 +23,8 @@
 import { spawnSync } from 'node:child_process';
 import { basename, resolve } from 'node:path';
 
-import { tryGit } from './command-line.mjs';
 import { MAX_BUFFER, WORK_ID } from './merge-base.mjs';
-import { operationInProgress } from './manifest-check.mjs';
+import { repoFacts } from './manifest-check.mjs';
 import { isSfdxRepo } from './paths.mjs';
 
 const CLASS_FILE = /(^|\/)force-app\/.+\.cls$/;
@@ -126,36 +125,51 @@ export const notChecked = reason => `!! The Apex class header check did not run:
  * shell hook turns it into git's 1; any other code lets the commit through.
  * Every message goes to standard error, which git shows. A failure of the
  * check itself lets the commit through, as every other "cannot run" case does.
+ *
+ * runGitHook() returns that exit code instead of exiting, so
+ * pre-commit-checks.mjs can run the four pre-commit checks in one node process;
+ * facts, from repoFacts(), are what the checks share instead of each asking git.
  */
-if (process.argv[1] && basename(process.argv[1]) === 'apex-class-header.mjs' && process.argv.includes('--git-hook')) {
+export function runGitHook(facts) {
   try {
     // git names the index relative to the top of the working tree, where it starts the hook; the calls below use -C
     if (process.env.GIT_INDEX_FILE) process.env.GIT_INDEX_FILE = resolve(process.env.GIT_INDEX_FILE);
-    const root = tryGit(process.cwd(), 'rev-parse', '--show-toplevel');
+    facts ??= repoFacts();
+    const root = facts.root;
     if (!root) throw new Error('the current folder is not in a git repository');
-    if (!isSfdxRepo(root) || operationInProgress(root)) process.exit(0);
-    const branch = tryGit(root, 'branch', '--show-current');
+    if (!isSfdxRepo(root) || facts.inProgress()) return 0;
+    const branch = facts.branch();
     const workId = branch ? WORK_ID.exec(branch)?.[0] : null;
-    if (!workId) process.exit(0);
-    const names = filter => {
-      const list = spawnSync('git', ['-C', root, 'diff', '--cached', '-M', '--name-only', `--diff-filter=${filter}`, '-z'],
-                             { encoding: 'utf8', maxBuffer: MAX_BUFFER });
-      if (list.status !== 0) throw new Error(`git could not list the staged files (${list.stderr.trim() || `exit ${list.status}`})`);
-      return list.stdout.split('\0').filter(isApexClassFile);
-    };
+    if (!workId) return 0;
+    // one listing, renames found, read as the lists --diff-filter=A and --diff-filter=MR give: a rename or
+    // copy entry names two paths, and the list holds the new one
+    const list = spawnSync('git', ['-C', root, 'diff', '--cached', '-M', '--name-status', '-z'],
+                           { encoding: 'utf8', maxBuffer: MAX_BUFFER });
+    if (list.status !== 0) throw new Error(`git could not list the staged files (${list.stderr.trim() || `exit ${list.status}`})`);
+    const names = { A: [], MR: [] };
+    const parts = list.stdout.split('\0');
+    for (let i = 0; i + 1 < parts.length;) {
+      const status = parts[i][0];
+      const paths = status === 'R' || status === 'C' ? 2 : 1;
+      const rel = parts[i + paths];
+      if (status === 'A') names.A.push(rel);
+      else if (status === 'M' || status === 'R') names.MR.push(rel);
+      i += 1 + paths;
+    }
     const findings = [];
     for (const [isNew, filter] of [[true, 'A'], [false, 'MR']]) {
-      for (const rel of names(filter)) {
+      for (const rel of names[filter].filter(isApexClassFile)) {
         const blob = spawnSync('git', ['-C', root, 'show', `:${rel}`], { encoding: 'utf8', maxBuffer: MAX_BUFFER });
         if (blob.status !== 0) throw new Error(`git could not read ${rel} from the index`);
         findings.push(...headerFindings(blob.stdout, { isNew, workId, path: rel }));
       }
     }
-    if (!findings.length) process.exit(0);
+    if (!findings.length) return 0;
     process.stderr.write(`${refusalText(findings, workId)}\n`);
-    process.exit(3);
+    return 3;
   } catch (e) {
     process.stderr.write(`${notChecked(e.message)}\n`);
-    process.exit(0);
+    return 0;
   }
 }
+if (process.argv[1] && basename(process.argv[1]) === 'apex-class-header.mjs' && process.argv.includes('--git-hook')) process.exit(runGitHook());

@@ -23,11 +23,11 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { GIT_VALUE_OPTS } from '../scripts/lib/command-line.mjs';
+import { GIT_VALUE_OPTS, repoStart } from '../scripts/lib/command-line.mjs';
 import { commitsIn, commitIndex } from '../scripts/lib/commit-index.mjs';
 import { shQuote } from '../scripts/lib/shell.mjs';
 import {
-  DEADLINE_MS, manifestTarget, checkManifest, writeManifest, stageCommand, refusalText, notChecked
+  DEADLINE_MS, repoFacts, manifestTarget, checkManifest, writeManifest, stageCommand, refusalText, notChecked
 } from '../scripts/lib/manifest-check.mjs';
 
 const SELF = 'manifest-commit-check.mjs';
@@ -82,8 +82,16 @@ function nextCommands(c, root, target, kind, scratchFile, sessionCwd, byPath, ea
  */
 export function commitCheck(command, sessionCwd, deadline = Date.now() + DEADLINE_MS) {
   const warnings = [];
-  for (const { c, root, earlier, own, byPath, unknown } of commitsIn(command, sessionCwd)) {
-    const target = manifestTarget(root);
+  // the top folder and the facts the check reads, in one git call per folder the command's git runs from
+  const known = new Map();
+  const factsAt = (c, cwd) => {
+    const start = repoStart(c, cwd);
+    if (!known.has(start)) known.set(start, repoFacts(start));
+    return known.get(start);
+  };
+  for (const { c, root, earlier, own, byPath, unknown } of commitsIn(command, sessionCwd, (c, cwd) => factsAt(c, cwd).root)) {
+    const facts = factsAt(c, sessionCwd);
+    const target = manifestTarget(root, facts);
     if (!target) continue;
     if (unknown) {
       warnings.push(notChecked('the command stages files its text does not name (a variable, a glob, a pathspec file or picked hunks)'));
@@ -91,7 +99,7 @@ export function commitCheck(command, sessionCwd, deadline = Date.now() + DEADLIN
     }
     let index;
     try {
-      index = commitIndex(root, earlier, own, byPath);
+      index = commitIndex(root, earlier, own, byPath, facts.indexFile());
     } catch (e) {
       warnings.push(notChecked(`the index this commit records could not be built (${e.message.split('\n')[0]})`));
       continue;

@@ -38,15 +38,16 @@ function pathFiles(s, env) {
  * the current index plus the stagings earlier in the command and the commit's
  * own (-a). A commit by path (own holds its paths) records instead HEAD plus
  * the working-tree state of the files its paths match in that index or in
- * HEAD. Throws when git cannot build it.
+ * HEAD. Throws when git cannot build it. indexFile is the repository's own
+ * index file when the caller already knows it.
  */
-export function commitIndex(root, earlier, own, byPath) {
+export function commitIndex(root, earlier, own, byPath, indexFile) {
   const scratch = mkdtempSync(join(tmpdir(), 'commit-index-'));
   const file = join(scratch, 'index');
   const env = { ...process.env, GIT_INDEX_FILE: file };
   const cleanup = () => rmSync(scratch, { recursive: true, force: true });
   try {
-    const real = resolve(root, git(root, 'rev-parse', '--git-path', 'index'));
+    const real = indexFile ?? resolve(root, git(root, 'rev-parse', '--git-path', 'index'));
     if (!existsSync(real)) git(root, 'read-tree', 'HEAD', { env });
     else copyFileSync(real, file);
     for (const s of byPath ? earlier : [...earlier, ...own]) git(s.dir, 'add', ...ADD_ARGS[s.scope](s), { env });
@@ -69,12 +70,13 @@ export function commitIndex(root, earlier, own, byPath) {
  * same command ran before it in that repository, each with its folder and git
  * command; own is the commit's own staging (-a or paths); unknown is true when
  * any of them stages files the text cannot name. A --dry-run commit is left out.
+ * rootOf finds the top folder a git command acts on; repoOf unless given.
  */
-export function* commitsIn(command, sessionCwd) {
+export function* commitsIn(command, sessionCwd, rootOf = repoOf) {
   const staged = new Map();   // root -> stagings earlier in this command, each with the folder it runs in
   for (const c of gitCommands(command, sessionCwd)) {
     if (c.sub !== 'add' && c.sub !== 'stage' && c.sub !== 'commit') continue;
-    const root = repoOf(c, sessionCwd);
+    const root = rootOf(c, sessionCwd);
     if (!root) continue;
     const dir = c.dir ?? sessionCwd;
     const staging = stagesInteractively(c.sub, c.args) ? { scope: 'all', paths: [], unknown: true } : stagingOf(c.sub, c.args);

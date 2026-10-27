@@ -168,6 +168,9 @@ export const tryGit = (repo, ...args) => { try { return git(repo, ...args); } ca
  * the session's working folder.
  */
 export function repoOf(c, sessionCwd) {
-  const start = c.workTree ?? (c.gitDir && basename(c.gitDir) === '.git' ? dirname(c.gitDir) : null) ?? c.dir ?? sessionCwd;
-  return tryGit(start, 'rev-parse', '--show-toplevel');
+  return tryGit(repoStart(c, sessionCwd), 'rev-parse', '--show-toplevel');
 }
+
+/** The folder repoOf asks git from. */
+export const repoStart = (c, sessionCwd) =>
+  c.workTree ?? (c.gitDir && basename(c.gitDir) === '.git' ? dirname(c.gitDir) : null) ?? c.dir ?? sessionCwd;

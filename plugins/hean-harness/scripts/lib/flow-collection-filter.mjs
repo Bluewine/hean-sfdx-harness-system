@@ -22,9 +22,8 @@
 import { spawnSync } from 'node:child_process';
 import { basename, resolve } from 'node:path';
 
-import { tryGit } from './command-line.mjs';
 import { MAX_BUFFER } from './merge-base.mjs';
-import { operationInProgress } from './manifest-check.mjs';
+import { repoFacts } from './manifest-check.mjs';
 
 const FLOW_FILE = /\.flow-meta\.xml$/;
 const tag = (xml, name) => new RegExp(`<${name}>([\\s\\S]*?)</${name}>`).exec(xml)?.[1].trim() ?? null;
@@ -72,16 +71,20 @@ export const notChecked = reason => `!! The Collection Filter check did not run:
  * and the shell hook turns it into git's 1; any other code lets the commit
  * through. Every message goes to standard error, which git shows. A failure of
  * the check itself lets the commit through, as every other "cannot run" case does.
+ *
+ * runGitHook() returns that exit code instead of exiting, so
+ * pre-commit-checks.mjs can run the four pre-commit checks in one node process;
+ * facts, from repoFacts(), are what the checks share instead of each asking git.
  */
-if (process.argv[1] && basename(process.argv[1]) === 'flow-collection-filter.mjs' && process.argv.includes('--git-hook')) {
+export function runGitHook(facts) {
   try {
     // git names the index relative to the top of the working tree, where it starts the hook; the calls below use -C
     if (process.env.GIT_INDEX_FILE) process.env.GIT_INDEX_FILE = resolve(process.env.GIT_INDEX_FILE);
-    const root = tryGit(process.cwd(), 'rev-parse', '--show-toplevel');
+    facts ??= repoFacts();
+    const root = facts.root;
     if (!root) throw new Error('the current folder is not in a git repository');
-    if (operationInProgress(root)) process.exit(0);
-    const list = spawnSync('git', ['-C', root, 'diff', '--cached', '--name-only', '--diff-filter=d', '-z'],
-                           { encoding: 'utf8', maxBuffer: MAX_BUFFER });
+    if (facts.inProgress()) return 0;
+    const list = facts.staged();
     if (list.status !== 0) throw new Error(`git could not list the staged files (${list.stderr.trim() || `exit ${list.status}`})`);
     const findings = [];
     for (const rel of list.stdout.split('\0').filter(isFlowFile)) {
@@ -89,11 +92,12 @@ if (process.argv[1] && basename(process.argv[1]) === 'flow-collection-filter.mjs
       if (blob.status !== 0) throw new Error(`git could not read ${rel} from the index`);
       findings.push(...filterFindings(blob.stdout, rel));
     }
-    if (!findings.length) process.exit(0);
+    if (!findings.length) return 0;
     process.stderr.write(`${refusalText(findings)}\n`);
-    process.exit(3);
+    return 3;
   } catch (e) {
     process.stderr.write(`${notChecked(e.message)}\n`);
-    process.exit(0);
+    return 0;
   }
 }
+if (process.argv[1] && basename(process.argv[1]) === 'flow-collection-filter.mjs' && process.argv.includes('--git-hook')) process.exit(runGitHook());

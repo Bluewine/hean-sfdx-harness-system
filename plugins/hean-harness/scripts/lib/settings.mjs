@@ -25,9 +25,12 @@ export function mainCheckout(dir) {
   try {
     const common = execFileSync('git', ['-C', dir, 'rev-parse', '--path-format=absolute', '--git-common-dir'],
       { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-    return common && basename(common) === '.git' ? dirname(common) : dir;
+    return checkoutOf(common, dir);
   } catch { return dir; }
 }
+
+/** The main checkout from the absolute common git directory git names for dir, as mainCheckout reads it. */
+export const checkoutOf = (common, dir) => (common && basename(common) === '.git' ? dirname(common) : dir);
 
 export const settingsFile = repo => join(mainCheckout(repo), '.claude', 'hean-harness.json');
 

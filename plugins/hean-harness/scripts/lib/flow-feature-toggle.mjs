@@ -30,9 +30,8 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 
-import { tryGit } from './command-line.mjs';
 import { MAX_BUFFER } from './merge-base.mjs';
-import { operationInProgress } from './manifest-check.mjs';
+import { repoFacts } from './manifest-check.mjs';
 import { claudePath, isSfdxRepo } from './paths.mjs';
 import { readRoles } from './org-roles.mjs';
 
@@ -168,16 +167,20 @@ export function packageInstalled(root, { query = toolingQuery, now = Date.now(),
  * refuses the commit, and the shell hook turns it into git's 1; any other code
  * lets the commit through. Every message goes to standard error, which git
  * shows. The org is never called: only a cached "installed" answer refuses.
+ *
+ * runGitHook() returns that exit code instead of exiting, so
+ * pre-commit-checks.mjs can run the four pre-commit checks in one node process;
+ * facts, from repoFacts(), are what the checks share instead of each asking git.
  */
-if (process.argv[1] && basename(process.argv[1]) === 'flow-feature-toggle.mjs' && process.argv.includes('--git-hook')) {
+export function runGitHook(facts) {
   try {
     // git names the index relative to the top of the working tree, where it starts the hook; the calls below use -C
     if (process.env.GIT_INDEX_FILE) process.env.GIT_INDEX_FILE = resolve(process.env.GIT_INDEX_FILE);
-    const root = tryGit(process.cwd(), 'rev-parse', '--show-toplevel');
+    facts ??= repoFacts();
+    const root = facts.root;
     if (!root) throw new Error('the current folder is not in a git repository');
-    if (!isSfdxRepo(root) || operationInProgress(root)) process.exit(0);
-    const list = spawnSync('git', ['-C', root, 'diff', '--cached', '--name-only', '--diff-filter=d', '-z'],
-                           { encoding: 'utf8', maxBuffer: MAX_BUFFER });
+    if (!isSfdxRepo(root) || facts.inProgress()) return 0;
+    const list = facts.staged();
     if (list.status !== 0) throw new Error(`git could not list the staged files (${list.stderr.trim() || `exit ${list.status}`})`);
     const findings = [];
     for (const rel of list.stdout.split('\0').filter(isFlowFile)) {
@@ -186,13 +189,14 @@ if (process.argv[1] && basename(process.argv[1]) === 'flow-feature-toggle.mjs' &
       const head = spawnSync('git', ['-C', root, 'show', `HEAD:${rel}`], { encoding: 'utf8', maxBuffer: MAX_BUFFER });
       findings.push(...toggleFindings(blob.stdout, head.status === 0 ? head.stdout : null, rel));
     }
-    if (!findings.length) process.exit(0);
+    if (!findings.length) return 0;
     const pkg = packageInstalled(root, { cachedOnly: true });
-    if (!pkg.known || !pkg.installed) process.exit(0);
+    if (!pkg.known || !pkg.installed) return 0;
     process.stderr.write(`${refusalText(findings)}\n`);
-    process.exit(3);
+    return 3;
   } catch (e) {
     process.stderr.write(`${notChecked(e.message)}\n`);
-    process.exit(0);
+    return 0;
   }
 }
+if (process.argv[1] && basename(process.argv[1]) === 'flow-feature-toggle.mjs' && process.argv.includes('--git-hook')) process.exit(runGitHook());
