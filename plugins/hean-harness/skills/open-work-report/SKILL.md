@@ -50,7 +50,7 @@ Create it only when a typo'd ID actually shows up as its own bogus row, as `{"WR
 
 Read `.claude/rules/linear-story-resolution.md` first.
 
-Call `get_issue` for each row's ID and take `title`, `url`, `assignee`, `cycleId`, and `teamId`. Copy `url` verbatim — never construct or slugify one.
+Call `get_issue` for each row's ID and take `title`, `url`, `assignee`, `cycleId`, `teamId`, `project`, and `projectId`. Copy `url` verbatim — never construct or slugify one.
 
 An unassigned story renders `—`. An ID that does not resolve is surfaced, never dropped: the usual cause is a typo'd prefix, and if it maps to an ID that is already a row, the two are one story and stay one row.
 
@@ -58,7 +58,9 @@ An unassigned story renders `—`. An ID that does not resolve is surfaced, neve
 
 Map each `cycleId` with `list_cycles`, called once per distinct `teamId`. Take `title` for the cell, `number` for the link, and `startsAt` for the sort.
 
-Cycle numbers restart per team, so never reuse one team's cycle list for another team's `cycleId`. A story with no cycle renders `—` and is called out in the summary.
+Cycle numbers restart per team, so never reuse one team's cycle list for another team's `cycleId`. A story with neither a sprint name nor a project renders `—` and is called out in the summary.
+
+**Project fallback.** It applies to a story whose cycle has no `title`, or that has no `cycleId`. A story whose cycle has a `title` always shows the sprint, never the project. Call `get_project` once per distinct `projectId`, passing the `projectId` as `query`, and render `[Project: {PROJECT_NAME}]({PROJECT_URL})`. `{PROJECT_NAME}` is `get_issue`'s `project`, verbatim except that every `[` becomes `\[`, every `]` becomes `\]` and every `|` becomes `\|`. `{PROJECT_URL}` is `get_project`'s `url`, copied verbatim — never built from the name. A story with no `projectId`, or whose `get_project` result has no `url`, has no project either.
 
 ## Phase 4 — Order the rows
 
@@ -90,7 +92,7 @@ Write the file with a heredoc, then report the counts in chat.
 
 ## Phase 6 — Answer the question
 
-State how many rows, the breakdown by push state, and anything surfaced in Phases 1–3: mention-only exclusions, unresolved IDs, missing assignees or cycles. Point at `.claude/skills/open-work-report/output/open-work.md` for detail.
+State how many rows, the breakdown by push state, and anything surfaced in Phases 1–3: mention-only exclusions, unresolved IDs, missing assignees, or stories with neither a sprint nor a project. Point at `.claude/skills/open-work-report/output/open-work.md` for detail.
 
 Regenerating is cheap and the output is gitignored — re-run rather than trusting an earlier file.
 

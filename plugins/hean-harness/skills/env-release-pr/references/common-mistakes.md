@@ -17,6 +17,8 @@
 | Issue URL slugified from the title | Copy `url` from `get_issue` verbatim |
 | Workspace slug hardcoded in the sprint link | Take it from the `url` Linear returned |
 | Sprint cell filled with the `cycleId` UUID | Map via `list_cycles`; use `title` and `number` |
+| Project link built from the project name | Copy the `url` `get_project` returned, or the URL the user pasted |
+| Project shown for a story whose cycle has a title | The sprint wins whenever the cycle has a title |
 | Sprint blocks ordered by cycle `number` | Numbers restart per team; order blocks by `startsAt` |
 | Work IDs sorted as text within a sprint | Compare the numeric part as a number — `-96` precedes `-146` |
 | Assignee inferred from commit author | Use Linear's `assignee`; commit author is who pushed, not who owned |

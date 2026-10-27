@@ -18,12 +18,14 @@ Say which, rather than guessing at an issue title — `/hean-harness:doctor` rep
 
 ## Issue resolution
 
-Call `get_issue` with the work ID. Take four fields:
+Call `get_issue` with the work ID. Take six fields:
 
 - `title` — used verbatim, including any bracketed prefix (`[Bug] `, `[Spike] `)
 - `url` — used verbatim
 - `cycleId` — a UUID, not directly renderable
 - `teamId` — required to resolve `cycleId`
+- `project` — the project name, used for the project fallback cell
+- `projectId` — a UUID, the input to `get_project`
 
 **Never construct or slugify an issue URL.** Linear truncates and transforms slugs in ways not reproducible from the title: `[Bug] Work type sync fails on parent change` resolves to `.../ABC-120/bug-an-issue-slug`. A hand-built slug produces a broken link that still looks plausible.
 
@@ -49,7 +51,7 @@ Sort by `startsAt`, never by `number` — numbers restart per team, so ordering 
 
 ## Missing data
 
-Cycles are not guaranteed to have a `title`; future and unstarted cycles routinely return `null`. Fall back to `number` and `startsAt` rather than emitting a blank or invented value.
+Cycles are not guaranteed to have a `title`; future and unstarted cycles routinely return `null`. When a cycle has no `title`, or the issue has no `cycleId`, show the issue's project as `[Project: {name}]({url})`. `{name}` is `get_issue`'s `project`, with every `[` escaped as `\[`, every `]` as `\]` and every `|` as `\|`. `{url}` is `get_project`'s `url`, copied verbatim, from one `get_project` call per distinct `projectId`; never build it from the name. A cycle with a `title` always shows the sprint. `startsAt` still orders a title-less cycle. With no project either, surface the gap rather than emitting a blank or invented value.
 
 Cycle assignment is read live. A report reflects Linear at generation time, not at merge time.
 

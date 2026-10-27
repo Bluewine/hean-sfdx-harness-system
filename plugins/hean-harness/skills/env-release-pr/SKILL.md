@@ -48,7 +48,7 @@ columns and nothing else. Whether a story was already deployed by a hotfix is st
 in a cell, a footnote under the table, or a fifth column. Changing the table's shape breaks the
 contract this section defines.
 
-**Work ID and Sprint are always links, Assignee and Subject never are.** The Work ID cell links to the Linear issue, the Sprint cell to the Linear cycle. A bare work ID or a bare sprint name is a defect, not a style choice.
+**Work ID and Sprint are always links, Assignee and Subject never are.** The Work ID cell links to the Linear issue, the Sprint cell to the Linear cycle, or to the Linear project when the project fallback applies. A bare work ID or a bare sprint name is a defect, not a style choice.
 
 **Never hand-author presentation.** GitHub stripes alternating row backgrounds itself from its own stylesheet, from plain pipe-delimited markdown containing no HTML. Emitting a `<table>`, a `style` attribute, or a `class` to chase striping or column widths gets the attributes stripped on render and violates the contract above. Pipe-delimited markdown only.
 
@@ -213,19 +213,19 @@ A surviving candidate from another team is a legitimate row — Phase 4 resolves
 
 **When an ID does not resolve**, never silently drop it and never guess a substitute. Common causes are a typo'd prefix in a commit subject, or an ID belonging to a non-Linear tracker. Collect every unresolved ID with the subject it came from and carry it to the Phase 6 checkpoint. If the user maps one to a corrected ID that is already a row, the two are one story and stay one row.
 
-**Say what this costs before starting.** Six values per story, one story at a time, and a release range routinely carries ten. Tell the user the count up front and that connecting Linear removes the questions entirely — `/hean-harness:doctor` reports whether a server is declared, and `/mcp` in a session signs in to one. A user who knows both facts can choose; one who is asked sixty questions without being told cannot.
+**Say what this costs before starting.** Eight values per story, one story at a time, and a release range routinely carries ten. Tell the user the count up front and that connecting Linear removes the questions entirely — `/hean-harness:doctor` reports whether a server is declared, and `/mcp` in a session signs in to one. A user who knows both facts can choose; one who is asked eighty questions without being told cannot.
 
 When Linear MCP is unavailable, say that cost first, then read `${CLAUDE_SKILL_DIR}/references/linear-fallback.md` and ask for each work ID by it.
 
-**Every unresolved or "none" answer goes to the Phase 6 checkpoint**, exactly as an unresolved field from Linear does. The fallback changes where a value comes from. It does not lower the bar for a blank or an invented cell.
+**Every unresolved or "none" answer goes to the Phase 6 checkpoint**, exactly as an unresolved field from Linear does. A story with a sprint name and sprint URL, or with no sprint but a project name and URL (items 7 and 8), has a Sprint cell and needs no question; only a story with neither goes to the checkpoint. The fallback changes where a value comes from. It does not lower the bar for a blank or an invented cell.
 
 ## Phase 4 — Resolve the sprint for each story
 
-**Skip this phase for any story resolved through the Phase 3 fallback** — items 4 to 6 of that prompt already carry its sprint name, link and start date. Run it for the stories that came from `get_issue`, which is all of them whenever Linear is connected.
+**Skip this phase for any story resolved through the Phase 3 fallback** — items 4 to 6 of that prompt already carry its sprint name, link and start date, and items 7 and 8 carry its project name and link for the project fallback. Run it for the stories that came from `get_issue`, which is all of them whenever Linear is connected.
 
 For the stories that came from `get_issue`, read `${CLAUDE_SKILL_DIR}/references/linear-sprints.md` and map each `cycleId` by it.
 
-Cycles are not guaranteed to have a `title` — future and unstarted cycles routinely return none. If a story's cycle has no title, or the story has no `cycleId` at all, raise it at the Phase 6 checkpoint rather than emitting a blank or invented cell.
+Cycles are not guaranteed to have a `title` — future and unstarted cycles routinely return none. If a story's cycle has no title, or the story has no `cycleId` at all, use the story's Linear project instead, as `${CLAUDE_SKILL_DIR}/references/linear-sprints.md` describes under "Project fallback". Only a story with no project either is raised at the Phase 6 checkpoint, because a blank or invented cell is never emitted.
 
 ## Phase 5 — Order the rows
 
@@ -275,7 +275,9 @@ a passing remark.
 | A work ID that appears only inside some other story's commit message | that commit subject | "I would leave `{ID}` out. Answer: `leave out`, or `include`" |
 | A story whose fix already reached `BASE` through a hotfix | the `hotfix-*` merge subject | "`{ID}` already went live through `{BRANCH}`, so this PR only carries the commit copying it back. It stays in the table either way. Answer: `right`, or `no, some of its work is still going out now`" |
 | A work ID that is not in the issue tracker | the commit subject it came from | "I cannot find `{ID}`. Answer: the correct ID, or `leave out`" |
-| A story missing its sprint or its assignee | which one is missing | "`{ID}` has no {field}. Answer: the value, or `leave blank`" |
+| A story missing its sprint and its project | that neither is set | "`{ID}` has no sprint and no project. Answer: the sprint or project name with its Linear link, or `leave blank`" |
+| A story whose sprint has no link | the sprint name | "`{ID}` is in `{SPRINT}` but has no sprint link. Answer: the sprint URL, or `leave blank`" |
+| A story missing its assignee | that it is unassigned | "`{ID}` has no assignee. Answer: the value, or `leave blank`" |
 | Something the run needs and was not given — the deployment date, the runlist link, which PR to update, or confirmation of the two branches | what is missing and why it is needed | ask for it directly |
 | The release issue's work ID is not known, or was given and not found in Linear | that the PR body ends with a `Resolves` line and none was found or given, or which value was not found | "Which Linear issue tracks this release? Answer: the work ID (`ABC-401`) or its Linear link." When the answer did not resolve in Linear, ask again with the same wording plus what was not found |
 
@@ -313,6 +315,14 @@ Build each row as:
 ```
 
 A `|` inside a Linear title or assignee name would break the row; escape it as `\|`. Nothing else in either is escaped.
+
+For a story whose cycle has no `title`, or that has no cycle, and that has a project, the Sprint cell is the project fallback:
+
+```
+[{WORK-ID}]({ISSUE_URL}) | {TITLE} | {ASSIGNEE} | [Project: {PROJECT_NAME}]({PROJECT_URL})
+```
+
+A story whose cycle has a `title` never uses this row. In `{PROJECT_NAME}`, escape every `[` as `\[`, every `]` as `\]` and every `|` as `\|`.
 
 Write the body with a shell heredoc, never the Write tool:
 

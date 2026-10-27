@@ -5,7 +5,8 @@ Confirm each against real output, not intent:
 - The row count derives as `work IDs in range − mentioned-in-passing − not found in the tracker − left out by the user`, and every subtraction was shown at the checkpoint. Check the derivation, not a fixed number — a new reason for leaving a story out must appear as a reported subtraction rather than silently changing the count. Test 2 subtracts nothing: every story it looks at gets a row.
 - Every story whose fix already reached `BASE` through a hotfix has a row, and every one of them is named in the closing report.
 - Every `Work ID` href is a string that came out of Linear — returned by `get_issue`, or pasted by the user from the browser — and never one you assembled from the title.
-- Every sprint link either uses that row's own team key with the workspace slug taken from Linear's `url`, or is a URL the user pasted whole. A link built from parts in the fallback path is a defect: nothing there supplies a verified slug.
+- Every sprint link either uses that row's own team key with the workspace slug taken from Linear's `url`, or is a URL the user pasted whole. A link built from parts in the fallback path is a defect: nothing there supplies a verified slug. A project link is also accepted: its target is the `url` `get_project` returned or a URL the user pasted whole, and its text starts with `Project: `.
+- A project cell appears only for a story whose cycle has no `title` or that has no cycle.
 - The separator line is exactly `-- | -- | -- | -- |`, and every row has exactly four cells.
 - Every Work ID cell and every Sprint cell is a markdown link; no Assignee cell is.
 - Rows are sorted on all three keys in order: cycle `startsAt` descending, then team key ascending, then work ID numerically ascending.
