@@ -10,7 +10,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, readdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, readdirSync, symlinkSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -19,12 +19,29 @@ const HERE = dirname(dirname(fileURLToPath(import.meta.url)));       // scripts/
 const PLUGIN = dirname(HERE);
 
 const work = mkdtempSync(join(tmpdir(), 'claude-md-import-'));
+// Removed on every exit, including a crash before the try block and an interrupt.
+process.on('exit', () => { if (work.startsWith(tmpdir())) rmSync(work, { recursive: true, force: true }); });
+for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(130));
 const home = join(work, 'home');
 const repo = join(work, 'repo');
 mkdirSync(join(repo, 'force-app'), { recursive: true });
 mkdirSync(join(home, '.claude'), { recursive: true });
 writeFileSync(join(repo, 'sfdx-project.json'), '{"packageDirectories":[{"path":"force-app","default":true}]}\n');
 writeFileSync(join(home, '.zshrc'), '# my own notes\nkeep me\n');
+
+// /usr/bin/git on macOS is a shim that starts xcrun on every call (about 3 times the cost of the
+// binary). The folder goes on PATH, not a link to git: a link makes git init lose its template folder.
+const CLT_BIN = '/Library/Developer/CommandLineTools/usr/bin';
+// The whole Command Line Tools folder goes first on PATH; no check reads any of its other tools.
+if (existsSync(join(CLT_BIN, 'git'))) process.env.PATH = `${CLT_BIN}:${process.env.PATH}`;
+// claude, sf, java and ego-browser stand-ins that print nothing and exit 0: no check reads their output,
+// and the real claude clones marketplaces from github.com. A link, not a script: a script start costs
+// about 100 ms on a machine with endpoint security agents.
+const standIns = join(work, 'bin');
+mkdirSync(standIns);
+const TRUE_BIN = existsSync('/usr/bin/true') ? '/usr/bin/true' : '/bin/true';
+for (const cmd of ['claude', 'sf', 'java', 'ego-browser']) symlinkSync(TRUE_BIN, join(standIns, cmd));
+process.env.PATH = `${standIns}:${process.env.PATH}`;
 execFileSync('git', ['init', '-q', repo]);
 
 // the library reads these when it loads
@@ -150,12 +167,14 @@ try {
                                   { env, encoding: 'utf8', stdio: 'pipe' });
   const running = JSON.parse(readFileSync(join(PLUGIN, '.claude-plugin', 'plugin.json'), 'utf8')).version;
   const rec = JSON.parse(readFileSync(manifestPath, 'utf8'));
-  check('the hook is silent about versions when they match', !hook().includes('setup was last run with'), hook());
+  const matchOut = hook();
+  check('the hook is silent about versions when they match', !matchOut.includes('setup was last run with'), matchOut);
   rec.version = '0.0.1';
   writeFileSync(manifestPath, JSON.stringify(rec, null, 2) + '\n');
+  const olderOut = hook();
   check('the hook names both versions when setup is older',
-        hook().includes(`hean-harness setup was last run with 0.0.1; this plugin is ${running}. Run /hean-harness:setup to install the new rules.`),
-        hook());
+        olderOut.includes(`hean-harness setup was last run with 0.0.1; this plugin is ${running}. Run /hean-harness:setup to install the new rules.`),
+        olderOut);
   rec.version = running;
   writeFileSync(manifestPath, JSON.stringify(rec, null, 2) + '\n');
 
@@ -171,5 +190,8 @@ try {
   if (work.startsWith(tmpdir())) rmSync(work, { recursive: true, force: true });
 }
 
+// A SIGINT or SIGTERM that arrived during the synchronous run waits for an event-loop turn, and Node does not
+// keep the loop alive for a signal listener. One turn here runs its handler (exit 130) before a pass is reported.
+await new Promise(resolve => setImmediate(resolve));
 console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail ? 1 : 0);
+process.exitCode = fail ? 1 : 0;
