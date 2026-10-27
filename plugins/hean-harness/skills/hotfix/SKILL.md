@@ -377,7 +377,7 @@ All three PRs follow the same shape and build their body from create-pr's own fi
 |---|---|---|---|
 | 1 | `work-{ID}-HF` | `hotfix-{ID}` | the story bullets for the fix and its deployment steps |
 | 2 | `hotfix-{ID}` | `release` | the same story bullets and deployment steps, because it carries the same fix to UAT |
-| 3 | `work-{ID}-BM` | `integration` | the same story bullets and deployment steps, plus one bullet for the config reset: "The QA swimlane builds from `integration` again". This fixed bullet keeps this exact text and is exempt from the Sentence form rules in create-pr's `references/bullets.md` |
+| 3 | `work-{ID}-BM` | `integration` | the same story bullets and deployment steps, plus one bullet for the config reset: "The QA swimlane builds from `integration` again." This fixed bullet keeps this exact text and is exempt from the Sentence form rules in create-pr's `references/bullets.md`. It goes directly before "Project configuration was updated." when both are present |
 
 Build each body in this order. The commit range for a PR is `git merge-base origin/<base> <head>` to `<head>`.
 
@@ -400,7 +400,7 @@ Build each body in this order. The commit range for a PR is `git merge-base orig
    | `Grant edit access to Active__c` | `@{ID}: Grant edit access to Active__c` | `@{ID}: [Hotfix] Grant edit access to Active__c` | `@{ID}: Backmerge` |
    | `RE Approval Hotfix` | `@{ID}: RE Approval Hotfix` | `@{ID}: [Hotfix] RE Approval Hotfix` | `@{ID}: Backmerge` |
 2. **Template.** Read `${CLAUDE_PLUGIN_ROOT}/skills/create-pr/assets/pr-body.md`. Replace `{WORK-ID}` with `{ID}`, `{TITLE}` and `{LINEAR_URL}` with the story values. `{TITLE}` is the plain Linear title in all three PRs, never `PR_TITLE`.
-3. **Bullets.** Read `${CLAUDE_PLUGIN_ROOT}/skills/create-pr/references/bullets.md`. Write the "What was Done?" bullets from `ISSUE_DESCRIPTION` and the PR's commits. Sort the commits into the main, Sonar and Framework buckets as create-pr's Phase 4 does, and fill `{BULLETS}`, `{SONAR_BULLETS}` and `{FRAMEWORK_BULLETS}`. Remove each empty section as create-pr's Phase 7 does. PR 3 adds its config-reset bullet to `{BULLETS}`.
+3. **Bullets.** Read `${CLAUDE_PLUGIN_ROOT}/skills/create-pr/references/bullets.md`. Write the "What was Done?" bullets from `ISSUE_DESCRIPTION` and the PR's commits, confirmed against the PR's main-bucket files. Sort the commits into the main, Sonar and Framework buckets as create-pr's Phase 4 does, and fill `{BULLETS}`, `{SONAR_BULLETS}` and `{FRAMEWORK_BULLETS}`. Remove each empty section as create-pr's Phase 7 does. PR 3 adds its config-reset bullet to `{BULLETS}`.
 4. **Deployment steps.** Fill `{DEPLOYMENT_STEPS}` as create-pr's Phase 5 does, from the files the PR's commit range changes. Follow `.claude/rules/runbook-deployment-steps.md` and read the repository's `deploy.yml` for the steps each stage runs. Ask the manual-steps question from Phase 5 once per hotfix, at PR 1, and reuse its answers for PRs 2 and 3 because they carry the same fix. Do not ask again. Remove the section when no rows result.
 5. **Screenshots.** Ask create-pr's Phase 6 question once per PR, reading its "Story {N}" as the hotfix story `{ID}`, with `{ID}` and `TITLE`. An answer other than an explicit yes removes the template's Screenshots block. On yes, run Phase 6's capture flow and save the files here:
 

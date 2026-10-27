@@ -215,9 +215,9 @@ cat "${CLAUDE_PLUGIN_ROOT}/skills/create-pr/references/bullets.md"
 Generate merged main bullets for each group by the "Main bullets" rules in that output. The sources are that group's `ISSUE_DESCRIPTION`, the subjects of its main-bucket commits, its main-bucket file set, and its `EXISTING_BULLETS`.
 
 **Merge rules — apply in this order, per group:**
-1. For each bullet in the group's `EXISTING_BULLETS`: if it still corresponds to a problem this story solved, per its issue description or commits, keep it. Do not drop a bullet unless it clearly no longer applies.
-2. For each solved problem or delivered request not covered by any retained existing bullet: add a new bullet.
-3. Apply the "Main bullets" rules to every kept or new main bullet. Rewrite a kept bullet that does not state the core of the fix first and then what it solves into that shape. Merge any bullets, kept or new, that describe the same problem, so no duplicate remains.
+1. For each bullet in the group's `EXISTING_BULLETS`: keep it if it still describes a behaviour change the branch's files contain. Drop it when the files no longer contain that change.
+2. For each behaviour change not covered by any retained existing bullet: add a new bullet.
+3. Apply the "Main bullets" rules to every kept or new main bullet. Rewrite a kept bullet that is not in that form, such as one with a "so …" outcome clause, into that form. Split a kept bullet that covers two behaviour changes into two bullets, unless the cap in "Bullet count" requires them merged. Merge any bullets, kept or new, that describe the same behaviour change, so no duplicate remains.
 
 The goal per story is a complete, non-redundant list that reflects everything that story contributes to the branch — neither inflated with stale items nor missing new work.
 
