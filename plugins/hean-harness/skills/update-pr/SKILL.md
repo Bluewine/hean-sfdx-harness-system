@@ -217,7 +217,7 @@ Generate merged main bullets for each group by the "Main bullets" rules in that 
 **Merge rules — apply in this order, per group:**
 1. For each bullet in the group's `EXISTING_BULLETS`: if it still corresponds to a problem this story solved, per its issue description or commits, keep it. Do not drop a bullet unless it clearly no longer applies.
 2. For each solved problem or delivered request not covered by any retained existing bullet: add a new bullet.
-3. Apply the "Main bullets" rules to every kept or new main bullet. Rewrite a kept bullet that describes how the code changed into what problem was fixed. Merge any bullets, kept or new, that describe the same problem, so no duplicate remains.
+3. Apply the "Main bullets" rules to every kept or new main bullet. Rewrite a kept bullet that does not state the core of the fix first and then what it solves into that shape. Merge any bullets, kept or new, that describe the same problem, so no duplicate remains.
 
 The goal per story is a complete, non-redundant list that reflects everything that story contributes to the branch — neither inflated with stale items nor missing new work.
 

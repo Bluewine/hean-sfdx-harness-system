@@ -1,6 +1,6 @@
 # "What was Done?" Bullet Rules
 
-Release champions read these bullets. They glance at each one for about one second. They need to know which problem was solved, not which part of the system changed. The story link serves the few readers who want more.
+Release champions and reviewers read these bullets. They glance at each one for a few seconds. Each bullet tells them, in one short sentence, the core of what the branch fixed and then what that fix solves. The story link serves the few readers who want more.
 
 ## Main bullets
 
@@ -21,39 +21,42 @@ These rules apply to every main bullet under "What was Done?", new or kept.
 
 ### Content
 
-- State what the issue was and that it is fixed, or what was delivered. Never state how the fix was applied.
-- Describe no technique: no "added a class", "changed the CSS rule", "moved the query".
-- Name things by what the app's user sees on the screen: "the Status dropdown", "the Save Changes button", "the appointment detail page". Use the story's own words for them when the story has them.
-- Name a code element (class, field, flow, component) only when the story itself names that element as the problem, such as a ticket raised during code review. Otherwise name no class, file, method, field, CSS rule, component or metadata item.
+- Write each bullet in two parts, in this order: the core of what the branch fixed, then what that fix solves.
+- **The core** is the one change that makes the fix work, named by the part that changed and what it now does: "Force `ABC_RepoFactory` to add requested fields to cache". Name the class, flow or component that changed when it is that part.
+- Describe no technique below the core: no line, method body, query text, CSS rule or attribute value, and no "added a class" or "moved the query".
+- **What it solves** is the problem from the story, named by what the app's user sees on the screen: "the Status dropdown", "the Save Changes button", "creating a work order". Use the story's own words for them when the story has them.
+- For a delivered request rather than a fix, the core is what was built and the second part is what the user can now do.
 - Wrap every code element a bullet names in backticks.
 - State the fact, not a defense of it. A bullet never argues against a hypothetical reviewer objection, such as "...so this is expected, not a leftover file".
-- Files matching no requirement (for example `.claude/` config) → one trailing bullet: "Project configuration was updated".
+- Files matching no requirement (for example `.claude/` config) → one trailing bullet: "Project configuration was updated". This fixed bullet keeps this exact text and is exempt from the Sentence form rules below.
 
 ### Sentence form
 
-- Keep each bullet to one line of at most 15 words, readable in one second.
-- Write one sentence with a clear subject and verb: "Clicking beside Save Changes no longer saves the appointment".
-- Use past tense, or the "no longer" or "now" form.
-- Use no semicolon and no second clause that explains the fix.
+- Keep each bullet to one line of at most 20 words.
+- Write one sentence: "{core of the fix}, so {what it solves}".
+- Start the core with an imperative verb, the same form as a commit subject: "Force", "Stop", "Limit", "Add".
+- Write what it solves in the "no longer" or "now" form.
+- Use no semicolon and no clause that explains how the fix works.
 - Use plain words: no jargon, no idiom, no figurative phrase.
 
 ### Example
 
-Wrong — each bullet describes how the code changed:
+A story where creating a work order failed because a shared repository cache dropped the fields a class asked for. The story's title names the core of the fix: "Force `ABC_RepoFactory` to add requested fields to cache".
 
-- Removed the `slds-scrollable_none` class from the `mycustomWorkDetailPage` content container, whose overflow clip cut off the open Status dropdown at the footer's top edge; the inner line-clamp usage of that class is unchanged
-- Added a `save-changes-button` class to the service appointment Save Changes `c-mycustom-button` and an `.action-button, .save-changes-button { display: inline-block; }` rule
+- Right: "Force `ABC_RepoFactory` to add requested fields to cache, so creating a work order no longer fails"
+- Wrong, outcome only: "Creating a work order no longer fails with a `WorkOrderNumber` error"
+- Wrong, technique: "`ABC_RepoFactory.getRepo` now calls `addParentFields` with an empty parent list after the facade returns the repository"
 
-Right — each bullet states the problem that was fixed:
+A story about two clicks and a clipped dropdown on the appointment detail page:
 
-- The Status dropdown on the appointment detail page is no longer cut off
-- Clicking beside Save Changes no longer saves the appointment
-- Clicking beside the buttons on work order lines no longer triggers them
+- Right: "Stop the appointment detail page from clipping its content, so the Status dropdown is no longer cut off"
+- Right: "Limit the Save Changes click area to the button, so clicking beside it no longer saves the appointment"
+- Wrong, technique: "Removed the `slds-scrollable_none` class from the `mycustomWorkDetailPage` content container, whose overflow clip cut off the open Status dropdown at the footer's top edge; the inner line-clamp usage of that class is unchanged"
 
 A story about code itself, where the story asks to stop a query running inside a loop:
 
-- Right: "`AccountService` no longer queries inside a loop"
-- Wrong: "Moved the SOQL query in `AccountService.getAccounts` above the for loop into a Map"
+- Right: "Move the `AccountService` query out of its loop, so loading many accounts no longer hits the query limit"
+- Wrong, technique: "Moved the SOQL query in `AccountService.getAccounts` above the for loop into a Map"
 
 ## Sonar Fixes bullets
 

@@ -377,7 +377,7 @@ All three PRs follow the same shape and build their body from create-pr's own fi
 |---|---|---|---|
 | 1 | `work-{ID}-HF` | `hotfix-{ID}` | the story bullets for the fix and its deployment steps |
 | 2 | `hotfix-{ID}` | `release` | the same story bullets and deployment steps, because it carries the same fix to UAT |
-| 3 | `work-{ID}-BM` | `integration` | the same story bullets and deployment steps, plus one bullet for the config reset: "The QA swimlane builds from `integration` again" |
+| 3 | `work-{ID}-BM` | `integration` | the same story bullets and deployment steps, plus one bullet for the config reset: "The QA swimlane builds from `integration` again". This fixed bullet keeps this exact text and is exempt from the Sentence form rules in create-pr's `references/bullets.md` |
 
 Build each body in this order. The commit range for a PR is `git merge-base origin/<base> <head>` to `<head>`.
 
