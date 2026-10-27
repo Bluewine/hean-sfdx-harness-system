@@ -399,6 +399,8 @@ export function revert({ dryRun = false, keep = [], only = null } = {}) {
   const newestFirst = [...m.changes].reverse();
   const ordered = [...newestFirst.filter(c => c.type !== 'repo-folder'),
                    ...newestFirst.filter(c => c.type === 'repo-folder')];
+  // only string targets: any other target reaches tracked() inside the loop and fails that one entry, as before
+  const isTracked = trackedChecker(ordered.filter(c => c.type === 'file-copy' && typeof c.target === 'string').map(c => c.target));
   for (const c of ordered) {
     const r = { type: c.type, target: c.target, key: c.key, action: null, ok: true, note: null };
     if (keep.includes(category(c)) || (only && !only(c))) {
@@ -408,7 +410,7 @@ export function revert({ dryRun = false, keep = [], only = null } = {}) {
       switch (c.type) {
         case 'file-copy':
           // A file git tracks belongs to the repository now, whoever wrote it first.
-          if (tracked(c.target)) { r.action = 'kept'; r.note = 'git tracks this file; left as it is'; break; }
+          if (isTracked(c.target)) { r.action = 'kept'; r.note = 'git tracks this file; left as it is'; break; }
           // A file edited after setup holds the user's work; copy it aside first.
           if (((c.existedBefore && c.backup && existsSync(c.backup)) || !c.existedBefore) && editedAfterSetup(c)) {
             r.note = dryRun ? 'edited after setup; a copy will be saved to the backups folder'
@@ -687,6 +689,53 @@ function tracked(target) {
   if (resolve(target).startsWith(resolve(claudeDir()))) return false;
   const dir = dirname(target);
   return existsSync(dir) && trackedUnder(dir, basename(target));
+}
+
+/** A file name git reads as itself in a pathspec: no wildcard, no magic, no character git may fold. */
+const PLAIN_NAME = /^(?!\.\.?$)[A-Za-z0-9._@+-]+$/;
+
+/**
+ * tracked() for every file in targets, with one `git ls-files` per folder rather than one per file:
+ * revert asks about every file setup copied, and a git start costs tens of milliseconds.
+ *
+ * Each answer equals tracked(target). The folder's listing is read once, the first time a file in it
+ * is asked about while the folder exists; revert changes no index, so the listing holds for the rest.
+ * A name the listing cannot answer exactly goes to tracked() itself: a name with any character outside
+ * PLAIN_NAME, a name the listing matches only when case is ignored, and every name in a folder whose
+ * listing failed. A target that is not a string goes to tracked() too, which throws as it always did.
+ */
+function trackedChecker(targets) {
+  const namesIn = new Map();
+  for (const t of targets) {
+    const name = basename(t);
+    if (!PLAIN_NAME.test(name)) continue;
+    if (!namesIn.has(dirname(t))) namesIn.set(dirname(t), new Set());
+    namesIn.get(dirname(t)).add(name);
+  }
+  const listings = new Map();
+  const listing = dir => {
+    if (!listings.has(dir)) {
+      try {
+        listings.set(dir, execFileSync('git', ['-C', dir, 'ls-files', '-z', '--', ...namesIn.get(dir)],
+          { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\0').filter(Boolean));
+      } catch { listings.set(dir, null); }
+    }
+    return listings.get(dir);
+  };
+  const under = (entry, name) => entry === name || entry.startsWith(`${name}/`);
+  return target => {
+    if (typeof target !== 'string') return tracked(target);
+    const dir = dirname(target);
+    const name = basename(target);
+    if (!namesIn.get(dir)?.has(name)) return tracked(target);
+    if (resolve(target).startsWith(resolve(claudeDir()))) return false;
+    if (!existsSync(dir)) return false;
+    const entries = listing(dir);
+    if (entries === null) return tracked(target);
+    if (entries.some(e => under(e, name))) return true;
+    if (entries.some(e => under(e.toLowerCase(), name.toLowerCase()))) return tracked(target);
+    return false;
+  };
 }
 
 /**
