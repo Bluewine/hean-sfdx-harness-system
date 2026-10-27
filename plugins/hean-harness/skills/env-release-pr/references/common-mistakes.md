@@ -38,7 +38,8 @@
 | Assignees or reviewers copied from an earlier release PR, CODEOWNERS or Linear | Only the requester's arguments or words name people |
 | `--remove-assignee` or `--remove-reviewer` on update | People already on the PR stay |
 | Update presented as a fresh table | Show it as a diff — rows added, removed, moved |
-| Extra headings or a summary added to the body | The body is the table plus the runlist line, nothing else |
+| Extra headings or a summary added to the body | The body is the table, the runlist line and the `Resolves` footer, nothing else |
+| Missing `Resolves` footer, or a story's ID used in it | Ask for the release issue's work ID |
 | PR opened without the review gate | Write the file, wait for an explicit `yes`, then submit |
 | Body file named as plain text, or as a relative path | Give it as an absolute path ending in `:1`, which the terminal makes clickable |
 | `$BODY_FILE` reused in a later command | Shell variables do not survive between commands; set it again in each one |

@@ -2,7 +2,7 @@
 name: env-release-pr
 description: Release-train deployment PR for either environment — UAT (integration into release) or Production (release into master) — dedupes the commit range into one row per Linear story with title, assignee and sprint, names hotfix-deployed stories out loud, then opens or updates the PR
 when_to_use: Any request to open, create, raise, draft, refresh or update a deployment PR between the long-lived branches — "UAT deployment PR", "UAT Deployment {PROJECT}.{date}", "Production Release PR", "prod release", "open the release PR into master", "merge release into master", "deploy integration to UAT", "update the release PR body" — and any agent that needs one, passing uat or prod only when the request names the environment ("open the release PR" names none, so pass no argument). Not for story PRs from work-* or hotfix-* into integration, which create-pr opens, nor a PR hotfix opens or edits as one of its own steps.
-argument-hint: "[uat|prod] [PR number] [--assignee <login>] [--reviewer <login>]"
+argument-hint: "[uat|prod] [PR number] [--work-id <ID or Linear link>] [--runlist <link>] [--assignee <login>] [--reviewer <login>]"
 arguments: [kind, pr]
 ---
 
@@ -35,8 +35,13 @@ The PR body IS exactly these parts, in this order, and nothing else:
 3. One row per story, `{work-id-link} | {subject} | {assignee} | {sprint-link}`
 4. One blank line
 5. The runlist line `[Runlist]({RUNLIST_URL})`
+6. One blank line, the literal line `---`, one blank line
+7. The literal line `Resolves {RELEASE_ID}`
+8. One blank line, the literal line `---`
 
-No title heading, no summary paragraph, no "What was done" section, no commit list, no trailing notes. The separator has no leading pipe and does have a trailing pipe — reproduce it byte for byte, with one `--` cell per column.
+Parts 6 to 8 are the same footer `create-pr` writes (`---`, blank, `Resolves {WORK-ID}`, blank, `---`), byte for byte. The closing word `Resolves` makes Linear link the PR to the release issue and move its status.
+
+No title heading, no summary paragraph, no "What was done" section, no commit list, no trailing notes; the footer is the one addition after the runlist line. The separator has no leading pipe and does have a trailing pipe — reproduce it byte for byte, with one `--` cell per column.
 
 **The table has no column for how a story reached `BASE`.** Every row looks alike, by design — four
 columns and nothing else. Whether a story was already deployed by a hotfix is stated in the closing report instead, never as a marker
@@ -95,8 +100,12 @@ Collect these. Take any the invoking request already supplied.
 - `BASE` — `release` for `uat`, `master` for `prod`, from the kind Phase 0 settled. There is no other value: never infer, substitute, or resolve it from a branch→environment mapping table or from deployment-target language in the request.
 - `HEAD` — for `uat`, `integration`, except for a hotfix re-deploy, where it is that hotfix's `hotfix-{WORK-ID}` branch instead; for `prod`, always `release`, because a production hotfix also reaches `master` through `release`. Every later phase is unchanged. Confirm the kind and both branches at the Phase 6 checkpoint regardless — stating them back to the user catches a mismatched request before Phase 2 computes a range from the wrong pair.
 - `PR_NUMBER` — the deployment PR being updated. **Mode is set by the request's intent, not by this value.** A request to update an existing deployment PR is update mode even when it names no number; `PR_NUMBER` is merely the number that intent resolves to, discovered from the `gh pr list` call in Phase 6 and confirmed at the checkpoint rather than guessed. Absent any such intent the mode is create, and `PR_NUMBER` stays unset. Decide the mode here, in Phase 1, so Phase 6 never has to infer it — an update run that silently falls through to create mode opens a second PR for a deployment that already has one. When Phase 0 already read a PR, that PR is `PR_NUMBER`.
-- `ASSIGNEES` and `REVIEWERS` — only the people the requester named. When the requester names anyone to assign or to review, by argument or in words, read `${CLAUDE_SKILL_DIR}/references/assignees-and-reviewers.md` and collect them by it. Usually empty. `$pr` counts as a PR number only when it is all digits, so `prod --assignee <login>` never reads `--assignee` as a PR.
-- `RUNLIST_URL` — the deployment runlist spreadsheet link. If the request did not include it, request it at the Phase 6 checkpoint. Do not invent a URL. Do not reuse one from a *different* deployment — but when updating an existing PR, the runlist already in that PR body is the same deployment's runlist and is the correct default.
+- `ASSIGNEES` and `REVIEWERS` — only the people the requester named. When the requester names anyone to assign or to review, by argument or in words, read `${CLAUDE_SKILL_DIR}/references/assignees-and-reviewers.md` and collect them by it. Usually empty. `$pr` counts as a PR number only when it is all digits, so `prod --assignee <login>` never reads `--assignee` as a PR. Likewise `--work-id <value>` and `--runlist <link>` are never read as `$kind` or `$pr`; their values belong to `RELEASE_ID` and `RUNLIST_URL`.
+- `RUNLIST_URL` — the deployment runlist spreadsheet link. Sources, in this order: the `--runlist <link>` argument or a link in the requester's words; then, when updating, the `[Runlist](…)` link of the existing PR body; otherwise ask for it at the Phase 6 checkpoint. When the argument differs from the existing body's link, the argument wins, and the checkpoint and the Phase 7 report show `(was {OLD_LINK})`. Do not invent a URL. Do not reuse one from a *different* deployment — the runlist already in the same PR's body is the same deployment's runlist.
+- `RELEASE_ID` — the work ID of the Linear issue that tracks this release (for example `ABC-401`). Required for both kinds. Sources, in this order: the `--work-id <value>` argument (a work ID or a Linear issue link), or the requester's words naming the release issue; then, when updating, the `Resolves {ID}` line of the existing PR body, read with `gh pr view {PR_NUMBER} --json body --jq .body` (the same read supplies the existing runlist link and the table difference); otherwise (a new PR, or an older PR body without the line) ask for it at the Phase 6 checkpoint. When `--work-id` is given and the existing body has a different `Resolves` ID, the argument wins and the checkpoint shows the change. An ID equal to a table row's work ID, or a work ID given to another skill in the session (for example `merge-pr`'s `--work-id` for a story), is not the release ID: treat it as not known and ask. The release issue never becomes a table row and never changes the row set.
+  - Accept the work ID or the issue's Linear link, in the argument or in the answer. From a link, take the work ID from the `/issue/{ID}/` path segment. Keep only the work ID.
+  - The same validation applies to an argument value. When Linear MCP is available, look the ID up with `get_issue`; a value Linear does not find counts as not known: ask at the Phase 6 checkpoint, saying it was not found. When Linear MCP is unavailable, accept an answer of the shape `[A-Z]+-[0-9]+` (optional `-[A-Z]{2}` suffix) as given; an answer without that shape counts as not known: ask again at the checkpoint.
+  - Inside a subagent (no `AskUserQuestion`), when the ID is needed and not given, the whole reply is `needs input: release work ID — the Linear issue that tracks this release`. The caller then calls again with `--work-id <ID>`. Stop once the ID is known to be missing: before Phase 2 in create mode, right after reading the body in update mode.
 - `DEPLOY_DATE` — the deployment date as `YYYY.MM.DD`. **Never compute this and never default it to today.** Deployment dates are set by release champions, not by the day the PR happens to be drafted, so the system clock is not a source for it and neither is any inference from recent activity or the previous deployment's cadence. When opening a new PR, request it at the Phase 6 checkpoint. **When updating, take it from the existing PR's title** — that title already carries the champion's date, and recomputing renames the PR away from the deployment it names and orphans the review file the previous run wrote.
 
 **The range is only as correct as the refs it is computed from**, so verify freshness rather than assuming it. Never run the fetch under `--quiet`, which hides the failure:
@@ -252,6 +261,8 @@ the questions alone:
   this as a difference against the existing PR body — rows added, rows removed, rows that moved — not as
   a fresh table. The user already approved the rows that are staying.
 - **Title** — the `PR_TITLE`, and whether it was kept from the existing PR or worked out.
+- **Release issue** — `Release issue: {RELEASE_ID}`, shown only when it is known: kept from the existing PR body or given in the request. When `--work-id` replaces a different `Resolves` ID in the existing body, show both: `Release issue: {NEW_ID} (was {OLD_ID})`.
+- **Runlist** — the runlist link, shown only when it is known, with ` (was {OLD_LINK})` when a `--runlist` argument or a link in the request replaced the existing body's link.
 
 **What you need answered — numbered 1, 2, 3, each needing its own answer.**
 
@@ -266,6 +277,7 @@ a passing remark.
 | A work ID that is not in the issue tracker | the commit subject it came from | "I cannot find `{ID}`. Answer: the correct ID, or `leave out`" |
 | A story missing its sprint or its assignee | which one is missing | "`{ID}` has no {field}. Answer: the value, or `leave blank`" |
 | Something the run needs and was not given — the deployment date, the runlist link, which PR to update, or confirmation of the two branches | what is missing and why it is needed | ask for it directly |
+| The release issue's work ID is not known, or was given and not found in Linear | that the PR body ends with a `Resolves` line and none was found or given, or which value was not found | "Which Linear issue tracks this release? Answer: the work ID (`ABC-401`) or its Linear link." When the answer did not resolve in Linear, ask again with the same wording plus what was not found |
 
 **Write the question out in plain words every time.** No internal shorthand in anything the user reads:
 no counters like `owning=0`, no labels this file uses internally, no phase numbers. The person answering
@@ -314,6 +326,12 @@ Work ID | Subject | Assignee | Sprint
 {ROWS}
 
 [Runlist]({RUNLIST_URL})
+
+---
+
+Resolves {RELEASE_ID}
+
+---
 BODY
 echo "$BODY_FILE:1"
 ```
@@ -329,7 +347,7 @@ BODY_FILE="$REPO_ROOT/.claude/skills/env-release-pr/output/{KIND_FILE}-{DEPLOY_D
 grep -nEi 'co-authored-by|generated with \[?claude|claude-session|claude\.(ai|com)/(code/session|claude-code)' "$BODY_FILE"
 ```
 
-Expect no output. The template carries none of these, so any hit was introduced while rendering — strip the offending lines, including the blank line and any `---` separator that preceded them, rewrite the file, and re-run the check. Never submit a body containing a `Co-Authored-By` trailer, a "Generated with Claude Code" line, or a session URL.
+Expect no output. The template carries none of these, so any hit was introduced while rendering — strip the offending lines, including the blank line and any `---` separator that preceded them (except the `---` that closes the `Resolves` footer), rewrite the file, and re-run the check. Never submit a body containing a `Co-Authored-By` trailer, a "Generated with Claude Code" line, or a session URL.
 
 Then tell the user, giving the path as an **absolute path followed by `:1`**:
 
@@ -338,8 +356,12 @@ PR body written to {ABSOLUTE_PATH}:1
 {N} stories, ordered by sprint descending then work ID ascending.
 {H} of them already deployed to {BASE} by hotfix: {HOTFIX_IDS}
 Title: {PR_TITLE}
+Release issue: {RELEASE_ID}
+Runlist: {RUNLIST_URL}
 Review or edit the file, then type `yes` to submit.
 ```
+
+Append ` (was {OLD_ID})` to the `Release issue` line when an argument replaced the existing `Resolves` ID, and ` (was {OLD_LINK})` to the `Runlist` line when an argument replaced the existing link.
 
 Leave the hotfix line out entirely when no story was already deployed by one. A line reading `0 of them` is noise.
 When there is one, name every ID — a count alone tells the reader something is there and not what.

@@ -9,7 +9,8 @@ Confirm each against real output, not intent:
 - The separator line is exactly `-- | -- | -- | -- |`, and every row has exactly four cells.
 - Every Work ID cell and every Sprint cell is a markdown link; no Assignee cell is.
 - Rows are sorted on all three keys in order: cycle `startsAt` descending, then team key ascending, then work ID numerically ascending.
-- The runlist line is the last line, preceded by a blank line.
+- The runlist line is preceded by a blank line and followed by the footer.
+- The body ends with `---`, a blank line, `Resolves {ID}`, a blank line and `---`, where the ID is the release issue's work ID (asked, kept from the PR, or given), never a story row's ID.
 - Both reports give the body file as an absolute path ending in `:1`, so it is clickable from the terminal.
 - Every numbered question at the checkpoint got its own answer, and none was settled by an answer to a different one, by a general `yes`, or by silence.
 - No worktree was removed without an explicit `remove` from the user, and none was removed while a question was still open.
