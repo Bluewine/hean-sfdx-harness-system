@@ -1,6 +1,6 @@
 ---
 name: uninstall
-description: Reverse every change setup made — strips only the marked alias block from the shell startup file, removes the rules and memories it copied (backing up edited ones), deletes the plugin's own files in the repository's .claude folder, deletes .mcp.json, uninstalls the plugins setup added and then hean-harness itself
+description: Reverse every change setup made — strips only the marked alias block from the shell startup file, removes the rules and memories it copied (backing up edited ones), deletes the plugin's own files in the repository's .claude folder, deletes .mcp.json and its generated files under ~/.claude/hean-harness/ except backups/, uninstalls the plugins setup added, then hean-harness and its marketplace
 when_to_use: The user asks to remove `hean-harness` from this machine or repository, or to undo `setup` — "uninstall hean-harness", "remove the claude alias and rules", "undo what setup did", "clean up the hean install". It lists every change first and asks before reversing any.
 allowed-tools: ["Bash", "Read"]
 ---
@@ -19,6 +19,11 @@ left in place because it is theirs rather than ours.
    ```
 
 2. Show the user that list and ask whether to go ahead. Wait for an answer. The question names:
+   - that hean-harness and the `hean-sfdx-harness-system` marketplace, with its clone under
+     `~/.claude/plugins/marketplaces/`, are removed for every repository on this machine, not
+     only the current one
+   - the repositories uninstall reverts: the folder above each `repo-folder` entry's `.claude`
+     target. Say that a repository setup never ran in on this machine has nothing to remove.
    - each `marker-block` entry whose target is a shell startup file (`.zshrc`, `.bashrc`,
      `.bash_profile`, `.profile`): the file, its `lines` value, and its `preview` text quoted in
      full. Say that only those lines and the one blank line above them are removed, and that the
@@ -39,7 +44,18 @@ left in place because it is theirs rather than ours.
      `~/.claude/hean-harness/backups/` first; and the copy of the manifest check under
      `~/.claude/hean-harness/hooks/`, after which a `.githooks/pre-commit` left behind does nothing
    - each entry whose `action` starts with `run:`: the plugin or marketplace it removes
-   - that hean-harness itself is uninstalled last, which removes its skills, agents and hooks
+   - each `sparse-marketplace` entry: the marketplace clone is deleted with the marketplace in
+     step 7
+   - the `user-folder` entry: every name in its `deleted` list is deleted from
+     `~/.claude/hean-harness/` — the install record, the saved implementation preference,
+     `global-system-prompt.md`, and generated folders such as `sessions/`, `meter/`,
+     `manifest-check/`, `flow-gate/`, `runbook-compile/`, `feature-toggle-package/` and `hooks/`
+     — once every other entry has reversed. `backups/` is kept.
+   - a `plugin-data` entry: the `~/.claude/plugins/data/hean-harness-inline/` folder a
+     `--plugin-dir` run left is deleted. `claude plugin uninstall` deletes the plugin's own data
+     folder.
+   - that hean-harness itself is uninstalled next, which removes its skills, agents and hooks,
+     and the `hean-sfdx-harness-system` marketplace last
 
    A startup-file entry marked `"ok": false` in the dry run is left untouched by the reversal.
    Quote its `note` in the question.
@@ -68,17 +84,26 @@ left in place because it is theirs rather than ours.
    node "${CLAUDE_PLUGIN_ROOT}/scripts/lib/gitignore.mjs" lines
    ```
 
-6. Uninstall hean-harness itself. This runs last, because the scripts above live inside the
-   plugin:
+6. Uninstall hean-harness itself. This runs after every script above, because those scripts live
+   inside the plugin:
 
    ```bash
    claude plugin uninstall hean-harness@hean-sfdx-harness-system
    ```
 
-7. Report:
+7. Remove the marketplace and its clone. This is the last command. The skill's own files are
+   already gone after step 6, so this step runs only the `claude` command below:
+
+   ```bash
+   claude plugin marketplace remove hean-sfdx-harness-system
+   ```
+
+8. Report:
    - each entry and whether it succeeded; an entry marked `"ok": false` needs the user to act, so
      say what it was and why it failed
    - each shell startup file edited, the result of the step 4 check, and its backup path
+   - the repositories reverted, named from the `repo-folder` entries, and that a repository
+     setup never ran in on this machine had nothing to remove
    - each `repo-folder` and `repo-file` entry, naming what was deleted and what its `note` says
      was kept: `.claude/hean-harness.json`, `.claude/inputs/apex-classes.txt`, skill output under
      `.claude/skills/*/output/`, the rules and memories setup copied, and folders left empty are
@@ -90,12 +115,17 @@ left in place because it is theirs rather than ours.
      `~/.claude/hean-harness/hooks/` was deleted
    - each entry whose `note` says `edited after setup`, with the backup path the `note` gives
    - each `run:` entry and whether the plugin or marketplace was removed
+   - the `user-folder` entry: each name in its `deleted` list, and that `backups/` was kept at
+     the path its `backups` value gives. When its `action` is `kept`, quote its `note`: nothing
+     there was deleted because an entry did not reverse
+   - a `plugin-data` entry: that `~/.claude/plugins/data/hean-harness-inline/` was deleted
    - each remaining `external` entry with action `manual`, giving its `note`, which is the exact
      command that undoes it
    - the `.gitignore` lines from step 5, naming each one, and that removing them is theirs to do
-   - that the `hean-sfdx-harness-system` marketplace stays configured, because the user added it
-     before setup ran, and that `claude plugin marketplace remove hean-sfdx-harness-system`
-     removes it
+   - whether `claude plugin uninstall hean-harness@hean-sfdx-harness-system` succeeded
+   - whether `claude plugin marketplace remove hean-sfdx-harness-system` succeeded, which also
+     deletes the clone under `~/.claude/plugins/marketplaces/`. On failure, quote its output and
+     give the command `claude plugin marketplace remove hean-sfdx-harness-system` to run again
    - that copies of any file setup replaced or edited are still in
      `~/.claude/hean-harness/backups/`
    - that they should open a new terminal and restart Claude Code, because the alias and the

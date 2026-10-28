@@ -38,7 +38,7 @@ const GROUP_OF = {
   settings: 1,
   'pre-commit': 2,
   memories: 3, 'hook-hashes': 3, 'ego-lite': 3, 'project-rules': 3,
-  'auto-update': 4, 'small-homes': 4, symlink: 4, 'tracked-hooks': 4, 'run-timeout': 4
+  'auto-update': 4, 'small-homes': 4, symlink: 4, 'tracked-hooks': 4, 'run-timeout': 4, 'uninstall-cleanup': 4
 };
 const KNOWN_GROUPS = [...new Set(Object.values(GROUP_OF))].sort();
 const GROUP = process.env.HEAN_TWICE_GROUP ? Number(process.env.HEAN_TWICE_GROUP) : 0;
@@ -259,8 +259,13 @@ try {
     mkdirSync(dirname(apexInput), { recursive: true });
     writeFileSync(apexInput, '[test]\nFooTest\n');
     writeFileSync(ownInput, 'mine\n');
+    // an open implementation run's state, which the revert before a reinstall must not delete
+    const sessionFile = join(home, '.claude', 'hean-harness', 'sessions', 'open-run.json');
+    mkdirSync(dirname(sessionFile), { recursive: true });
+    writeFileSync(sessionFile, '{}\n');
     // no flag this time: the answer saved by the first run is used
     const second = run('setup.mjs', ['--repo', repo]);
+    check('a second setup keeps the session state in the user .claude/hean-harness folder', existsSync(sessionFile));
     check('a second setup with no flag does not ask about auto-update', !second.includes('!! ASK — AUTO-UPDATE'));
     check('a second setup with no flag keeps autoUpdate on', autoUpdate() === true, String(autoUpdate()));
     check('a dry run after the second setup still does not ask', !autoUpdateDry().includes('!! ASK — AUTO-UPDATE'));
@@ -354,6 +359,30 @@ try {
     const meterDir = join(home, '.claude', 'hean-harness', 'meter');
     mkdirSync(meterDir, { recursive: true });
     writeFileSync(join(meterDir, 'some-session.json'), '{}');
+    // what the plugin's scripts and hooks generate in the user .claude/hean-harness folder, plus an unknown entry
+    const stateDir = join(home, '.claude', 'hean-harness');
+    const generated = {
+      'implementation.json': '{"devMode":"main"}\n',
+      'flow-gate/abc123/last-verified-diff-hash': 'x\n',
+      'manifest-check/abc123/state.json': '{}\n',
+      'runbook-compile/abc123/compiled.json': '{}\n',
+      'feature-toggle-package/cache.json': '{}\n',
+      'some-later-file.txt': 'x\n'
+    };
+    for (const [rel, text] of Object.entries(generated)) {
+      mkdirSync(dirname(join(stateDir, rel)), { recursive: true });
+      writeFileSync(join(stateDir, rel), text);
+    }
+    // the data folder a --plugin-dir development run leaves, and another plugin's data folder
+    const inlineData = join(home, '.claude', 'plugins', 'data', 'hean-harness-inline');
+    const otherData = join(home, '.claude', 'plugins', 'data', 'other-plugin-market');
+    for (const d of [inlineData, otherData]) { mkdirSync(d, { recursive: true }); writeFileSync(join(d, 'x.json'), '{}\n'); }
+    const dryUser = JSON.parse(run('lib/manifest.mjs', ['revert', '--dry-run', 'true'])).find(r => r.type === 'user-folder');
+    check('the uninstall dry run names what it deletes in the user .claude/hean-harness folder, keeping backups/',
+          Boolean(dryUser) && ['sessions', 'flow-gate', 'install-manifest.json', 'global-system-prompt.md']
+            .every(n => dryUser.deleted?.includes(n)) && !dryUser.deleted.includes('backups') &&
+            existsSync(join(stateDir, 'flow-gate')),
+          JSON.stringify(dryUser));
     // claude here is a stand-in that exits 0, so the revert reports any recorded undo command as done.
     // This holds the record to the exact commands that remove what the environment step added.
     const EXPECTED_EXTERNAL = {
@@ -371,6 +400,18 @@ try {
           sortedEntries(external) === sortedEntries(EXPECTED_EXTERNAL) ? '' : JSON.stringify(external));
     const revert = JSON.parse(run('lib/manifest.mjs', ['revert']));
     check('uninstall deletes the status line meter files', !existsSync(meterDir));
+    const stateLeft = existsSync(stateDir) ? readdirSync(stateDir) : [];
+    check('uninstall deletes everything in the user .claude/hean-harness folder except backups/',
+          JSON.stringify(stateLeft) === JSON.stringify(['backups']), JSON.stringify(stateLeft));
+    check('uninstall keeps the files in backups/',
+          readdirSync(join(stateDir, 'backups')).length > 0);
+    const userResult = revert.find(r => r.type === 'user-folder');
+    check('the uninstall result names what it deleted and the kept backups/ path',
+          Boolean(userResult?.ok) && userResult.deleted?.includes('sessions') &&
+            userResult.backups === join(stateDir, 'backups'),
+          JSON.stringify(userResult));
+    check('uninstall deletes the plugin data folder a --plugin-dir run left', !existsSync(inlineData));
+    check('uninstall keeps another plugin\'s data folder', existsSync(join(otherData, 'x.json')));
     check('every recorded change reverses', revert.every(c => c.ok),
           `${revert.filter(c => c.ok).length}/${revert.length}`);
 
@@ -478,6 +519,52 @@ try {
           keptRules.length === 1 && keptRules[0].target === committedRule && String(keptRules[0].note).includes('git tracks this file') &&
             JSON.stringify(rulesLeftLink) === JSON.stringify([basename(committedRule)]),
           JSON.stringify({ kept: keptRules.map(c => basename(c.target)), left: rulesLeftLink }));
+  });
+
+  unit('uninstall-cleanup', () => {
+    // CLAUDE_CONFIG_DIR points away from HOME/.claude: the cleanup and the plugin data folder must follow it
+    const cfg = join(root, 'cfg-uninstall');
+    const envC = { ...BASE_ENV, HOME: join(root, 'home-cfg'), CLAUDE_CONFIG_DIR: cfg };
+    mkdirSync(envC.HOME, { recursive: true });
+    const manifestCli = args => JSON.parse(execFileSync('node', [join(SCRIPTS, 'lib', 'manifest.mjs'), ...args],
+      { env: envC, encoding: 'utf8', stdio: 'pipe' }) || 'null');
+    const state = join(cfg, 'hean-harness');
+    const inline = join(cfg, 'plugins', 'data', 'hean-harness-inline');
+    const target = join(root, 'cfg-target.txt');
+    const saved = join(root, 'cfg-target.bak');
+    writeFileSync(target, 'changed by setup\n');
+    manifestCli(['init']);
+    // a file setup replaced whose backup is missing: the revert cannot restore it, so the entry fails
+    manifestCli(['record', '--type', 'file-copy', '--target', target, '--backup', saved, '--existed-before', 'true']);
+    for (const [rel, text] of [['sessions/open-run.json', '{}\n'], ['flow-gate/abc/hash', 'x\n']]) {
+      mkdirSync(dirname(join(state, rel)), { recursive: true });
+      writeFileSync(join(state, rel), text);
+    }
+    mkdirSync(inline, { recursive: true });
+    writeFileSync(join(inline, 'x.json'), '{}\n');
+    // a lock a setup running in another terminal holds
+    const lock = join(state, 'manifest.lock');
+    const failed = manifestCli(['revert']);
+    const keptResult = failed.find(r => r.type === 'user-folder');
+    check('an entry that does not reverse fails the revert', failed.some(r => r.type === 'file-copy' && !r.ok),
+          JSON.stringify(failed));
+    check('when an entry does not reverse, the generated folders, the record and the plugin data folder stay',
+          existsSync(join(state, 'sessions', 'open-run.json')) && existsSync(join(state, 'flow-gate', 'abc', 'hash')) &&
+            existsSync(join(state, 'install-manifest.json')) && existsSync(join(inline, 'x.json')));
+    check('when an entry does not reverse, the user-folder result says kept',
+          keptResult?.action === 'kept' && keptResult.kept === true, JSON.stringify(keptResult));
+
+    // the backup comes back, so the entry reverses on the next uninstall
+    writeFileSync(saved, 'the user\'s original\n');
+    mkdirSync(lock);
+    const second = manifestCli(['revert']);
+    check('a second revert reverses every entry once the backup is back', second.every(r => r.ok), JSON.stringify(second));
+    check('the second revert restores the file', readFileSync(target, 'utf8') === 'the user\'s original\n');
+    const stateLeft = existsSync(state) ? readdirSync(state) : [];
+    check('the second revert deletes the generated entries under CLAUDE_CONFIG_DIR and keeps manifest.lock',
+          JSON.stringify(stateLeft) === JSON.stringify(['manifest.lock']), JSON.stringify(stateLeft));
+    check('the second revert deletes plugins/data/hean-harness-inline under CLAUDE_CONFIG_DIR', !existsSync(inline));
+    check('nothing is written to HOME/.claude when CLAUDE_CONFIG_DIR is set', !existsSync(join(envC.HOME, '.claude')));
   });
 
   unit('small-homes', () => {

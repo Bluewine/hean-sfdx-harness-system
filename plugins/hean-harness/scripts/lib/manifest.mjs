@@ -35,8 +35,12 @@ const REVERSIBLE = {
   'git-config':   'Restore the previous value in the repository, or unset the key if it had none.',
   'repo-folder':  'Delete .claude/hean-harness.json and skill output in the repository\'s .claude folder unless git tracks them, then the folders left empty. Uninstall only.',
   'repo-file':    'Delete the repository\'s .mcp.json unless git tracks it. Uninstall only.',
+  'sparse-marketplace': 'Change nothing and report that the clone is deleted by the final `claude plugin marketplace remove hean-sfdx-harness-system` step of uninstall. Uninstall only.',
   'external':     'Run the recorded plugin or marketplace removal on uninstall; anything else is reported.'
 };
+// Not recorded changes: a full uninstall adds these results after every recorded change reversed.
+//   user-folder  every entry in the user .claude/hean-harness folder except backups/ is deleted
+//   plugin-data  the plugins/data/hean-harness-inline folder a --plugin-dir run left is deleted
 
 export function load() {
   if (!existsSync(MANIFEST)) {
@@ -351,9 +355,43 @@ export function missingParents(obj, path) {
  */
 export const isAutoUpdateKey = key => /^extraKnownMarketplaces\.[^.]+\.autoUpdate$/.test(String(key));
 
+/**
+ * The <source> argument `claude plugin marketplace add` needs to match a
+ * settings entry's source: the owner/repo form for a github source, the URL for
+ * a git source. Any other form makes the add refuse with "its source doesn't
+ * match its extraKnownMarketplaces entry".
+ */
+export const marketplaceAddArg = source => source?.source === 'github' ? source.repo : source?.url;
+
+/**
+ * Put keys back on one extraKnownMarketplaces entry after `claude plugin
+ * marketplace add`, which replaces the whole entry and so drops `autoUpdate`.
+ * The file is written only when a key differs.
+ */
+export function restoreEntryKeys(file, name, keys) {
+  const j = JSON.parse(readFileSync(file, 'utf8'));
+  const entry = j.extraKnownMarketplaces?.[name];
+  if (!entry) return;
+  let changed = false;
+  for (const [k, v] of Object.entries(keys)) {
+    if (JSON.stringify(entry[k]) !== JSON.stringify(v)) { entry[k] = v; changed = true; }
+  }
+  if (changed) writeFileSync(file, JSON.stringify(j, null, 2) + '\n');
+}
+
+/** Drop the entries of one type and target from the manifest, for a change that was undone before it took effect. */
+export function forget(type, target) {
+  if (!existsSync(MANIFEST)) return;
+  withLock(() => {
+    const m = load();
+    m.changes = m.changes.filter(c => !(c.type === type && c.target === target));
+    save(m);
+  });
+}
+
 /** Which keep category a change falls in, or null when it has none. */
 export function category(c) {
-  if (c.type === 'repo-folder' || c.type === 'repo-file') return 'uninstall-only';
+  if (c.type === 'repo-folder' || c.type === 'repo-file' || c.type === 'sparse-marketplace') return 'uninstall-only';
   if (c.type === 'json-key' && isAutoUpdateKey(c.key)) return 'choices';
   if (c.type === 'external' && runnableUndo(c.undoHint)) return 'uninstall-only';
   if (c.type === 'marker-block' || c.type === 'index-lines') return 'blocks';
@@ -372,10 +410,12 @@ export function category(c) {
  * keep is for the revert setup runs before reinstalling. Each category named in
  * it is skipped, and its entries stay in the manifest for uninstall:
  *
- *   uninstall-only  the repository's .claude folder and .mcp.json, and the plugin
- *                   removals. Deleting the folder would take the skill output a
- *                   clone has built up; removing superpowers would only have it
- *                   installed again.
+ *   uninstall-only  the repository's .claude folder and .mcp.json, the plugin
+ *                   removals and the sparse marketplace clone. Deleting the folder
+ *                   would take the skill output a clone has built up; removing
+ *                   superpowers would only have it installed again; undoing the
+ *                   sparse clone would download the whole repository, docs/
+ *                   included, only for the install ahead to clone it sparse again.
  *   blocks          marked blocks and memory index lines. Setup replaces each
  *                   one where it sits, so the alias stays where the user put it
  *                   in their startup file and an index keeps its order.
@@ -541,6 +581,13 @@ export function revert({ dryRun = false, keep = [], only = null } = {}) {
           else if (!dryRun) rmSync(c.target);
           break;
         }
+        case 'sparse-marketplace': {
+          // Report only. The uninstall skill's last step removes the marketplace, which
+          // deletes the clone; until then the clone and the settings entry stay as setup left them.
+          r.action = `nothing changes here; the ${c.name} clone is deleted by the final ` +
+                     `\`claude plugin marketplace remove ${c.name}\` step of uninstall`;
+          break;
+        }
         case 'external': {
           const cmd = runnableUndo(c.undoHint);
           if (cmd) {
@@ -568,9 +615,14 @@ export function revert({ dryRun = false, keep = [], only = null } = {}) {
     }
     results.push(r);
   }
+  // A full uninstall: setup's revert before a reinstall passes keep, and a
+  // partial revert passes only. Neither may touch an open run's session state.
+  const full = !only && keep.length === 0;
   if (!dryRun) {
     const remaining = results.filter(r => !r.ok || r.kept);
     if (remaining.length === 0) {
+      // first, so its result names the record, the preference and meter/ too
+      if (full) results.push(...clearGenerated(false));
       rmSync(MANIFEST, { force: true });
       // the saved implementation preference is machine-wide, not a recorded
       // change, so it must go before the emptiness check below can succeed
@@ -585,7 +637,56 @@ export function revert({ dryRun = false, keep = [], only = null } = {}) {
     else { m.changes = m.changes.filter(c =>
              remaining.some(r => r.type === c.type && r.target === c.target &&
                (c.type !== 'json-key' || r.key === c.key)));
-           save(m); }
+           save(m);
+           if (full) results.push({ type: 'user-folder', target: STATE_DIR, action: 'kept', ok: true, kept: true,
+             note: `${remaining.length} entr${remaining.length === 1 ? 'y' : 'ies'} did not reverse; ` +
+                   'the folder stays so uninstall can run again' }); }
+  } else if (full) {
+    results.push(...clearGenerated(true));
+  }
+  return results;
+}
+
+/** The data folder a `claude --plugin-dir` development run gives this plugin. */
+const INLINE_DATA_DIR = () => join(claudeDir(), 'plugins', 'data', 'hean-harness-inline');
+
+/**
+ * Delete every entry in the user configuration folder's hean-harness/ except
+ * backups/, and the plugin data folder a --plugin-dir run left. Runs only at the
+ * end of a full uninstall in which every recorded change reversed.
+ *
+ * Every entry goes, not a list of known names: the plugin's scripts and hooks
+ * write session state, caches and copies there (sessions/, meter/, flow-gate/,
+ * manifest-check/, runbook-compile/, feature-toggle-package/, hooks/,
+ * global-system-prompt.md, implementation.json and the record), and a list
+ * would miss whatever a later version adds. backups/ holds copies of the user's
+ * own edited files, so it stays. manifest.lock stays too: a setup running in
+ * another terminal may hold it, and withLock() removes it when that setup ends.
+ */
+function clearGenerated(dryRun) {
+  const results = [];
+  if (existsSync(STATE_DIR)) {
+    // manifest.lock may be held by a setup running in another terminal; withLock() removes it
+    const doomed = readdirSync(STATE_DIR).filter(n => n !== 'backups' && n !== 'manifest.lock').sort();
+    const deleted = [];
+    const failed = [];
+    for (const n of doomed) {
+      if (dryRun) { deleted.push(n); continue; }
+      try { rmSync(join(STATE_DIR, n), { recursive: true, force: true }); deleted.push(n); }
+      catch (e) { failed.push(`${n}: ${e.message}`); }
+    }
+    const backups = existsSync(BACKUP_DIR) ? BACKUP_DIR : null;
+    results.push({ type: 'user-folder', target: STATE_DIR,
+      action: 'delete every file and folder the plugin generated here, except backups/',
+      ok: failed.length === 0, deleted, backups,
+      note: failed.length ? `could not delete: ${failed.join('; ')}`
+                          : (backups ? `kept ${backups}` : null) });
+  }
+  const inline = INLINE_DATA_DIR();
+  if (existsSync(inline)) {
+    const r = { type: 'plugin-data', target: inline, action: 'delete folder', ok: true, note: null };
+    if (!dryRun) { try { rmSync(inline, { recursive: true, force: true }); } catch (e) { r.ok = false; r.note = e.message; } }
+    results.push(r);
   }
   return results;
 }

@@ -55,6 +55,9 @@ const STEPS = [
   { name: 'Manifest check', script: 'install-manifest-check.mjs' },
   { name: 'Task tools',    script: 'install-task-tools.mjs' },
   { name: 'Advisor',       script: 'install-advisor.mjs' },
+  // Before auto-update: the add this step runs drops the entry's autoUpdate key,
+  // and the step writes it back, so auto-update reads the answer it saved.
+  { name: 'Sparse clone',  script: 'install-sparse-marketplace.mjs', keepGoing: true },
   { name: 'Auto-update',   script: 'install-auto-update.mjs',   keepGoing: true },
   { name: 'Commit format', script: 'install-githooks.mjs',     wantsRepo: true },
   { name: 'Naming',        script: 'install-naming.mjs',      wantsRepo: true, keepGoing: true },

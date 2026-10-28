@@ -46,6 +46,7 @@ const KINDS = {
   'dir-create':   'folder this plugin created',
   'repo-folder':  'repository .claude folder, kept until uninstall',
   'repo-file':    'repository .mcp.json, kept until uninstall',
+  'sparse-marketplace': 'marketplace clone kept to .claude-plugin and plugins, kept until uninstall',
   'external':     'command run outside these files'
 };
 const describe = type => KINDS[type] ?? type;
@@ -107,7 +108,8 @@ function main() {
   log(keep.includes('githooks')
     ? 'the git hook, which it replaces only with --replace-githook; and'
     : 'and');
-  log('the repository .claude folder, .mcp.json and plugins, which only uninstall removes.');
+  log('the repository .claude folder, .mcp.json, plugins and the sparse marketplace clone,');
+  log('which only uninstall removes or undoes.');
   log('');
 
   if (dryRun) { log('Dry run. Nothing was changed.'); return; }

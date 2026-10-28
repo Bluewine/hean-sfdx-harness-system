@@ -87,6 +87,11 @@ Install the environment. Show the user what will change before changing it.
      no agent memories.
    - that the `Manifest check` step copied the check to `~/.claude/hean-harness/hooks/`, where the
      pre-commit hook runs it from
+   - whether the `Sparse clone` step limited the marketplace clone to `.claude-plugin` and
+     `plugins`, so the repository's `docs/` folder is not downloaded, found it already limited, or
+     left it unchanged; quote the reason it printed. Say uninstall leaves the clone sparse and
+     `claude plugin marketplace remove <marketplace>` deletes it. When it printed a `!!` line, quote it in full
+     and say `settings.json` was left as it was.
    - whether `npm install` ran, was skipped because `node_modules` was already there or the
      repository has no `package.json`, or failed. When it failed, quote the reason the step printed.
    - whether a Linear MCP server was added, or one was already there. When one was added, say that
