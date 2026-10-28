@@ -137,6 +137,69 @@ export function stepPresent(steps, req) {
 export const commandLines = text => String(text ?? '').split(/\r?\n/).map(l => l.trim())
   .filter(l => l && !l.startsWith('#') && l !== 'version');
 
+/**
+ * The lines of a commands file as Jenkins reads them: split on \n alone, so
+ * a CRLF line keeps its \r. CICD_node-run-list-exec-lib's
+ * exec-sfdx-service.js reads with line-reader-sync 0.1.0
+ * (lib/lineReaderSync.coffee splits on \n only) and stops at the first line
+ * that is exactly "". A line of spaces, or a CRLF blank line ("\r"), is not
+ * a stop.
+ */
+const rawLines = text => String(text ?? '').split('\n');
+
+/**
+ * The lines Jenkins runs from a commands file, trimmed: it reads up to the
+ * first exactly empty line and skips # lines; this also skips whitespace-only
+ * lines. A command after the empty line never runs, and nothing reports it.
+ */
+export function jenkinsLines(text) {
+  const out = [];
+  for (const raw of rawLines(text)) {
+    if (raw === '') break;
+    const l = raw.trim();
+    if (l && !l.startsWith('#')) out.push(l);
+  }
+  return out;
+}
+
+/** The line that republishes an Experience Cloud site; Jenkins adds the sf or sfdx prefix. */
+export const publishLine = site => `force:community:publish --name '${site}' -u $TARGET_ORG_UNAME`;
+
+// force:community:publish or community publish, then --name or -n, by = or space, quoted or not
+const PUBLISH = /^(?:force:community:publish|community\s+publish)(?:\s|$)/;
+const NAME = /(?:^|\s)(?:--name|-n)(?:=|\s+)(?:'([^']*)'|"([^"]*)"|(\S+))/;
+
+/** The site names the publish lines among jenkinsLines(text) name. */
+export function publishedSites(text) {
+  const sites = new Set();
+  for (const l of jenkinsLines(text)) {
+    const m = PUBLISH.test(l) && NAME.exec(l);
+    if (m) sites.add(m[1] ?? m[2] ?? m[3]);
+  }
+  return sites;
+}
+
+/**
+ * The commands file with a publish line appended for each site not already
+ * published: { text, added, revived }. Every empty or whitespace-only line
+ * is removed. revived lists the commands after the first exactly empty line,
+ * which never ran before and run now. A publish line among them counts as
+ * published.
+ * # lines keep their place. An empty or missing file starts with `version`,
+ * the first line every repository keeps.
+ */
+export function withPublishLines(text, sites) {
+  const raw = rawLines(text);
+  const firstEmpty = raw.indexOf('');
+  const revived = firstEmpty < 0 ? [] : raw.slice(firstEmpty).map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+  const lines = raw.map(l => l.trimEnd()).filter(Boolean);
+  if (!lines.length) lines.push('version');
+  const had = publishedSites(lines.join('\n'));
+  const added = [...new Set(sites)].filter(s => !had.has(s));
+  lines.push(...added.map(publishLine));
+  return { text: `${lines.join('\n')}\n`, added, revived };
+}
+
 /** Whether next has a command line old lacks. */
 export function addsCommand(next, old) {
   const had = new Set(commandLines(old));

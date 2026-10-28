@@ -17,7 +17,8 @@ import { fileURLToPath } from 'node:url';
 
 const TESTS = dirname(fileURLToPath(import.meta.url));
 const {
-  parseDeploySteps, readDeploySteps, requiredStep, stepPresent, missingStep, addsCommand, addedMembers
+  parseDeploySteps, readDeploySteps, requiredStep, stepPresent, missingStep, addsCommand, addedMembers,
+  jenkinsLines, publishedSites, withPublishLines
 } = await import(join(dirname(TESTS), 'lib', 'deploy-steps.mjs'));
 const fixture = name => readFileSync(join(TESTS, 'fixtures', 'deploy-yml', `${name}.yml`), 'utf8');
 
@@ -164,6 +165,64 @@ check('the same name under another type is added', addedMembers(xml(['Flow', ['A
 check('a removed or reordered member adds nothing', addedMembers(xml(['ApexClass', ['B']]), xml(['ApexClass', ['A', 'B']])).length === 0);
 check('every member of a file HEAD lacks is added', addedMembers(xml(['ApexClass', ['A']]), null).length === 1);
 check('a placeholder manifest adds nothing', addedMembers(xml(), null).length === 0);
+
+console.log('Lines Jenkins runs');
+check('lines are trimmed and # lines skipped', JSON.stringify(jenkinsLines('version\n  # note\n  apex run --file a  \n')) === '["version","apex run --file a"]',
+  JSON.stringify(jenkinsLines('version\n  # note\n  apex run --file a  \n')));
+check('reading stops at the first empty line', JSON.stringify(jenkinsLines('version\na\n\nb\n')) === '["version","a"]');
+check('a whitespace-only line is skipped, not a stop', JSON.stringify(jenkinsLines('version\n   \nb')) === '["version","b"]',
+  JSON.stringify(jenkinsLines('version\n   \nb')));
+check('a CRLF blank line is not a stop', JSON.stringify(jenkinsLines('version\r\n\r\nb\r\n')) === '["version","b"]',
+  JSON.stringify(jenkinsLines('version\r\n\r\nb\r\n')));
+check('CRLF reads the same', JSON.stringify(jenkinsLines('version\r\na\r\n')) === '["version","a"]');
+check('a missing or empty file runs nothing', jenkinsLines(null).length === 0 && jenkinsLines('').length === 0);
+
+const PUB = "force:community:publish --name 'ABC_Portal' -u $TARGET_ORG_UNAME";
+const names = text => JSON.stringify([...publishedSites(text)].sort());
+check('the line the skill writes publishes its site', names(`version\n${PUB}\n`) === '["ABC_Portal"]', names(`version\n${PUB}\n`));
+check('quoted, unquoted and = forms, -n, and community publish all count', names([
+  'force:community:publish --name "Double Quoted" -u x',
+  'force:community:publish --name Unquoted',
+  "force:community:publish --name='Equals_Quoted'",
+  'community publish --name=Equals_Bare --target-org x',
+  "community publish -n 'Short_Flag'",
+  'community  publish -o x -n Short_Late'
+].join('\n')) === '["Double Quoted","Equals_Bare","Equals_Quoted","Short_Flag","Short_Late","Unquoted"]', names([
+  'force:community:publish --name "Double Quoted" -u x', 'force:community:publish --name Unquoted', "force:community:publish --name='Equals_Quoted'",
+  'community publish --name=Equals_Bare --target-org x', "community publish -n 'Short_Flag'", 'community  publish -o x -n Short_Late'].join('\n')));
+check('a publish line after an empty line is not published', names(`version\n\n${PUB}\n`) === '[]');
+check('a publish line after a whitespace-only line is published', names(`version\n  \n${PUB}\n`) === '["ABC_Portal"]');
+check('a commented-out publish line is not published', names(`version\n# ${PUB}\n`) === '[]');
+check('another command naming --name is not a publish line', names('version\ncommunity create --name ABC_Portal\n') === '[]');
+
+const B_PUB = PUB.replace('ABC_Portal', 'B_Site');
+let r = withPublishLines('version\n', ['ABC_Portal']);
+check('a site is appended after the last command', r.text === `version\n${PUB}\n` && JSON.stringify(r.added) === '["ABC_Portal"]' && r.revived.length === 0,
+  JSON.stringify(r));
+r = withPublishLines(`version\n${PUB}\n`, ['ABC_Portal']);
+check('a site already published is not added again', r.text === `version\n${PUB}\n` && r.added.length === 0, JSON.stringify(r));
+r = withPublishLines("version\ncommunity publish -n ABC_Portal", ['ABC_Portal', 'B_Site']);
+check('only the unpublished site is added, and a missing trailing newline is added',
+  r.text === `version\ncommunity publish -n ABC_Portal\n${B_PUB}\n` && JSON.stringify(r.added) === '["B_Site"]', JSON.stringify(r));
+r = withPublishLines('version\napex run --file a', ['ABC_Portal']);
+check('a file with no trailing newline gets the line on its own line', r.text === `version\napex run --file a\n${PUB}\n`, JSON.stringify(r));
+r = withPublishLines('version\n\n# later steps\napex run --file a\n\n\napex run --file b\n\n\n', ['ABC_Portal']);
+check('several empty lines are removed and the comment keeps its place',
+  r.text === `version\n# later steps\napex run --file a\napex run --file b\n${PUB}\n`, JSON.stringify(r.text));
+check('commands after the first empty line are revived', JSON.stringify(r.revived) === '["apex run --file a","apex run --file b"]', JSON.stringify(r.revived));
+r = withPublishLines(`version\n\n${PUB}\n`, ['ABC_Portal']);
+check('a publish line after an empty line is revived, not doubled',
+  r.text === `version\n${PUB}\n` && r.added.length === 0 && JSON.stringify(r.revived) === JSON.stringify([PUB]), JSON.stringify(r));
+r = withPublishLines('version\n   \napex run --file a\n', ['ABC_Portal']);
+check('a command after a whitespace-only line is not revived, and the line is removed',
+  r.text === `version\napex run --file a\n${PUB}\n` && r.revived.length === 0, JSON.stringify(r));
+r = withPublishLines('version\r\n\r\napex run --file a\r\n', ['ABC_Portal']);
+check('a command after a CRLF blank line is not revived', r.text === `version\napex run --file a\n${PUB}\n` && r.revived.length === 0, JSON.stringify(r));
+r = withPublishLines(null, ['ABC_Portal']);
+check('a missing file becomes version plus the line', r.text === `version\n${PUB}\n` && JSON.stringify(r.added) === '["ABC_Portal"]', JSON.stringify(r));
+check('an empty file becomes version plus the line', withPublishLines('', ['ABC_Portal']).text === `version\n${PUB}\n`);
+r = withPublishLines('version\r\napex run --file a\r\n', ['ABC_Portal', 'ABC_Portal']);
+check('CRLF is written as LF and a repeated site is added once', r.text === `version\napex run --file a\n${PUB}\n` && r.added.length === 1, JSON.stringify(r));
 
 console.log('Missing-step lines');
 const steps = parseDeploySteps(fixture('pre-only-no-destruct'));

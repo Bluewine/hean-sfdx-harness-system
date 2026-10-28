@@ -114,6 +114,7 @@ When the repository has no `deploy.yml`, derive rows from the table alone.
 | `runbooks/post-deploy/metaData/**` | the component is deployed from the runbook; when the stage lists `metadata-destruct`, it is then removed again by `destructiveChangesPost.xml` in the same stage, and otherwise the row says it stays in the org | Post |
 | a `<members>` entry the change adds to `deletePackage/pre/destructiveChangesPre.xml` | the named component is deleted from the target org | Pre |
 | a `<members>` entry the change adds to `deletePackage/post/destructiveChangesPost.xml` | the named component is deleted from the target org | Post |
+| a publish line (`force:community:publish` or `community publish`) the change adds to `runbooks/post-deploy/sf/commands.txt` | the named site is republished after the deploy, so its deployed changes go live | Post |
 
 Read a runbook script and the class it calls before describing it. State what it does to the org and whether re-running it is safe — never that a file exists.
 
@@ -131,7 +132,7 @@ Manual steps live outside the repo and cannot be derived from a diff. **Always a
 Manual steps a project needs repeatedly, to offer as candidates:
 
 - **Cross-repo deploy order** — when several repositories deploy to one org, any repository owning record types or metadata that another references has to deploy first, or the dependent deploy fails on a reference it cannot resolve.
-- **Publish Experience Cloud site** — the pipeline has no automatic publish step, so an unpublished site keeps serving the previous snapshot.
+- **Publish Experience Cloud site** — offer it only when the branch changes site files and `runbooks/post-deploy/sf/commands.txt` has no publish line for that site. Its option description says `hean-harness:site-publish` adds the line so the pipeline publishes the site automatically.
 
 ### Story reminder
 
