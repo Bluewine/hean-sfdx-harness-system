@@ -90,7 +90,6 @@ Updated whenever a skill, agent, hook, or rule is added, removed, or renamed —
 | apex-docstring-comments.md | project | Domain Conventions | pending |
 | apex-naming-conventions.md | project | Domain Conventions | pending |
 | apex-query-consolidation.md | project | Domain Conventions | pending |
-| apex-service-query-atomicity.md | project | Domain Conventions | pending |
 | apex-test-conventions.md | project | Domain Conventions | pending |
 | commit-message-format.md | project | Domain Conventions | pending |
 | flow-conventions.md | project | Domain Conventions | pending |
