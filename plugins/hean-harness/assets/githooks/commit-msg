@@ -12,9 +12,9 @@ subject=$(head -n 1 "$1")
 # optional [Sonar] tag, then a capital letter.
 if ! printf '%s\n' "$subject" | grep -qE '^@[A-Z]+-[0-9]+(-[A-Z]{2})?:[[:space:]](\[Sonar\][[:space:]])?[A-Z](.*)$'; then
   echo "ERROR: Commit subject must read '@WORK-ID: Capitalised summary'."
-  echo "  e.g. '@DEXRWO-3: Add field to Work Order layout'"
-  echo "       '@DEXRWO-3-UK: Add field to Work Order layout'   (team suffix)"
-  echo "       '@DEXRWO-3: [Sonar] Remove the unused variable'  (Sonar fix only)"
+  echo "  e.g. '@ABC-3: Add field to Work Order layout'"
+  echo "       '@ABC-3-UK: Add field to Work Order layout'   (team suffix)"
+  echo "       '@ABC-3: [Sonar] Remove the unused variable'  (Sonar fix only)"
   echo "  One colon, one space, and a capital letter to start the summary."
   exit 1
 fi

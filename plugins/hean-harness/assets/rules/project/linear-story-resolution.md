@@ -2,7 +2,6 @@
 paths:
   - "**/skills/create-pr/**"
   - "**/skills/update-pr/**"
-  - "**/skills/release-pr/**"
   - "**/skills/env-release-pr/**"
   - "**/skills/open-work-report/**"
 ---

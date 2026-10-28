@@ -24,13 +24,11 @@ Updated whenever a skill, agent, hook, or rule is added, removed, or renamed —
 | linear-start-issue | Skills | documented |
 | memory-review | — | pending (exists, not in original scope) |
 | open-work-report | — | pending (exists, not in original scope) |
-| release-pr | Skills | excluded (turned off, SKILL.mdx) |
 | env-release-pr | Skills | documented |
 | start-implementation | Skills | documented |
 | update-pr | Skills | documented |
 | test-changed | — | pending (exists, not in original scope) |
 | jenkins-pre-post-deploy | Skills | documented |
-| uat-hotfix | Skills | excluded (turned off, SKILL.mdx) |
 | hotfix | — | pending |
 | version-bump | Skills | documented |
 | hean | — | pending (exists, not in original scope) |
