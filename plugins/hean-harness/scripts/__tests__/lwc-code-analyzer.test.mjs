@@ -51,6 +51,7 @@ const slds = selector === 'eslint:slds';
 const ofKind = t => slds ? /\\.(html|css)$/.test(t) : /\\.js$/.test(t);
 const targets = all('-t');
 if (args[1] === 'rules') {
+  if (mode === 'noaurarules' && targets.some(t => /(^|\\/)aura\\//.test(t))) { console.error('rules failed'); process.exit(1); }
   const none = mode === 'norules' || (mode === 'nolwcrules' && targets.some(t => /(^|\\/)lwc\\//.test(t) && t.endsWith('.js')));
   const rules = none || !targets.some(ofKind) ? [] : slds
     ? [{ name: '@salesforce-ux/slds/no-slds-var-without-fallback', engine: 'eslint', severity: 3 }]
@@ -262,6 +263,15 @@ console.log('Could not run');
   check('nolwcrules: an lwc .js file could not run', n.kind === 'could-not-run', JSON.stringify(n));
   const a = await analyze(repo, [AURA_JS]);
   check('nolwcrules: an aura .js file still runs', a.kind === 'clean', JSON.stringify(a));
+
+  process.env.FAKE_SF_MODE = 'noaurarules';
+  const sid = session();
+  const both = await lib.analyze(repo, [LWC_JS, AURA_JS], { deadline: Date.now() + 30000, sessionId: sid });
+  check('noaurarules: an aura proof that writes nothing could not run, even after an lwc proof in the same call',
+    both.kind === 'could-not-run', JSON.stringify(both));
+  const cached = JSON.parse(readFileSync(join(lib.stateDirFor(repo), `session-${sid}.json`), 'utf8')).provenKeys;
+  check('noaurarules: no js-aura proof is cached', !cached.some(k => k.startsWith('js-aura:')) && cached.some(k => k.startsWith('js-lwc:')),
+    JSON.stringify(cached));
 
   process.env.FAKE_SF_MODE = 'norules';
   const nr = await analyze(repo, [LWC_JS]);

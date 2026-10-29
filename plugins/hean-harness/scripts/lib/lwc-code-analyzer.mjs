@@ -223,9 +223,12 @@ async function sessionVersion(root, sessionId, deadline) {
 /** Proves that the generated config gives this file's family at least one rule; null on success, else the reason. */
 async function prove(root, file, kind, cfg, out, deadline) {
   const args = ['code-analyzer', 'rules', '-t', file, '-r', SELECTOR[kind], '-c', cfg, '-f', out];
+  rmSync(out, { force: true });
   const result = await runSf(root, args, deadline);
   const problem = spawnProblem(result, `sf code-analyzer rules -r ${SELECTOR[kind]}`);
   if (problem) return problem;
+  if (result.code !== 0)
+    return `\`sf code-analyzer rules\` exited ${result.code} for ${file}: ${tail(result.stderr || result.stdout) || 'no error text'}`;
   const json = readJson(out);
   if (!Array.isArray(json?.rules))
     return `\`sf code-analyzer rules\` wrote no rule list for ${file}: ${tail(result.stderr || result.stdout) || `exit ${result.code}`}`;
@@ -282,10 +285,11 @@ export async function analyze(root, files, { deadline, sessionId }) {
       const cfg = join(tmp, `${kind}.yml`);
       writeFileSync(cfg, configFor(root, kind));
       for (const file of ofKind) {
-        const proofKey = `${familyOf(file)}:${key}`;
+        const family = familyOf(file);
+        const proofKey = `${family}:${key}`;
         const session = readSession(root, sessionId);
         if (session.provenKeys.includes(proofKey)) continue;
-        const problem = await prove(root, file, kind, cfg, join(tmp, `${kind}-rules.json`), deadline);
+        const problem = await prove(root, file, kind, cfg, join(tmp, `${family}-rules.json`), deadline);
         if (problem) return couldNot(problem);
         writeSession(root, sessionId, { ...session, provenKeys: [...session.provenKeys, proofKey] });
       }
