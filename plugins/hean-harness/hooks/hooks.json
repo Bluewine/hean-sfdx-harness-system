@@ -118,6 +118,18 @@
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/runbook-compile-check.mjs\"",
             "timeout": 60
+          },
+          {
+            "type": "command",
+            "if": "Edit(**/lwc/**)",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/lwc-code-analyzer-check.mjs\"",
+            "timeout": 90
+          },
+          {
+            "type": "command",
+            "if": "Edit(**/aura/**)",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/lwc-code-analyzer-check.mjs\"",
+            "timeout": 90
           }
         ]
       },
