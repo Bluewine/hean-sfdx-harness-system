@@ -110,7 +110,28 @@ function emailAfterRemoval(dir, scope) {
 }
 
 // git push options that take the next word as their value
-const PUSH_VALUE_OPTS = new Set(['--repo', '-o', '--push-option', '--receive-pack', '--exec']);
+export const PUSH_VALUE_OPTS = new Set(['--repo', '-o', '--push-option', '--receive-pack', '--exec']);
+
+/**
+ * The words of a `git push` after the subcommand, as { remote, refspecs,
+ * flags }: remote is the --repo value or the first positional word, or
+ * undefined when none is typed; refspecs are the other positional words;
+ * flags are the options that take no value, in order.
+ */
+export function pushWords(args) {
+  const pos = [], flags = [];
+  let remote, remoteGiven = false;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--') { pos.push(...args.slice(i + 1)); break; }
+    if (PUSH_VALUE_OPTS.has(a)) { if (a === '--repo') { remoteGiven = true; remote = args[i + 1]; } i++; continue; }
+    if (a.startsWith('--repo=')) { remoteGiven = true; remote = a.slice('--repo='.length); continue; }
+    if (!a.startsWith('-')) pos.push(a);
+    else flags.push(a);
+  }
+  if (!remoteGiven) remote = pos.shift();
+  return { remote, refspecs: pos, flags };
+}
 
 /**
  * What a `git push` sends, as { revs, sends }: revs are the revisions whose
@@ -119,21 +140,15 @@ const PUSH_VALUE_OPTS = new Set(['--repo', '-o', '--push-option', '--receive-pac
  * these and no refspec is given. sends is false for a delete or a dry run.
  */
 export function pushTargets(args) {
-  const pos = [];
+  const { refspecs: pos, flags } = pushWords(args);
   const revs = new Set();
-  let remoteGiven = false, sends = true;
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === '--') { pos.push(...args.slice(i + 1)); break; }
-    if (PUSH_VALUE_OPTS.has(a)) { if (a === '--repo') remoteGiven = true; i++; continue; }
-    if (a.startsWith('--repo=')) { remoteGiven = true; continue; }
+  let sends = true;
+  for (const a of flags) {
     if (a === '--all' || a === '--branches') revs.add('--branches');
     else if (a === '--tags') revs.add('--tags');
     else if (a === '--mirror') { revs.add('--branches'); revs.add('--tags'); }
     else if (a === '-d' || a === '--delete' || a === '-n' || a === '--dry-run') sends = false;
-    else if (!a.startsWith('-')) pos.push(a);
   }
-  if (!remoteGiven) pos.shift();
   if (pos.length === 0 && !revs.size) revs.add('HEAD');
   for (const spec of pos) {
     const src = spec.replace(/^\+/, '').split(':')[0];
