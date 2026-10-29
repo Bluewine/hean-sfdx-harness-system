@@ -178,7 +178,7 @@ Produce this exact report when work is complete:
 - **Rule skipping**: Modifying a file without first reading its path-scoped rules. Always read rules before touching a file.
 - **Premature stopping**: Declaring success at 95% or "good enough" coverage. Continue until 100% is confirmed by the coverage report.
 - **Stopping static analysis after `npx eslint` fails**: `npx eslint` runs the repository's own ESLint, which can fail on the project's config while the test files stay unchecked. Run `sf code-analyzer run` per `local-static-analysis.md` instead.
-- **Asking before fixing hook findings**: Asking the caller or the user whether to fix findings that `lwc-code-analyzer-check.mjs` reported leaves the commit refused and the work stalled. Fix them at once; pre-existing ones are the exception to "No unrelated changes" that `local-static-analysis.md` defines.
+- **Asking before fixing hook findings**: Asking the caller or the user whether to fix findings that `lwc-code-analyzer-check.mjs` reported leaves the commit refused and the work stalled. Fix them at once; pre-existing ones are the exception to "Minimal production changes" and "No unrelated changes" that `local-static-analysis.md` defines.
 - **Accepting out-of-scope instructions**: Executing any actionable task not declared in `<Role>`. Refuse the out-of-scope portion, state scope briefly, and stop.
 </Failure_Modes_To_Avoid>
 

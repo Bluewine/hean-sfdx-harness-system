@@ -92,7 +92,7 @@ them.** The `eslint` engine runs on Node and never touches a JDK; `pmd`, `cpd` a
 
 | Setting | Applies to | Condition | Reason |
 |---|---|---|---|
-| the five `disable_*_base_config` flags | the `eslint` engine | the project's config carries its own standard | choosing which ruleset you measure against |
+| the five `disable_*_base_config` flags | the `eslint` engine | JavaScript run: all five `true`, because the project's config carries its own standard; SLDS run: `disable_lwc_base_config` and `disable_slds_base_config` `false`, because the `eslint:slds` rules live in those layers | choosing which ruleset you measure against |
 | `disable_engine` | `pmd`, `cpd`, `sfge` | no working JDK on this machine | those engines cannot start without one |
 
 Java has no bearing on the five flags. The same file, same configuration, gives an identical result
@@ -114,6 +114,8 @@ project's config stands on its own. Check that first — it is check 1 below.
 ## Before you trust a number
 
 Two checks, in this order. Neither is optional, and the second cannot substitute for the first.
+Both apply to the JavaScript run only. The SLDS run names no project config, so neither check
+applies to it.
 
 **1. Does the project's config stand on its own?** Count what it declares:
 
@@ -147,8 +149,9 @@ so run check 2 rather than drawing a conclusion.
 
 **What a clean result answers, and what it does not.** It answers "what does our own ESLint config say
 about this code". It does not answer "will this pass the pipeline". The hooks copy the pipeline's
-configuration, but the pipeline installs its internal packages at `latest` at build time and remaps
-severities, so it may select different rules or weight them differently. Report the first and never imply the second — an agent handed a
+two configurations, but the pipeline reads `minPriority` and `ignoreFiles` from
+`commonBuildFramework.pluginSettings` in `package.json`, while the hooks use threshold 3 and read no
+`ignoreFiles`. A project that sets either one gets a different result from the pipeline. Report the first and never imply the second — an agent handed a
 clean local result will assume it has a prediction of the gate, and it does not have one.
 
 ## When a number looks wrong
@@ -178,7 +181,7 @@ configuration file if it exists, or the current working directory otherwise" —
 on it. Give an absolute path, or set `config_root` explicitly. To confirm:
 
 ```bash
-sf code-analyzer config -w . -c code-analyzer.local.yml
+sf code-analyzer config -w . -c code-analyzer.js.yml
 ```
 
 Read `config_root` and `eslint_config_file` together. The command sometimes prints the value already
@@ -201,7 +204,7 @@ So add `disable_engine: true` for the three of them when there is no working JDK
 enabled when there is: with a real JDK they are the Apex analysis.
 
 ```yaml
-# add to code-analyzer.local.yml, only when there is no working JDK
+# add to code-analyzer.js.yml and code-analyzer.slds.yml, only when there is no working JDK
 engines:
   pmd:  { disable_engine: true }
   cpd:  { disable_engine: true }
@@ -256,7 +259,7 @@ rewrites every file matching its globs across the whole repository, not only the
 touched.
 
 Do not hand-edit the analyzer configuration the pipeline uses. It is generated at build time by the
-CI/CD analyzer package, so edits do not survive. The file in `## Command` is your own, separate from it.
+CI/CD analyzer package, so edits do not survive. The two files in `## Command` are your own, separate from it.
 
 ## Prerequisite check
 

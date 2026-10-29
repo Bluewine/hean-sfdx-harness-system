@@ -46,8 +46,9 @@ project typically does not — `no-magic-numbers`, `capitalized-comments`, `one-
 `func-style`, `id-length`. On a mature codebase those layers alone produce hundreds of findings, which
 is why a file that already shipped green through the pipeline still lights up locally.
 
-Switching both layers off while naming the project's config is what reports the project's own rules and
-nothing else. They do load and fire: a file tripping `no-var`, `eqeqeq` and `no-debugger` reports
+In the JavaScript run, switching all five bundled layers off (`javascript`, `lwc`, `slds`, `typescript`
+and `react`) while naming the project's config is what reports the project's own rules and nothing
+else. They do load and fire: a file tripping `no-var`, `eqeqeq` and `no-debugger` reports
 exactly those rules when the config is named and nothing when it is not. So the tool is not discarding
 the project's contribution — with the bundled layers on, that contribution is simply buried.
 

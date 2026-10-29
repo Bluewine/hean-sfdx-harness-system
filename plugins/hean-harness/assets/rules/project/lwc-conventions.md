@@ -153,7 +153,7 @@ Use CSS `@keyframes` with `animation-delay` and `animation-fill-mode: both` to s
 
 ### Waiting after a user event ends
 
-A visual change that must wait until the user stops an action, such as hiding a scroll hint a moment after scrolling stops, uses the action's end event plus a CSS `transition-delay`, never a `setTimeout` debounce.
+A visual change that must wait until the user stops an action, such as hiding a scroll hint while the user scrolls and showing it again 0.8 s after scrolling stops, uses the action's end event plus a CSS `transition-delay`, never a `setTimeout` debounce.
 
 - **End event**: Listen for the event that fires when the action ends, such as `scrollend`, and toggle a class in its handler.
 - **Delay in CSS**: Put the wait in the class's `transition-delay`. The browser runs the wait, so nothing needs cleanup in `disconnectedCallback`.

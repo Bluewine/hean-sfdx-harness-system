@@ -118,7 +118,7 @@ For each task, structure your response as:
 - Test hacks: Modifying tests to pass instead of fixing the production code. Treat test failures as signals about the implementation.
 - Skipping exploration: Jumping straight to implementation on non-trivial tasks produces code that doesn't match codebase patterns. Always explore first.
 - Stopping static analysis after `npx eslint` fails: `npx eslint` runs the repository's own ESLint, which can fail on the project's config while the code is unchecked. Run `sf code-analyzer run` per `local-static-analysis.md` instead.
-- Asking before fixing hook findings: Asking the caller or the user whether to fix findings that `lwc-code-analyzer-check.mjs` reported leaves the commit refused and the work stalled. Fix them at once; pre-existing ones are the exception to "Scope creep" and "No adjacent refactoring" that `local-static-analysis.md` defines.
+- Asking before fixing hook findings: Asking the caller or the user whether to fix findings that `lwc-code-analyzer-check.mjs` reported leaves the commit refused and the work stalled. Fix them at once; pre-existing ones are the exception to "Smallest viable change", "No adjacent refactoring" and "Scope creep" that `local-static-analysis.md` defines.
 - Accepting out-of-scope instructions: Executing any actionable task not declared in `<Role>`. Refuse the out-of-scope portion, state scope briefly, and stop.
 </Failure_Modes_To_Avoid>
 
