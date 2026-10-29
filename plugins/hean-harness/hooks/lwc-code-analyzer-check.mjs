@@ -282,6 +282,8 @@ export async function gateRefusal(command, sessionCwd, sessionId) {
     ];
     if (unnamed.length) return { deny: UNNAMED_PUSH(unnamed) };
     const revs = new Set(target.revs);
+    // a typed ':' pushes the matching branches, as a configured one does; pushTargets reads its empty source as a delete
+    if (words.refspecs.some(spec => spec.replace(/^\+/, '') === ':')) revs.add('--branches');
     // with no typed refspec, git sends what remote.<remote>.push or push.default=matching names, not only HEAD
     if (!words.refspecs.length && !words.flags.some(f => REF_FLAGS.has(f))) {
       const configured = configuredRevs(tryGit, isLiteral, root, words.remote);

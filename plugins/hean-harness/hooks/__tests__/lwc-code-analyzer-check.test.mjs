@@ -467,6 +467,9 @@ console.log('Push gate');
     'cannot tell what this push sends', '`{feat,main}:refs/heads/x`');
   has('a refspec that names no commit is refused', refusal(b, 'git push origin nosuch'), 'nosuch', 'names no commit');
   check('a plain push of a clean main is allowed', refusal(b, 'git push') === null);
+  has('a typed ":" refspec, which can send feat, is refused', refusal(b, 'git push origin :'), LWC_JS);
+  has('a typed "+:" refspec, which can send feat, is refused', refusal(b, 'git push origin +:'), LWC_JS);
+  check('a typed ":feat" delete is not checked', refusal(b, 'git push origin :feat') === null);
 
   git(b, 'config', 'remote.origin.push', 'refs/heads/feat:refs/heads/feat');
   has('git push with remote.origin.push naming feat is refused', refusal(b, 'git push'), LWC_JS);
