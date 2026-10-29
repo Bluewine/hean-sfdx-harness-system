@@ -68,6 +68,7 @@ Updated whenever a skill, agent, hook, or rule is added, removed, or renamed —
 | apex-class-header-gate.mjs | Hooks | pending |
 | naming-check.mjs | Hooks | documented |
 | statusline-meter.mjs | Hooks | documented |
+| lwc-code-analyzer-check.mjs | Hooks | documented |
 
 ## Rules
 
