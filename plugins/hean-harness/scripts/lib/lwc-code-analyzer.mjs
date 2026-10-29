@@ -40,6 +40,8 @@ import { git, resolveMergeBase } from './merge-base.mjs';
 export const IN_SCOPE = /^force-app\/(?:.*\/)?(?:lwc|aura)\/.+\.(?:js|html|css)$/;
 
 export const THRESHOLD = 3;
+/** The version of the generated configuration (configFor, THRESHOLD, OTHER_ENGINES); raise it when any of them changes, so older clean records stop matching. */
+export const CONFIG_SCHEMA = 1;
 export const PLUGIN = '@salesforce/plugin-code-analyzer';
 export const INSTALL = `sf plugins install ${PLUGIN}`;
 export const WORK_ORDER = 'Fix these findings now, before any other step. Do not ask the user whether to start.';
@@ -102,15 +104,17 @@ function versionFrom(stdout) {
 const readOr = (file, fallback) => { try { return readFileSync(file, 'utf8'); } catch { return fallback; } };
 
 const keyFrom = (root, version) => sha1([
+  `schema ${CONFIG_SCHEMA}`,
   readOr(join(root, 'eslint.config.js'), 'none'),
   readOr(join(root, 'node_modules', '.package-lock.json'), 'none'),
   version
 ].join('\0'));
 
 /**
- * The clean record key: eslint.config.js, the installed package tree (the
- * config's packages are pinned to latest, so a reinstall can change the rules
- * without changing eslint.config.js) and the analyzer version. The version is
+ * The clean record key: the generated configuration's CONFIG_SCHEMA,
+ * eslint.config.js, the installed package tree (the config's packages are
+ * pinned to latest, so a reinstall can change the rules without changing
+ * eslint.config.js) and the analyzer version. The version is
  * cached in the session file. When it cannot be read the key matches no record.
  * Synchronous for the hooks, so the version lookup uses spawnSync with a timeout.
  */
@@ -316,16 +320,34 @@ function changedLines(root, base, rel) {
 }
 
 /**
- * Labels each finding new (on a line the branch changed, or in a file the
- * base does not have) or pre-existing. The base is the branch's merge-base,
- * else HEAD; with neither, every finding is new.
+ * The commit the pushed tips start from on the remote side: the one boundary
+ * commit of `<tips> --not --remotes`, or null when there is none (no
+ * remote-tracking branch) or more than one (a merge of two remote lines).
+ * Also null when the walk passes the deadline (milliseconds since the epoch).
  */
-export function labelFindings(root, findings) {
+export function pushBase(root, tips, deadline) {
+  let out;
+  try { out = git(['rev-list', '--boundary', ...tips, '--not', '--remotes'], undefined, { cwd: root, deadline }); } catch { return null; }
+  if (out.status !== 0) return null;
+  const boundary = new Set(out.stdout.split('\n').filter(l => l.startsWith('-')).map(l => l.slice(1).trim()));
+  return boundary.size === 1 ? [...boundary][0] : null;
+}
+
+/**
+ * Labels each finding new (on a line the branch changed, or in a file the
+ * base does not have) or pre-existing. The base is the branch's merge-base.
+ * Without one, a commit or write compares with HEAD; a push passes pushBase,
+ * the remote side of its commits, because HEAD already holds the commits
+ * being pushed and would label their findings pre-existing. A pushBase of
+ * null, or no base at all, labels every finding new.
+ */
+export function labelFindings(root, findings, options = {}) {
   const branch = git(['branch', '--show-current'], undefined, { cwd: root }).stdout.trim();
   let base;
-  try { base = resolveMergeBase(undefined, branch, { cwd: root }).sha; } catch { base = 'HEAD'; }
+  try { base = resolveMergeBase(undefined, branch, { cwd: root }).sha; } catch { base = 'pushBase' in options ? options.pushBase : 'HEAD'; }
   const byFile = new Map();
   return findings.map(f => {
+    if (base === null) return { ...f, preExisting: false };
     if (!byFile.has(f.file)) byFile.set(f.file, changedLines(root, base, f.file));
     const changed = byFile.get(f.file);
     return { ...f, preExisting: changed !== 'all' && !changed.has(f.line) };

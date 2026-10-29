@@ -34,7 +34,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync, realpathSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
@@ -93,7 +93,8 @@ async function afterWrite(input) {
   const raw = input?.tool_input?.file_path;
   if (!raw) return;
   const where = locate(resolve(input.cwd || process.cwd(), raw));
-  if (!where) return;
+  // checked before the library loads, so its failure never blocks a write outside an SFDX repository
+  if (!where || !existsSync(join(where.root, 'sfdx-project.json'))) return;
   try {
     await lintWritten(input, where);
   } catch (e) {
@@ -132,26 +133,55 @@ const UNPUSHABLE = files =>
   'and has not been checked:\n\n' + fileList(files) + '\n\nCommit or stash the change, so the pushed content can be ' +
   'checked, or check out the branch being pushed, then retry this push.';
 
+const quoted = words => words.map(w => `\`${w}\``).join(', ');
+const NAME_IT = 'Name the branch or commit literally, as in `git push origin my-branch`, then retry this push.';
+
 const UNNAMED_PUSH = words =>
-  '!! The code analyzer check cannot tell what this push sends: its refspec uses a variable or a glob (' +
-  words.map(w => `\`${w}\``).join(', ') + '). Name the branch or commit literally, as in `git push origin my-branch`, then retry this push.';
+  '!! The code analyzer check cannot tell what this push sends: its remote or refspec uses a variable or a glob, or a brace the shell can expand (' +
+  quoted(words) + `). ${NAME_IT}`;
 
-// git push options that take the next word as their value, as in hooks/git-identity-guard.mjs
-const PUSH_VALUE_OPTS = new Set(['--repo', '-o', '--push-option', '--receive-pack', '--exec']);
+const CONFIGURED_PUSH = (name, values) =>
+  `!! The code analyzer check cannot tell what this push sends: \`${name}\` is set to ${quoted(values)}, which names no single branch or commit. ${NAME_IT}`;
 
-/** The refspec words of a push whose source the text cannot name (a variable or glob); pushTargets would read them as HEAD. */
-function unnamedRefspecs(args, isLiteral) {
-  const pos = [];
-  let remoteGiven = false;
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === '--') { pos.push(...args.slice(i + 1)); break; }
-    if (PUSH_VALUE_OPTS.has(a)) { if (a === '--repo') remoteGiven = true; i++; continue; }
-    if (a.startsWith('--repo=')) { remoteGiven = true; continue; }
-    if (!a.startsWith('-')) pos.push(a);
+const NO_COMMIT = revs =>
+  `!! The code analyzer check cannot tell what this push sends: ${quoted(revs)} names no commit in this repository. ` +
+  'Correct the branch or commit name, then retry this push.';
+
+// options that choose the pushed refs themselves, so git reads no configured refspec
+const REF_FLAGS = new Set(['--all', '--branches', '--tags', '--mirror']);
+
+/**
+ * Whether the shell passes the word to git as typed: not when a variable or
+ * glob decides it, nor when it holds a brace, which the shell can expand into
+ * several words (`{feat,feat2}`). Stricter than isLiteral, which other gates
+ * share.
+ */
+const named = (isLiteral, word) => isLiteral(word) && !word.includes('{');
+
+/**
+ * The revisions a push with no typed refspec sends besides HEAD, as { revs }
+ * or { deny }: the source side of each remote.<remote>.push value, or
+ * --branches for push.default=matching. A configured value whose source is a
+ * glob or variable refuses, since it names no literal ref.
+ */
+function configuredRevs(tryGit, isLiteral, root, typedRemote) {
+  const cfg = (...args) => tryGit(root, 'config', ...args);
+  const branch = tryGit(root, 'symbolic-ref', '--short', '-q', 'HEAD');
+  const remote = typedRemote ?? (branch && cfg('--get', `branch.${branch}.pushRemote`)) ?? cfg('--get', 'remote.pushDefault') ??
+    (branch && cfg('--get', `branch.${branch}.remote`)) ?? 'origin';
+  const name = `remote.${remote}.push`;
+  const values = (cfg('--get-all', name) ?? '').split('\n').filter(Boolean);
+  if (!values.length) return { revs: cfg('--get', 'push.default') === 'matching' ? ['--branches'] : [] };
+  const revs = [], unnamed = [];
+  for (const value of values) {
+    const spec = value.replace(/^\+/, '');
+    if (spec === ':') { revs.push('--branches'); continue; }   // ':' pushes the matching branches
+    const src = spec.split(':')[0];
+    if (src === '' || src.startsWith('^')) continue;          // a delete or a negative refspec sends nothing
+    if (isLiteral(src)) revs.push(src);
+    else unnamed.push(value);
   }
-  if (!remoteGiven) pos.shift();
-  return pos.filter(spec => !isLiteral(spec.replace(/^\+/, '').split(':')[0]));
+  return unnamed.length ? { deny: CONFIGURED_PUSH(name, unnamed) } : { revs };
 }
 
 const NOT_NAMED = '!! The code analyzer check did not run for this commit: the command stages files its text does not name ' +
@@ -171,7 +201,7 @@ function couldNotRunRefusal(lib, reason, what) {
  * A recorded file passes; an unrecorded one whose working copy holds the same
  * content is linted, with the others, in one run; any other is refused.
  */
-async function judge(lib, tryGit, root, items, what, sessionId) {
+async function judge(lib, tryGit, root, items, what, sessionId, labelOptions = () => ({})) {
   if (!items.length) return null;
   const key = lib.recordKey(root, sessionId);
   const toRun = new Set(), unlike = new Set();
@@ -184,7 +214,7 @@ async function judge(lib, tryGit, root, items, what, sessionId) {
   if (!toRun.size) return null;
   const files = [...toRun].sort();
   const result = await lib.analyze(root, files, { deadline: deadlineFrom(PRE_DEADLINE_MS), sessionId });
-  if (result.kind === 'findings') return { deny: lib.findingsText(lib.labelFindings(root, result.findings)) };
+  if (result.kind === 'findings') return { deny: lib.findingsText(lib.labelFindings(root, result.findings, labelOptions())) };
   if (result.kind !== 'clean') return { deny: couldNotRunRefusal(lib, result.reason, what) };
   const after = lib.recordKey(root, sessionId);
   for (const { rel, oid } of items) if (toRun.has(rel)) lib.recordClean(root, rel, oid, after);
@@ -199,7 +229,7 @@ async function judge(lib, tryGit, root, items, what, sessionId) {
 export async function gateRefusal(command, sessionCwd, sessionId) {
   if (!mayGate(command)) return null;
   // the library loads only for a repository with sfdx-project.json, so its failure never refuses a commit elsewhere
-  const [{ commitsIn, commitIndex }, { gitCommands, isLiteral, repoOf, tryGit }, { pushTargets }, { operationInProgress }, { isSfdxRepo }] =
+  const [{ commitsIn, commitIndex }, { git, gitCommands, isLiteral, repoOf, tryGit }, { pushTargets, pushWords }, { operationInProgress }, { isSfdxRepo }] =
     await Promise.all([
       import('../scripts/lib/commit-index.mjs'),
       import('../scripts/lib/command-line.mjs'),
@@ -245,25 +275,48 @@ export async function gateRefusal(command, sessionCwd, sessionId) {
     if (!target.sends) continue;
     const root = repoOf(c, sessionCwd);
     if (!root || !(await applies(root))) continue;
-    const unnamed = unnamedRefspecs(c.args, isLiteral);
+    const words = pushWords(c.args);
+    const unnamed = [
+      ...(words.remote === undefined || named(isLiteral, words.remote) ? [] : [words.remote]),
+      ...words.refspecs.filter(spec => !named(isLiteral, spec) || !isLiteral(spec.replace(/^\+/, '').split(':')[0]))
+    ];
     if (unnamed.length) return { deny: UNNAMED_PUSH(unnamed) };
-    const tips = new Set();
-    for (const rev of target.revs) {
-      // --branches and --tags name every branch or tag; any other revision names one commit
-      const out = rev.startsWith('--') ? tryGit(root, 'rev-parse', rev) : tryGit(root, 'rev-parse', '--verify', '-q', `${rev}^{commit}`);
-      for (const tip of lines(out)) tips.add(tip);
+    const revs = new Set(target.revs);
+    // with no typed refspec, git sends what remote.<remote>.push or push.default=matching names, not only HEAD
+    if (!words.refspecs.length && !words.flags.some(f => REF_FLAGS.has(f))) {
+      const configured = configuredRevs(tryGit, isLiteral, root, words.remote);
+      if (configured.deny) return configured;
+      for (const rev of configured.revs) revs.add(rev);
     }
+    const tips = new Set(), missing = [];
+    for (const rev of revs) {
+      // --branches and --tags name every branch or tag; any other revision names one commit, and git refuses a push of one that does not exist
+      if (rev.startsWith('--')) { for (const tip of lines(tryGit(root, 'rev-parse', rev))) tips.add(tip); continue; }
+      const tip = tryGit(root, 'rev-parse', '--verify', '-q', `${rev}^{commit}`);
+      if (tip) tips.add(tip);
+      else missing.push(rev);
+    }
+    if (missing.length) return { deny: NO_COMMIT(missing) };
     const items = new Map();
     for (const tip of tips) {
-      // --cc also lists the files a merge commit's conflict resolution changes, which plain --name-only leaves out
-      const changed = tryGit(root, '-c', 'core.quotePath=false', 'log', '--cc', '--name-only', '--diff-filter=AMR', '--format=', tip, '--not', '--remotes');
-      if (changed === null) throw new Error(`git could not list the files the pushed commits at ${tip} change`);
+      // the walk has no remote-tracking branch to stop at on a first push, so it gets the time left before the deadline
+      const ms = deadlineFrom(PRE_DEADLINE_MS) - Date.now();
+      let changed;
+      try {
+        if (ms <= 0) throw Object.assign(new Error('the deadline passed'), { code: 'ETIMEDOUT' });
+        // --cc also lists the files a merge commit's conflict resolution changes, which plain --name-only leaves out
+        changed = git(root, '-c', 'core.quotePath=false', 'log', '--cc', '--name-only', '--diff-filter=AMR', '--format=', tip, '--not', '--remotes',
+          { timeout: ms, killSignal: 'SIGKILL', maxBuffer: 64 * 1024 * 1024 });
+      } catch (e) {
+        if (e.code === 'ETIMEDOUT') return { deny: couldNotRunRefusal(lib, 'the deadline passed while git was listing the files the pushed commits change', 'push') };
+        throw new Error(`git could not list the files the pushed commits at ${tip} change`);
+      }
       for (const rel of new Set(lines(changed).filter(f => lib.IN_SCOPE.test(f)))) {
         const oid = tryGit(root, 'rev-parse', '--verify', '-q', `${tip}:${rel}`);
         if (oid) items.set(`${rel}\0${oid}`, { rel, oid });   // a file deleted again by the tip is not pushed
       }
     }
-    const r = await judge(lib, tryGit, root, [...items.values()], 'push', sessionId);
+    const r = await judge(lib, tryGit, root, [...items.values()], 'push', sessionId, () => ({ pushBase: lib.pushBase(root, [...tips], deadlineFrom(PRE_DEADLINE_MS)) }));
     if (r) return r;
   }
   return warnings.length ? { warn: warnings.join('\n') } : null;

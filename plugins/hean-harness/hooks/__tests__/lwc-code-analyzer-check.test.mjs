@@ -108,8 +108,8 @@ const cleanRecord = repo => { try { return JSON.parse(readFileSync(join(stateDir
 
 let sessions = 0;
 /** Run the hook as Claude Code does after a Write; the parsed output, or {} when silent. */
-function afterWrite(repo, rel, { session = `session-${++sessions}`, tool = 'Write' } = {}) {
-  const out = execFileSync('node', [HOOK], { env, encoding: 'utf8', input: JSON.stringify({
+function afterWrite(repo, rel, { session = `session-${++sessions}`, tool = 'Write', hook = HOOK } = {}) {
+  const out = execFileSync('node', [hook], { env, encoding: 'utf8', input: JSON.stringify({
     hook_event_name: 'PostToolUse', tool_name: tool, session_id: session, cwd: repo,
     tool_input: { file_path: join(repo, rel), content: '' } }) });
   return out ? JSON.parse(out) : {};
@@ -369,6 +369,8 @@ console.log('Commands that are not a commit or push');
   git(plainGate, 'add', '--', LWC_JS);
   const plainOut = gate(plainGate, 'git commit -m x', { hook });
   check('a commit without sfdx-project.json is silent when the library throws on load', JSON.stringify(plainOut) === '{}', JSON.stringify(plainOut));
+  const plainWrite = afterWrite(plainGate, LWC_JS, { hook });
+  check('a write without sfdx-project.json is silent when the library throws on load', JSON.stringify(plainWrite) === '{}', JSON.stringify(plainWrite));
 }
 
 console.log('Push gate');
@@ -384,6 +386,12 @@ console.log('Push gate');
   const r = refusal(p, 'git push');
   check('a pushed commit with an unrecorded finding is refused', r?.startsWith(WORK_ORDER), JSON.stringify(r));
   has('the push refusal names the file and rule', r, `${LWC_JS}:4`, '@lwc/lwc/no-async-operation');
+  has('a finding the unpushed commits add on main is labelled new', r, 'New (on lines this branch changed):');
+  check('a finding the unpushed commits add on main is not labelled pre-existing', !r?.includes(PRE_EXISTING_HEADING), JSON.stringify(r));
+  env.HEAN_LWC_ANALYZER_DEADLINE_MS = '1';
+  const late = refusal(p, 'git push');
+  delete env.HEAN_LWC_ANALYZER_DEADLINE_MS;
+  has('a deadline passed while listing the pushed files refuses as could not run', late, 'could not run', 'listing the files the pushed commits change', '--check');
   const before = calls().length;
   const dry = gate(p, 'git push --dry-run');
   check('git push --dry-run is allowed', JSON.stringify(dry) === '{}', JSON.stringify(dry));
@@ -424,6 +432,55 @@ console.log('Push gate');
   const r = refusal(m, 'git push');
   check('a pushed merge whose conflict resolution adds a finding is refused', r?.startsWith(WORK_ORDER), JSON.stringify(r));
   has('the merge refusal names the file and rule', r, LWC_JS, '@lwc/lwc/no-async-operation');
+}
+
+{
+  const o = makeRepo('pushed-before');
+  const remote = join(sandbox, 'pushed-before-remote.git');
+  execFileSync('git', ['init', '-q', '--bare', remote], { env });
+  git(o, 'remote', 'add', 'origin', remote);
+  write(o, LWC_JS, TIMER);
+  git(o, 'add', '--', LWC_JS);
+  git(o, 'commit', '-q', '-m', 'timer');
+  git(o, 'push', '-q', 'origin', 'main');
+  write(o, LWC_JS, TIMER.replace('class Foo', 'class Foo2'));
+  git(o, 'commit', '-q', '-am', 'rename');
+  const r = refusal(o, 'git push');
+  has('a finding already on the remote side of main is labelled pre-existing', r, PRE_EXISTING_HEADING, `${LWC_JS}:4`);
+  check('a finding already on the remote side of main is not labelled new', !r?.includes('New (on lines this branch changed):'), JSON.stringify(r));
+}
+{
+  const b = makeRepo('push-names');
+  const remote = join(sandbox, 'push-names-remote.git');
+  execFileSync('git', ['init', '-q', '--bare', remote], { env });
+  git(b, 'remote', 'add', 'origin', remote);
+  git(b, 'push', '-q', 'origin', 'main');
+  git(b, 'checkout', '-q', '-b', 'feat');
+  write(b, LWC_JS, TIMER);
+  git(b, 'add', '--', LWC_JS);
+  git(b, 'commit', '-q', '-m', 'timer');
+  git(b, 'branch', 'feat2');
+  git(b, 'checkout', '-q', 'main');
+  has('a push of feat, which carries a finding, is refused', refusal(b, 'git push origin feat'), LWC_JS);
+  has('a brace-expansion refspec is refused', refusal(b, 'git push origin {feat,feat2}'), 'cannot tell what this push sends', '`{feat,feat2}`');
+  has('a brace-expansion refspec with a destination is refused', refusal(b, 'git push origin {feat,main}:refs/heads/x'),
+    'cannot tell what this push sends', '`{feat,main}:refs/heads/x`');
+  has('a refspec that names no commit is refused', refusal(b, 'git push origin nosuch'), 'nosuch', 'names no commit');
+  check('a plain push of a clean main is allowed', refusal(b, 'git push') === null);
+
+  git(b, 'config', 'remote.origin.push', 'refs/heads/feat:refs/heads/feat');
+  has('git push with remote.origin.push naming feat is refused', refusal(b, 'git push'), LWC_JS);
+  has('git push origin with remote.origin.push naming feat is refused', refusal(b, 'git push origin'), LWC_JS);
+  check('a typed refspec still overrides remote.origin.push', refusal(b, 'git push origin main') === null);
+  git(b, 'config', '--add', 'remote.origin.push', 'refs/heads/*:refs/heads/*');
+  has('a glob in remote.origin.push is refused', refusal(b, 'git push'), 'cannot tell what this push sends', 'remote.origin.push', '`refs/heads/*:refs/heads/*`');
+  git(b, 'config', '--unset-all', 'remote.origin.push');
+  git(b, 'config', 'remote.origin.push', 'refs/heads/main:refs/heads/main');
+  check('remote.origin.push naming a clean main is allowed', refusal(b, 'git push') === null);
+  git(b, 'config', '--unset-all', 'remote.origin.push');
+  git(b, 'config', 'push.default', 'matching');
+  has('git push with push.default matching, which can send feat, is refused', refusal(b, 'git push'), LWC_JS);
+  git(b, 'config', '--unset', 'push.default');
 }
 
 rmSync(sandbox, { recursive: true, force: true });

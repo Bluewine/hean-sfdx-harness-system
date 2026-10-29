@@ -15,7 +15,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, chmodSync, realpathSync, statSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, chmodSync, realpathSync, statSync, cpSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -324,6 +324,13 @@ console.log('Clean record');
   const k3 = lib.recordKey(repo, sid);
   check('recordKey changes with node_modules/.package-lock.json', k3 !== k1);
   rmSync(join(repo, 'node_modules'), { recursive: true });
+  const updated = join(sandbox, 'updated-plugin');
+  cpSync(join(SCRIPTS, 'lib'), updated, { recursive: true });
+  const source = readFileSync(join(updated, 'lwc-code-analyzer.mjs'), 'utf8');
+  check('the library has a config schema version constant', /export const CONFIG_SCHEMA = \d+;/.test(source));
+  writeFileSync(join(updated, 'lwc-code-analyzer.mjs'), source.replace(/export const CONFIG_SCHEMA = (\d+);/, (_, n) => `export const CONFIG_SCHEMA = ${Number(n) + 1};`));
+  const newer = await import(join(updated, 'lwc-code-analyzer.mjs'));
+  check('recordKey changes with the config schema version', newer.recordKey(repo, sid) !== k1);
 
   check('nothing is recorded at first', lib.isRecordedClean(repo, LWC_JS, 'abc', k1) === false);
   lib.recordClean(repo, LWC_JS, 'abc', k1);
@@ -357,6 +364,32 @@ console.log('Labels');
   write(r, NEW, 'a\nb\nc\n');
   const fresh = lib.labelFindings(r, [{ ...finding(1), file: NEW }, { ...finding(3), file: NEW }]);
   check('every finding on an untracked file is new', fresh.length === 2 && fresh.every(f => f.preExisting === false), JSON.stringify(fresh));
+}
+{
+  const r = makeRepo('push-labels');
+  const lines = Array.from({ length: 12 }, (_, i) => `const line${i + 1} = ${i + 1};`);
+  write(r, LWC_JS, lines.join('\n') + '\n');
+  git(r, 'add', '.');
+  git(r, 'commit', '-q', '-m', 'component');
+  const remoteSide = git(r, 'rev-parse', 'HEAD');
+  lines[2] = 'setTimeout(() => {}, 0);';
+  write(r, LWC_JS, lines.join('\n') + '\n');
+  git(r, 'commit', '-q', '-am', 'change on main');
+  const finding = line => ({ file: LWC_JS, line, column: 1, rule: 'no-x', severity: 3, message: 'x' });
+  const plain = lib.labelFindings(r, [finding(3)]);
+  check('on main with no base branch a commit-time label compares with HEAD', plain[0]?.preExisting === true, JSON.stringify(plain));
+  const pushed = lib.labelFindings(r, [finding(3), finding(10)], { pushBase: remoteSide });
+  check('on main a push labels a line its commits changed as new', pushed[0]?.preExisting === false, JSON.stringify(pushed));
+  check('on main a push labels a line on the remote side as pre-existing', pushed[1]?.preExisting === true, JSON.stringify(pushed));
+  const unknown = lib.labelFindings(r, [finding(3), finding(10)], { pushBase: null });
+  check('on main a push with no remote side labels every finding new', unknown.every(f => f.preExisting === false), JSON.stringify(unknown));
+  check('pushBase is null with no remote-tracking branch', lib.pushBase?.(r, [git(r, 'rev-parse', 'HEAD')]) === null);
+  const remote = join(sandbox, 'push-labels-remote.git');
+  execFileSync('git', ['init', '-q', '--bare', remote], { env });
+  git(r, 'remote', 'add', 'origin', remote);
+  git(r, 'push', '-q', 'origin', `${remoteSide}:refs/heads/main`);
+  git(r, 'fetch', '-q', 'origin');
+  check('pushBase is the remote-tracking commit the pushed commits start from', lib.pushBase?.(r, [git(r, 'rev-parse', 'HEAD')]) === remoteSide);
 }
 
 console.log('Findings text');
