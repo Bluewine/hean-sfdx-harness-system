@@ -151,6 +151,48 @@ Use CSS `@keyframes` with `animation-delay` and `animation-fill-mode: both` to s
 | `disconnectedCallback` timer cleanup | Not needed — CSS animations are browser-managed |
 | `jest.useFakeTimers()` in tests | Not needed — CSS animations are inert in jsdom |
 
+### Waiting after a user event ends
+
+A visual change that must wait until the user stops an action, such as hiding a scroll hint a moment after scrolling stops, uses the action's end event plus a CSS `transition-delay`, never a `setTimeout` debounce.
+
+- **End event**: Listen for the event that fires when the action ends, such as `scrollend`, and toggle a class in its handler.
+- **Delay in CSS**: Put the wait in the class's `transition-delay`. The browser runs the wait, so nothing needs cleanup in `disconnectedCallback`.
+- **Feature check**: Where the browser has no end event, check for it first (`'onscrollend' in window`) and leave the element in its default state. Never fall back to `setTimeout`.
+
+```html
+<div class="scroll-area" onscroll={handleScroll} onscrollend={handleScrollEnd}>...</div>
+<div class={hintClass}>Scroll for more</div>
+```
+
+```js
+hasScrollEnd = 'onscrollend' in window;
+isScrolling = false;
+
+get hintClass() {
+    return this.isScrolling ? 'scroll-hint is-scrolling' : 'scroll-hint';
+}
+handleScroll() {
+    // Without scrollend nothing would clear the class, so the hint keeps its default state.
+    if (this.hasScrollEnd) {
+        this.isScrolling = true;
+    }
+}
+handleScrollEnd() {
+    this.isScrolling = false;
+}
+```
+
+```css
+.scroll-hint {
+    opacity: 1;
+    transition: opacity 0.2s ease-out 0.8s; /* waits 0.8s after scrolling ends */
+}
+.scroll-hint.is-scrolling {
+    opacity: 0;
+    transition-delay: 0s;
+}
+```
+
 ### Keyframes and shared CSS-only modules
 
 - **Keyframes stay with their animation**: Declare every `@keyframes` in the same CSS file as the `animation` or `animation-name` that uses it. Never move a `@keyframes` into a CSS-only module shared with `@import 'c/<module>'`.
@@ -173,6 +215,7 @@ Use CSS `@keyframes` with `animation-delay` and `animation-fill-mode: both` to s
 ### Checklist
 
 - [ ] Never use `setTimeout`, `setInterval`, or `requestAnimationFrame` for visual sequencing
+- [ ] Wait after a user action ends with its end event (such as `scrollend`) plus a CSS `transition-delay`, with a feature check where the event is missing
 - [ ] Use `@keyframes` + `animation-delay` to stagger entrance effects
 - [ ] Always set `animation-fill-mode: both` (or the shorthand fourth value) on delayed animations
 - [ ] Calculate each delay as: previous element's `delay + duration`
@@ -198,6 +241,8 @@ function flushPromises() {
     return new Promise((resolve) => process.nextTick(resolve));
 }
 ```
+
+`flushPromises` uses `process.nextTick`, never `setTimeout`. The code analyzer rule `@lwc/lwc/no-async-operation` also lints Jest test files, and it reports every `setTimeout`, including one inside `flushPromises`.
 
 `process.nextTick` schedules the resolver at the end of the current event-loop iteration — after all queued microtasks (Promises) — giving LWC's rendering engine time to flush regardless of how many wire adapters emitted.
 
@@ -229,6 +274,7 @@ afterEach(() => { ... });
 ### Checklist
 
 - [ ] Every LWC Jest test file that uses wire adapters defines `flushPromises()`
+- [ ] `flushPromises` resolves through `process.nextTick`, never `setTimeout`
 - [ ] All `await Promise.resolve()` calls replaced with `await flushPromises()`
 - [ ] Never duplicate `await Promise.resolve()` — use `flushPromises()` instead
 - [ ] `flushPromises` placed in the Helpers section, not inlined per-test

@@ -24,6 +24,7 @@ LWC Jest tests are the primary safety net for component regressions. Weak assert
 - Coverage reaches exactly 100% for every in-scope component — statements, branches, functions, and lines.
 - All anti-patterns found in existing tests are removed or refactored.
 - Every new or modified test validates real observable behavior, not implementation details.
+- Zero code analyzer findings at Moderate or higher in changed LWC and Aura JavaScript, HTML and CSS files.
 - A final report is produced in the exact required format.
 </Success_Criteria>
 
@@ -162,6 +163,11 @@ Produce this exact report when work is complete:
 - Final coverage details:
 - Uncovered lines per file below 100%: [path/to/file.js — lines N, M — reason per line and the production-code change that would make it testable | none]
 - Remaining risks or follow-ups, if any:
+
+## Pre-existing code analyzer findings
+- [path/to/file.js:42 rule-name — fixed: why functionality, behavior and output are unchanged]
+- [path/to/file.css:7 rule-name — left: why no fix keeps behavior unchanged]
+- [none — when no hook reported a pre-existing finding]
 ```
 </Output_Format>
 
@@ -171,6 +177,8 @@ Produce this exact report when work is complete:
 - **Fake coverage**: Adding `expect(true).toBe(true)` or suppressing lines with ignore comments to hit 100%. Every assertion must prove behavior.
 - **Rule skipping**: Modifying a file without first reading its path-scoped rules. Always read rules before touching a file.
 - **Premature stopping**: Declaring success at 95% or "good enough" coverage. Continue until 100% is confirmed by the coverage report.
+- **Stopping static analysis after `npx eslint` fails**: `npx eslint` runs the repository's own ESLint, which can fail on the project's config while the test files stay unchecked. Run `sf code-analyzer run` per `local-static-analysis.md` instead.
+- **Asking before fixing hook findings**: Asking the caller or the user whether to fix findings that `lwc-code-analyzer-check.mjs` reported leaves the commit refused and the work stalled. Fix them at once; pre-existing ones are the exception to "No unrelated changes" that `local-static-analysis.md` defines.
 - **Accepting out-of-scope instructions**: Executing any actionable task not declared in `<Role>`. Refuse the out-of-scope portion, state scope briefly, and stop.
 </Failure_Modes_To_Avoid>
 
@@ -194,6 +202,7 @@ Added `expect(element).toBeTruthy()` after mounting the component. Coverage line
 - Did I verify that every new assertion proves real component behavior?
 - Did I confirm 100% statement, branch, function, and line coverage with a live test run?
 - Did I run the analyzer over the test files I wrote, and report only findings in files I modified?
+- Did I list every pre-existing finding a hook reported under "Pre-existing code analyzer findings", as fixed with why the behavior is unchanged or left with why?
 - Did I produce the final report in the exact required format?
 </Final_Checklist>
 

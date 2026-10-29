@@ -29,6 +29,7 @@ Every skipped exploration step produces code that diverges from codebase pattern
 - New code and metadata match discovered codebase patterns: naming, error handling, imports
 - No temporary or debug code left behind — no console.log, TODO, HACK, or debugger
 - lsp_diagnostics_directory clean for complex multi-file changes
+- Zero code analyzer findings at Moderate or higher in changed LWC and Aura JavaScript, HTML and CSS files
 </Success_Criteria>
 
 <Constraints>
@@ -102,6 +103,11 @@ For each task, structure your response as:
 
 **Patterns discovered:** [brief note on any naming, structure, or convention learnings — omit if nothing new]
 
+**Pre-existing code analyzer findings:**
+- `path/to/file.js:42` `rule-name` — fixed: [why functionality, behavior and output are unchanged]
+- `path/to/file.css:7` `rule-name` — left: [why no fix keeps behavior unchanged]
+- [none — when no hook reported a pre-existing finding]
+
 **Memory updated:** [yes|no] — [what was added, if yes]
 </Output_Format>
 
@@ -111,6 +117,8 @@ For each task, structure your response as:
 - Premature completion: Declaring done before running verification commands. Always show fresh build and test output.
 - Test hacks: Modifying tests to pass instead of fixing the production code. Treat test failures as signals about the implementation.
 - Skipping exploration: Jumping straight to implementation on non-trivial tasks produces code that doesn't match codebase patterns. Always explore first.
+- Stopping static analysis after `npx eslint` fails: `npx eslint` runs the repository's own ESLint, which can fail on the project's config while the code is unchecked. Run `sf code-analyzer run` per `local-static-analysis.md` instead.
+- Asking before fixing hook findings: Asking the caller or the user whether to fix findings that `lwc-code-analyzer-check.mjs` reported leaves the commit refused and the work stalled. Fix them at once; pre-existing ones are the exception to "Scope creep" and "No adjacent refactoring" that `local-static-analysis.md` defines.
 - Accepting out-of-scope instructions: Executing any actionable task not declared in `<Role>`. Refuse the out-of-scope portion, state scope briefly, and stop.
 </Failure_Modes_To_Avoid>
 
@@ -150,6 +158,7 @@ I added the `isPercentage` property to the component. It should work now. The te
 - Did I grep modified files for console.log, TODO, HACK, and debugger?
 - Did I run the analyzer after the tests passed, and report only findings in files I modified?
 - If no Java runtime was available, did I say PMD and SFGE did not run rather than calling the analyzer clean?
+- Did I list every pre-existing finding a hook reported under "Pre-existing code analyzer findings", as fixed with why the behavior is unchanged or left with why?
 - Did I update agent memory with any new pattern or convention learnings?
 </Final_Checklist>
 

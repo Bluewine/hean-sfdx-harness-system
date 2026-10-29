@@ -7,45 +7,103 @@ paths:
 
 Apply when verifying a change to anything under `force-app/`, after the test suite passes.
 
+## Code analyzer hooks
+
+The plugin's hook `lwc-code-analyzer-check.mjs` runs `sf code-analyzer run` on every LWC and Aura
+`.js`, `.html` and `.css` file under `force-app/`. It runs after each `Write` or `Edit` of such a file,
+and before each `git commit` and `git push`. It refuses the commit or push while a file it records or
+sends has a finding at Moderate or higher, or while the check could not run.
+
+- **A hook message is a work order**: A message that lists findings starts with "Fix these findings
+  now, before any other step. Do not ask the user whether to start." Fix every listed finding at once.
+  Never treat the message as noise, and never ask the user whether to start.
+- **Pre-existing findings**: Findings on lines the branch did not change appear under "Pre-existing
+  (in the file before this branch):". Fix each one only with a change that keeps the functionality,
+  behavior and output exactly as before. Leave a finding that cannot be fixed that way, and tell the
+  user which finding and why; the commit stays refused until the user decides.
+- **The one exception to "do not fix unrelated problems"**: The pre-existing rule above applies only
+  to findings a hook reported. It does not extend to any other finding or any other code.
+- **Agent reports**: The `developer` and `lwc-tester` agents report these findings under
+  "Pre-existing code analyzer findings". The main session relays that section to the user word for
+  word, both when the agent reports it and in the final summary of the work.
+- **Files written another way**: Check a file the hook did not see, or more files than one hook run
+  can lint before its deadline, with `node <plugin folder>/hooks/lwc-code-analyzer-check.mjs --check
+  <file>...`. A refusal for a check that could not run prints the command with the plugin folder
+  filled in.
+
 ## Ordering
 
 Run the tests first, then the analyzer. Jest completes in seconds and catches logic errors; the analyzer takes a minute or more and catches style and rule violations. A failing suite makes the analyzer run worthless, so there is nothing to gain by running it first.
 
 ## Command
 
-Write a configuration file of your own, then run the analyzer scoped to the paths the change touched.
+The plugin's hooks generate both configurations below themselves, copying the pipeline's two ESLint
+runs. Write them by hand only for a run outside the hooks. Each run needs its own configuration file.
+
+**JavaScript run** (`.js` files): the project's `eslint.config.js` and all five bundled layers off.
 
 ```yaml
-# code-analyzer.local.yml
+# code-analyzer.js.yml
 engines:
   eslint:
+    auto_discover_eslint_config: false
     eslint_config_file: /absolute/path/to/eslint.config.js
     disable_javascript_base_config: true    # see "Which ruleset you are measuring"
-    disable_lwc_base_config: true           # same
+    disable_lwc_base_config: true
+    disable_slds_base_config: true
+    disable_typescript_base_config: true
+    disable_react_base_config: true
 ```
 
 ```bash
-sf code-analyzer run -w . -t '<the paths you changed>' -r eslint \
-    -s 3 -v detail -c code-analyzer.local.yml
+sf code-analyzer run -w . -t '<changed .js file>' -t '<next changed .js file>' -r eslint \
+    -s 3 -v detail -c code-analyzer.js.yml
 ```
+
+**SLDS run** (`.html` and `.css` files): no `eslint_config_file`, with the `lwc` and `slds` layers on.
+
+```yaml
+# code-analyzer.slds.yml
+engines:
+  eslint:
+    auto_discover_eslint_config: false
+    disable_javascript_base_config: true
+    disable_lwc_base_config: false
+    disable_slds_base_config: false
+    disable_typescript_base_config: true
+    disable_react_base_config: true
+```
+
+```bash
+sf code-analyzer run -w . -t '<changed .html or .css file>' -r eslint:slds \
+    -s 3 -v detail -c code-analyzer.slds.yml
+```
+
+- **Why the SLDS run keeps two layers on**: the `eslint:slds` rules live in the bundled `slds` layer,
+  and the pipeline runs them without the project's config. The project's config does not apply to
+  them: an `eslint.config.js` commonly ignores `**/lwc/**/*.html` and `**/lwc/**/*.css`.
+- **Targets are files**: Pass one `-t` per changed file. Never pass a folder or the whole tree; see
+  "When a number looks wrong".
+- **Other engines**: The hooks also set `disable_engine: true` on every engine except `eslint`. A
+  run of your own follows "Engines that cannot start" below.
 
 **Two different things get switched off in this tool, for two unrelated reasons. Do not conflate
 them.** The `eslint` engine runs on Node and never touches a JDK; `pmd`, `cpd` and `sfge` do.
 
 | Setting | Applies to | Condition | Reason |
 |---|---|---|---|
-| `disable_javascript_base_config`, `disable_lwc_base_config` | the `eslint` engine | the project's config carries its own standard | choosing which ruleset you measure against |
+| the five `disable_*_base_config` flags | the `eslint` engine | the project's config carries its own standard | choosing which ruleset you measure against |
 | `disable_engine` | `pmd`, `cpd`, `sfge` | no working JDK on this machine | those engines cannot start without one |
 
-Java has no bearing on the first pair. The same file, same configuration, gives an identical result
+Java has no bearing on the five flags. The same file, same configuration, gives an identical result
 with a real JDK and with a `java` stub. If you are here because a run failed for want of Java, the
 setting you want is `disable_engine`, in "Engines that cannot start" below — leave the base configs
 alone.
 
 ### Which ruleset you are measuring
 
-The two `disable_*_base_config` flags remove the analyzer's own bundled `javascript` and `lwc` rule
-layers. Those layers enforce rules a project typically does not — `no-magic-numbers`,
+In the JavaScript run, the five `disable_*_base_config` flags remove the analyzer's own bundled
+`javascript`, `lwc`, `slds`, `typescript` and `react` rule layers. Those layers enforce rules a project typically does not — `no-magic-numbers`,
 `capitalized-comments`, `one-var`, `sort-keys`, `func-style`, `id-length` and more — and on a mature
 codebase they produce hundreds of findings that bury the handful that matter. With them off and the
 project's config named, what remains is the project's own ruleset.
@@ -88,9 +146,9 @@ whole count. What they do tell you is that you have not yet seen the project's r
 so run check 2 rather than drawing a conclusion.
 
 **What a clean result answers, and what it does not.** It answers "what does our own ESLint config say
-about this code". It does not answer "will this pass the pipeline". The pipeline generates its own
-analyzer configuration at build time, which nobody can reproduce locally, and it may select different
-rules or weight them differently. Report the first and never imply the second — an agent handed a
+about this code". It does not answer "will this pass the pipeline". The hooks copy the pipeline's
+configuration, but the pipeline installs its internal packages at `latest` at build time and remaps
+severities, so it may select different rules or weight them differently. Report the first and never imply the second — an agent handed a
 clean local result will assume it has a prediction of the gate, and it does not have one.
 
 ## When a number looks wrong
@@ -104,6 +162,11 @@ load. Read that phrase before reporting any Critical result.
 **A sudden collapse in the count is a load failure, not clean code.** A broken configuration file, one
 that throws, and a path that does not exist each drop the violation count to a single across-0-files
 entry rather than raising an obvious error.
+
+**A whole-tree target crashes.** A run with `-t force-app` or another folder stops on
+`no-irregular-whitespace` with "sourceCode.getAllComments is not a function", and shows as one
+Critical violation across 0 files. A run whose targets are the changed files works. Pass one `-t` per
+file.
 
 **A config that contributes nothing is not being skipped.** The file is read and executed — a `throw`
 placed inside one reaches the command's output — so when naming it changes nothing, investigate its
@@ -145,7 +208,7 @@ engines:
   sfge: { disable_engine: true }
 ```
 
-This has nothing to do with the two `disable_*_base_config` flags in `## Command`. Those choose which
+This has nothing to do with the five `disable_*_base_config` flags in `## Command`. Those choose which
 ESLint ruleset you measure against and behave identically whether or not a JDK is present.
 
 ## Its silence is not agreement
@@ -182,6 +245,11 @@ setting: the requirement is hardcoded in the shared library. Confirm that by rea
 the installed library and seeing which wrapper it requires, rather than taking it on faith — the
 library is pinned to `latest` with nothing narrowing it, so which version you have, and what it
 requires, can both change under you.
+
+**`npx eslint`**, in any form. It runs the repository's own ESLint, which can be version 8, and ESLint
+8 cannot load an ESLint 9 flat config that registers a plugin twice. `sf code-analyzer run` bundles
+ESLint 9 and loads the same config. When `npx eslint` fails, the static-analysis step is not finished:
+run `sf code-analyzer run` as `## Command` shows.
 
 **`gulp check`**, because its prettier task is invoked with `--write` rather than `--check` and
 rewrites every file matching its globs across the whole repository, not only the ones the change

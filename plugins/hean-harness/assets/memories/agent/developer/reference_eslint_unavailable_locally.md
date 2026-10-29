@@ -1,6 +1,6 @@
 ---
 name: eslint-unavailable-locally
-description: Running eslint directly fails for more than one reason, so diagnose from the error; sf code-analyzer run needs no Java for the eslint engine, and a project-accurate result needs the bundled rule layers off plus a positive control before any zero is believed
+description: npx eslint is never used, because the repository's own ESLint can fail on the project's config; sf code-analyzer run needs no Java for the eslint engine, and a project-accurate result needs the bundled rule layers off plus a positive control before any zero is believed
 metadata:
   type: reference
 ---
@@ -8,14 +8,14 @@ metadata:
 > Applies to internal Salesforce projects, where this is the standard way of working.
 > The names below are examples of that shape, not of one project.
 
-**Running `npx eslint <file>` directly fails. Treat that as the symptom and read the error, because
-the cause differs between checkouts.** Two have been seen. The project's `eslint.config.js` extends a
-configuration published only to an internal registry, and the module is absent — the error names the
-module it cannot find. Or the merged flat config declares the same plugin twice, and the error is a
-`ConfigError` about redefining a plugin. They need different responses, and neither is predictable
-from the repository alone.
+**Do not use `npx eslint` at all.** It runs the repository's own ESLint, which can be version 8, and
+ESLint 8 cannot load an ESLint 9 flat config that registers a plugin twice. `sf code-analyzer run`
+bundles ESLint 9 and loads the same config. The rule at `.claude/rules/local-static-analysis.md` lists
+`npx eslint` under "Commands not to use" and owns the command to run instead.
 
-When the internal module is the one missing, install it without touching the manifest:
+`sf code-analyzer run` still loads the project's `eslint.config.js`. When that config extends a
+configuration published only to an internal registry and the module is absent, the run reports the
+module it cannot find. Install it without touching the manifest:
 
 ```
 npm install --no-save @store-sfdcbt-net/CICD_gulp-code-analyzer-v2@latest
