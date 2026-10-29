@@ -9,6 +9,19 @@
  *                             that could not run blocks with a "!! " reason;
  *                             a clean result records the file's git object id
  *                             and prints nothing.
+ *   PreToolUse, Bash          a `git commit` or `git push` whose recorded or
+ *                             pushed in-scope files are not all recorded clean
+ *                             is linted; findings, or a check that could not
+ *                             run, deny it. A commit takes its files from the
+ *                             index it records (scripts/lib/commit-index.mjs);
+ *                             a push takes the files of the pushed commits on
+ *                             no remote-tracking branch, at their content in
+ *                             each pushed tip. Content that differs from the
+ *                             working copy cannot be linted and is refused.
+ *                             Any command that is not a commit or push exits
+ *                             before anything loads: the handler has
+ *                             "onFailure": "block", so a crash there would
+ *                             refuse every git command.
  *   --check <file>...         lints and records files from the command line,
  *                             for files not written through Write or Edit or
  *                             too many for one gate run. Exit 0 when every
@@ -30,8 +43,9 @@ const STARTED = Date.now();
 const LIB = join(dirname(dirname(fileURLToPath(import.meta.url))), 'scripts', 'lib', 'lwc-code-analyzer.mjs');
 const CHECK = `node "${fileURLToPath(import.meta.url)}" --check <file>...`;
 
-/** Milliseconds from start to the checker deadline: 15 s under the 90 s PostToolUse timeout; 110 s for --check, under Bash's default 120 s. */
+/** Milliseconds from start to the checker deadline: 15 s under the 90 s PostToolUse timeout; 20 s under the 150 s PreToolUse timeout; 110 s for --check, under Bash's default 120 s. */
 const POST_DEADLINE_MS = 75000;
+const PRE_DEADLINE_MS = 130000;
 const CHECK_DEADLINE_MS = 110000;
 
 /** The deadline as milliseconds since the epoch; HEAN_LWC_ANALYZER_DEADLINE_MS replaces the default (tests only). */
@@ -104,6 +118,130 @@ async function lintWritten(input, where) {
   if (unhashed.length) context(`!! ${where.rel} is clean, but git could not hash it, so the clean result was not recorded.`);
 }
 
+/** Whether the command text can hold a git commit or push; read before anything loads. */
+const mayGate = command => command.includes('git') && (command.includes('commit') || command.includes('push'));
+
+const fileList = files => files.map(f => `    ${f}`).join('\n');
+
+const UNSTAGED = files =>
+  '!! The code analyzer check reads the working copy, and the staged content of these files differs from it ' +
+  'and has not been checked:\n\n' + fileList(files) + '\n\nTo have it checked, stage the whole file (`git add <file>`), then retry this commit.';
+
+const UNPUSHABLE = files =>
+  '!! The code analyzer check reads the working copy, and the pushed content of these files differs from it ' +
+  'and has not been checked:\n\n' + fileList(files) + '\n\nCommit or stash the change, so the pushed content can be ' +
+  'checked, or check out the branch being pushed, then retry this push.';
+
+const NOT_NAMED = '!! The code analyzer check did not run for this commit: the command stages files its text does not name ' +
+  '(a variable, a glob, a pathspec file or picked hunks). Stage the files in their own Bash call, then commit.';
+
+/** The deny text for a check that could not run; a passed deadline names --check so the files can be checked in parts. */
+function couldNotRunRefusal(lib, reason, what) {
+  const next = /deadline/.test(reason)
+    ? `The files may be too many for one run. Check them in parts with \`${CHECK}\`, which records each clean file, then retry this ${what}.`
+    : `After the fix, retry this ${what}, or check the files first with \`${CHECK}\`.`;
+  return `${lib.couldNotRunText(reason)}\n\n${next}`;
+}
+
+/**
+ * Judges the files a commit records or a push sends, items being
+ * { rel, oid } with oid the content committed or pushed: { deny } or null.
+ * A recorded file passes; an unrecorded one whose working copy holds the same
+ * content is linted, with the others, in one run; any other is refused.
+ */
+async function judge(lib, tryGit, root, items, what, sessionId) {
+  if (!items.length) return null;
+  const key = lib.recordKey(root, sessionId);
+  const toRun = new Set(), unlike = new Set();
+  for (const { rel, oid } of items) {
+    if (lib.isRecordedClean(root, rel, oid, key)) continue;
+    if (tryGit(root, 'hash-object', '--', rel) === oid) toRun.add(rel);
+    else unlike.add(rel);
+  }
+  if (unlike.size) return { deny: (what === 'commit' ? UNSTAGED : UNPUSHABLE)([...unlike].sort()) };
+  if (!toRun.size) return null;
+  const files = [...toRun].sort();
+  const result = await lib.analyze(root, files, { deadline: deadlineFrom(PRE_DEADLINE_MS), sessionId });
+  if (result.kind === 'findings') return { deny: lib.findingsText(lib.labelFindings(root, result.findings)) };
+  if (result.kind !== 'clean') return { deny: couldNotRunRefusal(lib, result.reason, what) };
+  const after = lib.recordKey(root, sessionId);
+  for (const { rel, oid } of items) if (toRun.has(rel)) lib.recordClean(root, rel, oid, after);
+  return null;
+}
+
+/**
+ * PreToolUse: { deny } with the refusal text, { warn } with "!!" lines when a
+ * commit or push could not be judged, or null. Exceptions propagate; the
+ * caller refuses on them, so the gate fails closed.
+ */
+export async function gateRefusal(command, sessionCwd, sessionId) {
+  if (!mayGate(command)) return null;
+  const [lib, { commitsIn, commitIndex }, { gitCommands, repoOf, tryGit }, { pushTargets }, { operationInProgress }, { isSfdxRepo }] =
+    await Promise.all([
+      import(LIB),
+      import('../scripts/lib/commit-index.mjs'),
+      import('../scripts/lib/command-line.mjs'),
+      import('./git-identity-guard.mjs'),
+      import('../scripts/lib/manifest-check.mjs'),
+      import('../scripts/lib/paths.mjs')
+    ]);
+  const warnings = [];
+  const applies = root => {
+    if (!isSfdxRepo(root)) return false;
+    const scope = lib.applies(root);
+    if (!scope.ok && scope.note) warnings.push(scope.note);
+    return scope.ok;
+  };
+  const lines = text => (text ?? '').split('\n').filter(Boolean);
+
+  for (const { root, earlier, own, byPath, unknown } of commitsIn(command, sessionCwd)) {
+    if (!isSfdxRepo(root) || operationInProgress(root) || !applies(root)) continue;
+    if (unknown) { warnings.push(NOT_NAMED); continue; }
+    const index = commitIndex(root, earlier, own, byPath);
+    let items;
+    try {
+      const env = { ...process.env, GIT_INDEX_FILE: index.file };
+      const names = tryGit(root, '-c', 'core.quotePath=false', 'diff', '--cached', '--name-only', '--diff-filter=AMR', { env });
+      if (names === null) throw new Error('git could not list the files this commit records');
+      items = lines(names).filter(rel => lib.IN_SCOPE.test(rel)).map(rel => {
+        const oid = tryGit(root, 'rev-parse', `:${rel}`, { env });
+        if (!oid) throw new Error(`git could not read ${rel} from the index this commit records`);
+        return { rel, oid };
+      });
+    } finally {
+      index.cleanup();
+    }
+    const r = await judge(lib, tryGit, root, items, 'commit', sessionId);
+    if (r) return r;
+  }
+
+  for (const c of gitCommands(command, sessionCwd)) {
+    if (c.sub !== 'push') continue;
+    const target = pushTargets(c.args);
+    if (!target.sends) continue;
+    const root = repoOf(c, sessionCwd);
+    if (!root || !applies(root)) continue;
+    const tips = new Set();
+    for (const rev of target.revs) {
+      // --branches and --tags name every branch or tag; any other revision names one commit
+      const out = rev.startsWith('--') ? tryGit(root, 'rev-parse', rev) : tryGit(root, 'rev-parse', '--verify', '-q', `${rev}^{commit}`);
+      for (const tip of lines(out)) tips.add(tip);
+    }
+    const items = new Map();
+    for (const tip of tips) {
+      const changed = tryGit(root, '-c', 'core.quotePath=false', 'log', '--name-only', '--diff-filter=AMR', '--format=', tip, '--not', '--remotes');
+      if (changed === null) throw new Error(`git could not list the files the pushed commits at ${tip} change`);
+      for (const rel of new Set(lines(changed).filter(f => lib.IN_SCOPE.test(f)))) {
+        const oid = tryGit(root, 'rev-parse', '--verify', '-q', `${tip}:${rel}`);
+        if (oid) items.set(`${rel}\0${oid}`, { rel, oid });   // a file deleted again by the tip is not pushed
+      }
+    }
+    const r = await judge(lib, tryGit, root, [...items.values()], 'push', sessionId);
+    if (r) return r;
+  }
+  return warnings.length ? { warn: warnings.join('\n') } : null;
+}
+
 /** --check: lint and record the given files, grouped by repository. */
 async function checkFiles(targets) {
   if (!targets.length) {
@@ -171,5 +309,14 @@ if (isMain) {
   let input = {};
   try { input = JSON.parse(readFileSync(0, 'utf8')); } catch { process.exit(0); }
   if (input.hook_event_name === 'PostToolUse') await afterWrite(input);
+  if (input.hook_event_name === 'PreToolUse' && input.tool_name === 'Bash') {
+    const command = input?.tool_input?.command ?? '';
+    if (!mayGate(command)) process.exit(0);
+    let r;
+    try { r = await gateRefusal(command, input.cwd || process.cwd(), input.session_id || 'unknown'); }
+    catch (e) { r = { deny: crashText(e) }; }
+    if (r?.deny) emit({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: r.deny } });
+    if (r?.warn) emit({ systemMessage: r.warn, hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: r.warn } });
+  }
   process.exit(0);
 }

@@ -13,7 +13,7 @@
  */
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, chmodSync, realpathSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, chmodSync, realpathSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -25,7 +25,8 @@ const sandbox = realpathSync(mkdtempSync(join(tmpdir(), 'lwc-code-analyzer-check
 const BIN = join(sandbox, 'bin');
 const CALLS = join(sandbox, 'calls.log');
 mkdirSync(BIN);
-// FAKE_SF_MODE: unset = JSON like the real analyzer; 'broken' = one violation attached to no file.
+// FAKE_SF_MODE: unset = JSON like the real analyzer; 'broken' = one violation attached to no file;
+// 'slow' = every code-analyzer call waits 5 seconds first.
 const FAKE_SF = `#!/usr/bin/env node
 const fs = require('fs');
 const path = require('path');
@@ -39,6 +40,7 @@ if (args[0] === 'plugins') {
   process.exit(0);
 }
 if (args[0] !== 'code-analyzer') { console.error('unexpected ' + args.join(' ')); process.exit(1); }
+if (mode === 'slow') Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5000);
 const slds = arg('-r') === 'eslint:slds';
 const ofKind = t => slds ? /\\.(html|css)$/.test(t) : /\\.js$/.test(t);
 const targets = all('-t');
@@ -112,6 +114,21 @@ function afterWrite(repo, rel, { session = `session-${++sessions}`, tool = 'Writ
     tool_input: { file_path: join(repo, rel), content: '' } }) });
   return out ? JSON.parse(out) : {};
 }
+
+/** Run the hook as Claude Code does before a Bash call; the parsed output, or {} when silent. */
+function gate(repo, command, { session = `session-${++sessions}`, hook = HOOK } = {}) {
+  const out = execFileSync('node', [hook], { env, encoding: 'utf8', input: JSON.stringify({
+    hook_event_name: 'PreToolUse', tool_name: 'Bash', session_id: session, cwd: repo, tool_input: { command } }) });
+  return out ? JSON.parse(out) : {};
+}
+
+/** The gate's refusal text, or null when allowed. */
+function refusal(repo, command, options) {
+  const o = gate(repo, command, options).hookSpecificOutput;
+  return o?.permissionDecision === 'deny' ? o.permissionDecisionReason : null;
+}
+
+const runs = () => calls().filter(c => c.args[0] === 'code-analyzer' && c.args[1] === 'run').length;
 
 let pass = 0, fail = 0;
 const check = (label, ok, detail = '') => {
@@ -242,6 +259,139 @@ console.log('--check mode');
   check('--check refuses an out-of-scope file', meta.status === 1 && meta.stderr.length > 0, meta.stderr);
   const none = spawnSync('node', [HOOK, '--check'], { env, encoding: 'utf8', cwd: repo });
   check('--check with no file exits 1', none.status === 1);
+}
+
+console.log('Commit gate');
+const g = makeRepo('gate');
+{
+  write(g, LWC_JS, TIMER);
+  git(g, 'add', '--', LWC_JS);
+  const r = refusal(g, 'git commit -m x');
+  check('a staged file with a finding is refused', r?.startsWith(WORK_ORDER), JSON.stringify(r));
+  has('the refusal names the file, line and rule', r, `${LWC_JS}:4`, '@lwc/lwc/no-async-operation');
+}
+{
+  write(g, LWC_JS, CLEAN_JS);
+  const pre = spawnSync('node', [HOOK, '--check', LWC_JS], { env, encoding: 'utf8', cwd: g });
+  check('--check records the clean file first', pre.status === 0, pre.stderr);
+  git(g, 'add', '--', LWC_JS);
+  const before = runs();
+  const out = gate(g, 'git commit -m x');
+  check('a recorded clean file is allowed', JSON.stringify(out) === '{}', JSON.stringify(out));
+  check('a recorded clean file runs no analyzer', runs() === before);
+  git(g, 'commit', '-q', '-m', 'clean foo');
+}
+{
+  write(g, LWC_JS, CLEAN_JS + '// v3\n');
+  const out = gate(g, `git add ${LWC_JS} && git commit -m x`);
+  check('same-call staging of an unrecorded clean file is allowed', JSON.stringify(out) === '{}', JSON.stringify(out));
+  check('same-call staging records the clean file', cleanRecord(g)[LWC_JS]?.oid === git(g, 'hash-object', '--', LWC_JS), JSON.stringify(cleanRecord(g)));
+}
+{
+  write(g, LWC_JS, CLEAN_JS + '// staged\n');
+  git(g, 'add', '--', LWC_JS);
+  write(g, LWC_JS, CLEAN_JS + '// working\n');
+  has('staged content unlike the working copy is refused', refusal(g, 'git commit -m x'), LWC_JS, 'stage the whole file');
+  git(g, 'checkout', '--', '.');
+  git(g, 'reset', '-q');
+  git(g, 'checkout', '--', '.');
+}
+{
+  write(g, LWC_META, '<LightningComponentBundle/>\n');
+  write(g, 'README.md', '# x\n');
+  git(g, 'add', '--', LWC_META, 'README.md');
+  const before = calls().length;
+  const out = gate(g, 'git commit -m x');
+  check('a commit of only out-of-scope files is allowed', JSON.stringify(out) === '{}', JSON.stringify(out));
+  check('a commit of only out-of-scope files calls no sf', calls().length === before);
+  git(g, 'commit', '-q', '-m', 'meta');
+}
+{
+  write(g, LWC_CSS, '.a {\n  color: var(--slds-g-color-surface-1);\n}\n');
+  git(g, 'add', '--', LWC_CSS);
+  has('a staged CSS file with a Moderate SLDS finding is refused', refusal(g, 'git commit -m x'),
+    WORK_ORDER, `${LWC_CSS}:2`, '@salesforce-ux/slds/no-slds-var-without-fallback');
+  git(g, 'reset', '-q');
+  rmSync(join(g, LWC_CSS));
+}
+{
+  git(g, 'rm', '-q', '--', LWC_JS);
+  const out = gate(g, 'git commit -m x');
+  check('a commit that deletes the file is allowed', JSON.stringify(out) === '{}', JSON.stringify(out));
+  git(g, 'reset', '-q', '--hard');
+}
+{
+  env.HEAN_LWC_ANALYZER_DEADLINE_MS = '1000';
+  env.FAKE_SF_MODE = 'slow';
+  write(g, LWC_JS, CLEAN_JS + '// slow\n');
+  git(g, 'add', '--', LWC_JS);
+  const r = refusal(g, 'git commit -m x');
+  delete env.HEAN_LWC_ANALYZER_DEADLINE_MS;
+  delete env.FAKE_SF_MODE;
+  has('a passed deadline refuses as could not run', r, 'could not run', 'deadline');
+  has('a passed deadline names the --check command', r, '--check');
+  git(g, 'reset', '-q', '--hard');
+}
+{
+  write(g, LWC_JS, TIMER);
+  git(g, 'add', '--', LWC_JS);
+  writeFileSync(join(g, '.git', 'MERGE_HEAD'), git(g, 'rev-parse', 'HEAD') + '\n');
+  const out = gate(g, 'git commit -m x');
+  rmSync(join(g, '.git', 'MERGE_HEAD'));
+  check('a commit during a merge is allowed', JSON.stringify(out) === '{}', JSON.stringify(out));
+  git(g, 'reset', '-q', '--hard');
+}
+
+console.log('Commands that are not a commit or push');
+{
+  const before = calls().length;
+  const out = gate(g, 'git status');
+  check('git status is silent', JSON.stringify(out) === '{}', JSON.stringify(out));
+  check('git status calls no sf', calls().length === before);
+  const copy = join(sandbox, 'copy');
+  mkdirSync(join(copy, 'hooks'), { recursive: true });
+  mkdirSync(join(copy, 'scripts', 'lib'), { recursive: true });
+  copyFileSync(HOOK, join(copy, 'hooks', 'lwc-code-analyzer-check.mjs'));
+  writeFileSync(join(copy, 'scripts', 'lib', 'lwc-code-analyzer.mjs'), "throw new Error('loaded');\n");
+  const hook = join(copy, 'hooks', 'lwc-code-analyzer-check.mjs');
+  const run = spawnSync('node', [hook], { env, encoding: 'utf8', input: JSON.stringify({
+    hook_event_name: 'PreToolUse', tool_name: 'Bash', session_id: 's', cwd: g, tool_input: { command: 'git status' } }) });
+  check('git status exits 0 when the library throws on load', run.status === 0, run.stderr);
+  check('git status prints nothing when the library throws on load', run.stdout === '', run.stdout);
+  write(g, LWC_JS, TIMER);
+  git(g, 'add', '--', LWC_JS);
+  has('a commit is refused when the library throws on load', refusal(g, 'git commit -m x', { hook }), 'could not run');
+  git(g, 'reset', '-q', '--hard');
+}
+
+console.log('Push gate');
+{
+  const p = makeRepo('push');
+  const remote = join(sandbox, 'push-remote.git');
+  execFileSync('git', ['init', '-q', '--bare', remote], { env });
+  git(p, 'remote', 'add', 'origin', remote);
+  git(p, 'push', '-q', 'origin', 'main');
+  write(p, LWC_JS, TIMER);
+  git(p, 'add', '--', LWC_JS);
+  git(p, 'commit', '-q', '-m', 'timer');
+  const r = refusal(p, 'git push');
+  check('a pushed commit with an unrecorded finding is refused', r?.startsWith(WORK_ORDER), JSON.stringify(r));
+  has('the push refusal names the file and rule', r, `${LWC_JS}:4`, '@lwc/lwc/no-async-operation');
+  const before = calls().length;
+  const dry = gate(p, 'git push --dry-run');
+  check('git push --dry-run is allowed', JSON.stringify(dry) === '{}', JSON.stringify(dry));
+  check('git push --dry-run calls no sf', calls().length === before);
+
+  git(p, 'checkout', '-q', '-b', 'b');
+  git(p, 'checkout', '-q', '-b', 'a');
+  write(p, LWC_JS, CLEAN_JS);
+  const pre = spawnSync('node', [HOOK, '--check', LWC_JS], { env, encoding: 'utf8', cwd: p });
+  check('--check records the clean copy on branch a', pre.status === 0, pre.stderr);
+  git(p, 'add', '--', LWC_JS);
+  git(p, 'commit', '-q', '-m', 'clean on a');
+  check('a push of branch a, clean and recorded, is allowed', refusal(p, 'git push origin a') === null);
+  check('a push of branch b from branch a is refused', refusal(p, 'git push origin b') !== null);
+  check('git push --all, which sends branch b, is refused', refusal(p, 'git push --all origin') !== null);
 }
 
 rmSync(sandbox, { recursive: true, force: true });

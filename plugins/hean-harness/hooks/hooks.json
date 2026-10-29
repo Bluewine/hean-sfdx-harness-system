@@ -96,6 +96,13 @@
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/naming-check.mjs\"",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "if": "Bash(git *)",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/lwc-code-analyzer-check.mjs\"",
+            "timeout": 150,
+            "onFailure": "block"
           }
         ]
       },
