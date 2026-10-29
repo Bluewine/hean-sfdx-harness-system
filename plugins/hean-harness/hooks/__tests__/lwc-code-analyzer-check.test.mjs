@@ -13,7 +13,7 @@
  */
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, chmodSync, realpathSync, copyFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, chmodSync, realpathSync, copyFileSync, cpSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -352,6 +352,8 @@ console.log('Commands that are not a commit or push');
   mkdirSync(join(copy, 'hooks'), { recursive: true });
   mkdirSync(join(copy, 'scripts', 'lib'), { recursive: true });
   copyFileSync(HOOK, join(copy, 'hooks', 'lwc-code-analyzer-check.mjs'));
+  copyFileSync(join(HOOKS, 'git-identity-guard.mjs'), join(copy, 'hooks', 'git-identity-guard.mjs'));
+  cpSync(join(dirname(HOOKS), 'scripts', 'lib'), join(copy, 'scripts', 'lib'), { recursive: true });
   writeFileSync(join(copy, 'scripts', 'lib', 'lwc-code-analyzer.mjs'), "throw new Error('loaded');\n");
   const hook = join(copy, 'hooks', 'lwc-code-analyzer-check.mjs');
   const run = spawnSync('node', [hook], { env, encoding: 'utf8', input: JSON.stringify({
@@ -360,8 +362,13 @@ console.log('Commands that are not a commit or push');
   check('git status prints nothing when the library throws on load', run.stdout === '', run.stdout);
   write(g, LWC_JS, TIMER);
   git(g, 'add', '--', LWC_JS);
-  has('a commit is refused when the library throws on load', refusal(g, 'git commit -m x', { hook }), 'could not run');
+  has('a commit is refused when the library throws on load', refusal(g, 'git commit -m x', { hook }), 'could not run', 'loaded');
   git(g, 'reset', '-q', '--hard');
+  const plainGate = makeRepo('plain-gate', { sfdx: false });
+  write(plainGate, LWC_JS, TIMER);
+  git(plainGate, 'add', '--', LWC_JS);
+  const plainOut = gate(plainGate, 'git commit -m x', { hook });
+  check('a commit without sfdx-project.json is silent when the library throws on load', JSON.stringify(plainOut) === '{}', JSON.stringify(plainOut));
 }
 
 console.log('Push gate');
@@ -390,8 +397,33 @@ console.log('Push gate');
   git(p, 'add', '--', LWC_JS);
   git(p, 'commit', '-q', '-m', 'clean on a');
   check('a push of branch a, clean and recorded, is allowed', refusal(p, 'git push origin a') === null);
-  check('a push of branch b from branch a is refused', refusal(p, 'git push origin b') !== null);
-  check('git push --all, which sends branch b, is refused', refusal(p, 'git push --all origin') !== null);
+  has('a push of branch b from branch a is refused', refusal(p, 'git push origin b'), 'the pushed content of these files differs', LWC_JS);
+  has('git push --all, which sends branch b, is refused', refusal(p, 'git push --all origin'), 'the pushed content of these files differs', LWC_JS);
+  has('a push whose refspec is a variable is refused', refusal(p, 'git push origin "$BRANCH"'), 'variable or a glob', '`$BRANCH`', 'Name the branch');
+}
+{
+  const m = makeRepo('merge');
+  const remote = join(sandbox, 'merge-remote.git');
+  execFileSync('git', ['init', '-q', '--bare', remote], { env });
+  git(m, 'remote', 'add', 'origin', remote);
+  write(m, LWC_JS, CLEAN_JS);
+  git(m, 'add', '--', LWC_JS);
+  git(m, 'commit', '-q', '-m', 'foo');
+  git(m, 'checkout', '-q', '-b', 'side');
+  write(m, LWC_JS, CLEAN_JS + '// side\n');
+  git(m, 'commit', '-q', '-am', 'side');
+  git(m, 'checkout', '-q', 'main');
+  write(m, LWC_JS, CLEAN_JS + '// main\n');
+  git(m, 'commit', '-q', '-am', 'main');
+  git(m, 'push', '-q', 'origin', 'main', 'side');
+  const merge = spawnSync('git', ['-C', m, 'merge', '-q', 'side'], { env, encoding: 'utf8' });
+  check('the merge stops on a conflict', merge.status !== 0, merge.stdout);
+  write(m, LWC_JS, TIMER);
+  git(m, 'add', '--', LWC_JS);
+  git(m, 'commit', '-q', '--no-edit');
+  const r = refusal(m, 'git push');
+  check('a pushed merge whose conflict resolution adds a finding is refused', r?.startsWith(WORK_ORDER), JSON.stringify(r));
+  has('the merge refusal names the file and rule', r, LWC_JS, '@lwc/lwc/no-async-operation');
 }
 
 rmSync(sandbox, { recursive: true, force: true });

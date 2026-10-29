@@ -132,6 +132,28 @@ const UNPUSHABLE = files =>
   'and has not been checked:\n\n' + fileList(files) + '\n\nCommit or stash the change, so the pushed content can be ' +
   'checked, or check out the branch being pushed, then retry this push.';
 
+const UNNAMED_PUSH = words =>
+  '!! The code analyzer check cannot tell what this push sends: its refspec uses a variable or a glob (' +
+  words.map(w => `\`${w}\``).join(', ') + '). Name the branch or commit literally, as in `git push origin my-branch`, then retry this push.';
+
+// git push options that take the next word as their value, as in hooks/git-identity-guard.mjs
+const PUSH_VALUE_OPTS = new Set(['--repo', '-o', '--push-option', '--receive-pack', '--exec']);
+
+/** The refspec words of a push whose source the text cannot name (a variable or glob); pushTargets would read them as HEAD. */
+function unnamedRefspecs(args, isLiteral) {
+  const pos = [];
+  let remoteGiven = false;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--') { pos.push(...args.slice(i + 1)); break; }
+    if (PUSH_VALUE_OPTS.has(a)) { if (a === '--repo') remoteGiven = true; i++; continue; }
+    if (a.startsWith('--repo=')) { remoteGiven = true; continue; }
+    if (!a.startsWith('-')) pos.push(a);
+  }
+  if (!remoteGiven) pos.shift();
+  return pos.filter(spec => !isLiteral(spec.replace(/^\+/, '').split(':')[0]));
+}
+
 const NOT_NAMED = '!! The code analyzer check did not run for this commit: the command stages files its text does not name ' +
   '(a variable, a glob, a pathspec file or picked hunks). Stage the files in their own Bash call, then commit.';
 
@@ -176,9 +198,9 @@ async function judge(lib, tryGit, root, items, what, sessionId) {
  */
 export async function gateRefusal(command, sessionCwd, sessionId) {
   if (!mayGate(command)) return null;
-  const [lib, { commitsIn, commitIndex }, { gitCommands, repoOf, tryGit }, { pushTargets }, { operationInProgress }, { isSfdxRepo }] =
+  // the library loads only for a repository with sfdx-project.json, so its failure never refuses a commit elsewhere
+  const [{ commitsIn, commitIndex }, { gitCommands, isLiteral, repoOf, tryGit }, { pushTargets }, { operationInProgress }, { isSfdxRepo }] =
     await Promise.all([
-      import(LIB),
       import('../scripts/lib/commit-index.mjs'),
       import('../scripts/lib/command-line.mjs'),
       import('./git-identity-guard.mjs'),
@@ -186,8 +208,10 @@ export async function gateRefusal(command, sessionCwd, sessionId) {
       import('../scripts/lib/paths.mjs')
     ]);
   const warnings = [];
-  const applies = root => {
+  let lib;
+  const applies = async root => {
     if (!isSfdxRepo(root)) return false;
+    lib ??= await import(LIB);
     const scope = lib.applies(root);
     if (!scope.ok && scope.note) warnings.push(scope.note);
     return scope.ok;
@@ -195,7 +219,7 @@ export async function gateRefusal(command, sessionCwd, sessionId) {
   const lines = text => (text ?? '').split('\n').filter(Boolean);
 
   for (const { root, earlier, own, byPath, unknown } of commitsIn(command, sessionCwd)) {
-    if (!isSfdxRepo(root) || operationInProgress(root) || !applies(root)) continue;
+    if (!isSfdxRepo(root) || operationInProgress(root) || !(await applies(root))) continue;
     if (unknown) { warnings.push(NOT_NAMED); continue; }
     const index = commitIndex(root, earlier, own, byPath);
     let items;
@@ -220,7 +244,9 @@ export async function gateRefusal(command, sessionCwd, sessionId) {
     const target = pushTargets(c.args);
     if (!target.sends) continue;
     const root = repoOf(c, sessionCwd);
-    if (!root || !applies(root)) continue;
+    if (!root || !(await applies(root))) continue;
+    const unnamed = unnamedRefspecs(c.args, isLiteral);
+    if (unnamed.length) return { deny: UNNAMED_PUSH(unnamed) };
     const tips = new Set();
     for (const rev of target.revs) {
       // --branches and --tags name every branch or tag; any other revision names one commit
@@ -229,7 +255,8 @@ export async function gateRefusal(command, sessionCwd, sessionId) {
     }
     const items = new Map();
     for (const tip of tips) {
-      const changed = tryGit(root, '-c', 'core.quotePath=false', 'log', '--name-only', '--diff-filter=AMR', '--format=', tip, '--not', '--remotes');
+      // --cc also lists the files a merge commit's conflict resolution changes, which plain --name-only leaves out
+      const changed = tryGit(root, '-c', 'core.quotePath=false', 'log', '--cc', '--name-only', '--diff-filter=AMR', '--format=', tip, '--not', '--remotes');
       if (changed === null) throw new Error(`git could not list the files the pushed commits at ${tip} change`);
       for (const rel of new Set(lines(changed).filter(f => lib.IN_SCOPE.test(f)))) {
         const oid = tryGit(root, 'rev-parse', '--verify', '-q', `${tip}:${rel}`);
