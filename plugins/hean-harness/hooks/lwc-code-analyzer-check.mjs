@@ -200,7 +200,7 @@ async function judge(lib, tryGit, root, items, what, sessionId, labelOptions = (
 export async function gateRefusal(command, sessionCwd, sessionId) {
   if (!mayGate(command)) return null;
   // the library loads only for a repository with sfdx-project.json, so its failure never refuses a commit elsewhere
-  const [{ commitsIn, commitIndex }, { git, gitCommands, isLiteral, repoOf, tryGit }, { configuredPush, pushTargets, pushWords }, { operationInProgress }, { isSfdxRepo }] =
+  const [{ commitsIn, commitIndex }, { git, gitCommands, isLiteral, repoOf, tryGit }, { configuredPush, MATCHING, pushTargets, pushWords }, { operationInProgress }, { isSfdxRepo }] =
     await Promise.all([
       import('../scripts/lib/commit-index.mjs'),
       import('../scripts/lib/command-line.mjs'),
@@ -252,11 +252,12 @@ export async function gateRefusal(command, sessionCwd, sessionId) {
       ...words.refspecs.filter(spec => !named(isLiteral, spec) || !isLiteral(spec.replace(/^\+/, '').split(':')[0]))
     ];
     if (unnamed.length) return { deny: UNNAMED_PUSH(unnamed) };
-    const revs = new Set(target.revs);
+    // the analyzer lints every branch for a matching push, not only those the remote has
+    const revs = new Set(target.revs.map(rev => rev === MATCHING ? '--branches' : rev));
     // with no typed refspec, git sends what remote.<remote>.push or push.default=matching names, not only HEAD
     const configured = configuredPush(root, words);
     if (configured.unnamed.length) return { deny: CONFIGURED_PUSH(configured.name, configured.unnamed) };
-    for (const rev of configured.revs) revs.add(rev);
+    for (const rev of configured.revs) revs.add(rev === MATCHING ? '--branches' : rev);
     const tips = new Set(), missing = [];
     for (const rev of revs) {
       // --branches and --tags name every branch or tag; any other revision names one commit, and git refuses a push of one that does not exist

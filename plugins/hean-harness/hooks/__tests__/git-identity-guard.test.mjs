@@ -215,7 +215,7 @@ const GROUPS = {
 
   // Every check here names its refspec, so none reads SIGNED's HEAD, which the push-refused group moves.
   pushAllowed(fx) {
-    const { SIGNED, WORK, UNSIGNED, UNKNOWN_KEY, NO_GPG, BRANCHY, CFG_NAMES, CFG_GLOB } = fx;
+    const { SIGNED, WORK, UNSIGNED, UNKNOWN_KEY, NO_GPG, BRANCHY, CFG_NAMES, CFG_GLOB, CFG_NAMED_OK, MATCH_LOCAL } = fx;
     const allow = (label, command, cwd = SIGNED, extra) => check(label, command, cwd, null, extra);
     const deny = (label, command, cwd = SIGNED, ...texts) => check(label, command, cwd, texts);
 
@@ -258,11 +258,19 @@ const GROUPS = {
     allow('delete refspec :feat sends nothing, configured',        'git push origin :feat', CFG_NAMES);
     allow('--delete with remote.origin.push sends nothing',        'git push --delete origin feat', CFG_NAMES);
     allow('dry run with remote.origin.push sends nothing',         'git push --dry-run', CFG_NAMES);
+    allow('named remote.origin.push values send only what they name, not HEAD', 'git push', CFG_NAMED_OK);
+    allow('named remote.origin.push values, remote typed',         'git push origin', CFG_NAMED_OK);
+
+    out('git push: matching branches only');
+    allow('push.default=matching skips branches the remote lacks',  'git push', MATCH_LOCAL);
+    allow('push.default=matching, remote typed',                    'git push origin', MATCH_LOCAL);
+    allow('typed ":" skips branches the remote lacks',              'git push origin :', MATCH_LOCAL);
+    allow('typed "+:" skips branches the remote lacks',             'git push origin +:', MATCH_LOCAL);
   },
 
   // The only group that moves SIGNED's HEAD.
   pushRefused(fx) {
-    const { SIGNED, PLAIN, KEY, BAD_COMMITTER, UNSIGNED_TEAM, SIGNED_MINE, FRESH_BAD, TWO_BAD_BASE, FEAT_BAD, CFG_NAMES, CFG_MATCHING } = fx;
+    const { SIGNED, PLAIN, KEY, BAD_COMMITTER, UNSIGNED_TEAM, SIGNED_MINE, FRESH_BAD, TWO_BAD_BASE, FEAT_BAD, CFG_NAMES, CFG_MATCHING, BRANCHY, CFG_MIXED, HEAD_BAD } = fx;
     const allow = (label, command, cwd = SIGNED, extra) => check(label, command, cwd, null, extra);
     const deny = (label, command, cwd = SIGNED, ...texts) => check(label, command, cwd, texts);
     const onBranch = (name, checks) => { setHead(SIGNED, name); checks(); setHead(SIGNED, 'main'); };
@@ -287,11 +295,15 @@ const GROUPS = {
     deny('remote.origin.push names feat, bare push',   'git push', CFG_NAMES, '!! PUSH REFUSED', FEAT_BAD, 'Wrong on feat');
     deny('remote.origin.push names feat, remote typed', 'git push origin', CFG_NAMES, FEAT_BAD);
     deny('remote.origin.push names feat, -u',          'git push -u origin', CFG_NAMES, FEAT_BAD);
-    deny('push.default=matching checks the other branches', 'git push', CFG_MATCHING, FEAT_BAD);
+    // feat is on origin, so the matching branches include it; local-only is not, so git does not send it
+    const matching = deny('push.default=matching checks the other branches', 'git push', CFG_MATCHING, FEAT_BAD);
+    report('push.default=matching leaves out the branch the remote lacks', matching !== null && !matching.includes('Wrong on local-only'));
     deny('push.default=matching, remote typed',        'git push origin', CFG_MATCHING, FEAT_BAD);
-    deny('typed ":" pushes the matching branches',     'git push origin :', SIGNED, BAD_COMMITTER);
-    deny('typed "+:" pushes the matching branches',    'git push origin +:', SIGNED, BAD_COMMITTER);
-    deny('typed ":" in a repository with no configuration', 'git push origin :', CFG_NAMES, FEAT_BAD);
+    const colon = deny('typed ":" pushes the matching branches', 'git push origin :', BRANCHY, FEAT_BAD);
+    report('typed ":" leaves out the branch the remote lacks', colon !== null && !colon.includes('Wrong on local-only'));
+    deny('typed "+:" pushes the matching branches',    'git push origin +:', BRANCHY, FEAT_BAD);
+    deny('typed ":" with a configured push still pushes the matching branches', 'git push origin :', CFG_NAMES, FEAT_BAD);
+    deny('an unnamed configured value keeps HEAD with the named ones', 'git push', CFG_MIXED, HEAD_BAD);
 
     out('git push: the checked-out branch');
     onBranch('good', () => allow('current branch, no refspec, good commits', 'git push'));
@@ -554,7 +566,8 @@ async function main() {
     fiCommit('refs/heads/main', 1, 'Initial') +
     fiCommit('refs/heads/good', 2, 'Good work', { from: ':1' }) +
     fiCommit('refs/heads/feat', 3, 'Wrong on feat', { committer: 'other@example.org', from: ':1' }) +
-    fiReset('refs/remotes/origin/main', ':1'),
+    fiCommit('refs/heads/local-only', 4, 'Wrong on local-only', { committer: 'other@example.org', from: ':1' }) +
+    fiReset('refs/remotes/origin/main', ':1') + fiReset('refs/remotes/origin/feat', ':1'),
     remote + upstream('main'), 'main');
   const branchy = (name, config) => {
     const dir = join(sandbox, name);
@@ -565,6 +578,26 @@ async function main() {
   const CFG_NAMES = branchy('cfg-names', '[remote "origin"]\n\tpush = refs/heads/feat:refs/heads/feat\n');
   const CFG_MATCHING = branchy('cfg-matching', '[push]\n\tdefault = matching\n');
   const CFG_GLOB = branchy('cfg-glob', '[remote "origin"]\n\tpush = refs/heads/*:refs/heads/*\n');
+  // MATCH_LOCAL: matching, but the remote has only main, so feat and local-only are not sent
+  const MATCH_LOCAL = branchy('match-local', '[push]\n\tdefault = matching\n');
+  run('git', ['update-ref', '-d', 'refs/remotes/origin/feat'], MATCH_LOCAL);
+
+  // HEADBAD: the checked-out branch holds a wrong committer, feat is clean. The variants differ in remote.origin.push.
+  const HEADBAD = join(sandbox, 'headbad');
+  const hb = build(HEADBAD,
+    fiCommit('refs/heads/main', 1, 'Initial') +
+    fiCommit('refs/heads/bad-head', 2, 'Wrong on HEAD', { committer: 'other@example.org', from: ':1' }) +
+    fiCommit('refs/heads/feat', 3, 'Good on feat', { from: ':1' }) +
+    fiReset('refs/remotes/origin/main', ':1'),
+    remote + upstream('main'), 'bad-head');
+  const headbad = (name, config) => {
+    const dir = join(sandbox, name);
+    cpSync(HEADBAD, dir, { recursive: true });
+    appendFileSync(join(dir, '.git', 'config'), config);
+    return dir;
+  };
+  const CFG_NAMED_OK = headbad('cfg-named-ok', '[remote "origin"]\n\tpush = refs/heads/feat:refs/heads/feat\n');
+  const CFG_MIXED = headbad('cfg-mixed', '[remote "origin"]\n\tpush = refs/heads/feat:refs/heads/feat\n\tpush = refs/heads/*:refs/heads/*\n');
 
   // a folder that is not a repository: only ~/.gitconfig decides
   const PLAIN = join(sandbox, 'plain');
@@ -582,7 +615,7 @@ async function main() {
   const tSetup = Date.now() - T0;
 
   const fx = {
-    sandbox, DOCTOR_HOME, SIGNED, WORK, REPAIR, BRANCHY, CFG_NAMES, CFG_MATCHING, CFG_GLOB, FEAT_BAD: short(b[':3']), UNSIGNED, UNKNOWN_KEY, LOCAL_UNSET, LOCAL_KEY, SSH_FORMAT, PROGRAM, PROGRAM_MISSING,
+    sandbox, DOCTOR_HOME, SIGNED, WORK, REPAIR, BRANCHY, CFG_NAMES, CFG_MATCHING, CFG_GLOB, MATCH_LOCAL, CFG_NAMED_OK, CFG_MIXED, FEAT_BAD: short(b[':3']), HEAD_BAD: short(hb[':2']), UNSIGNED, UNKNOWN_KEY, LOCAL_UNSET, LOCAL_KEY, SSH_FORMAT, PROGRAM, PROGRAM_MISSING,
     PLAIN, NO_GPG, USED, KEY, TEAM_KEY,
     BAD_COMMITTER: short(s[':4']), FRESH_BAD: short(s[':10']), TWO_BAD_BASE: short(s[':11']),
     UNSIGNED_TEAM: short(s[':16']), SIGNED_MINE: short(signedMine)

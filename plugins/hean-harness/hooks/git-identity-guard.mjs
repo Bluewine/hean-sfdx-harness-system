@@ -20,10 +20,12 @@
  *                 not on the key; the refusal lists the commits and says how
  *                 to repair them.
  *
- * A push with no typed refspec sends what git is configured to push, not only
- * HEAD: the source of each remote.<remote>.push value, or every branch for
+ * A push with no typed refspec sends what git is configured to push, not HEAD:
+ * the source of each remote.<remote>.push value, or the matching branches for
  * push.default=matching. A configured value whose source is a glob or variable
- * names no literal ref, so it adds nothing to the check.
+ * names no literal ref, so it adds nothing to the check and HEAD stays checked.
+ * The matching branches, which a typed ':' also pushes, are the local branches
+ * the remote being pushed to already has.
  *
  * The commits a push sends are counted as those on no remote-tracking branch.
  * Counting from the pushed branch's upstream instead refused work branches that
@@ -138,11 +140,15 @@ export function pushWords(args) {
   return { remote, refspecs: pos, flags };
 }
 
+// the local branches whose name the remote already has: what a ':' refspec and push.default=matching push
+export const MATCHING = '--matching';
+
 /**
  * What a `git push` sends, as { revs, sends }: revs are the revisions whose
- * commits it sends — the local side of each refspec, --branches for --all and
- * --branches, --tags for --tags, both for --mirror, and HEAD when none of
- * these and no refspec is given. sends is false for a delete or a dry run.
+ * commits it sends — the local side of each refspec, MATCHING for a ':'
+ * refspec, --branches for --all and --branches, --tags for --tags, both for
+ * --mirror, and HEAD when none of these and no refspec is given. sends is
+ * false for a delete or a dry run.
  */
 export function pushTargets(args) {
   const { refspecs: pos, flags } = pushWords(args);
@@ -156,8 +162,9 @@ export function pushTargets(args) {
   }
   if (pos.length === 0 && !revs.size) revs.add('HEAD');
   for (const spec of pos) {
-    const src = spec.replace(/^\+/, '').split(':')[0];
-    if (spec.replace(/^\+/, '') === ':') { revs.add('--branches'); continue; }   // ':' pushes the matching branches
+    const bare = spec.replace(/^\+/, '');
+    if (bare === ':') { revs.add(MATCHING); continue; }
+    const src = bare.split(':')[0];
     if (src === '') continue;                                // :branch deletes
     revs.add(isLiteral(src) ? src : 'HEAD');
   }
@@ -168,34 +175,52 @@ export function pushTargets(args) {
 const REF_FLAGS = new Set(['--all', '--branches', '--tags', '--mirror']);
 
 /**
- * What git is configured to push when the push types no refspec and no ref
- * option, as { name, revs, unnamed }: name is the remote.<remote>.push key read,
- * revs the source of each value (--branches for ':' and for
- * push.default=matching), unnamed the values whose source is a glob or variable,
- * which name no literal ref. A delete or negative value sends nothing. words is
- * the result of pushWords. The remote is the typed one, else
- * branch.<branch>.pushRemote, remote.pushDefault, branch.<branch>.remote, origin.
+ * The remote a push goes to: the typed one, else branch.<branch>.pushRemote,
+ * remote.pushDefault, branch.<branch>.remote, origin.
  */
-export function configuredPush(repo, words) {
-  const none = { name: null, revs: [], unnamed: [] };
-  if (words.refspecs.length || words.flags.some(f => REF_FLAGS.has(f))) return none;
+function pushRemote(repo, typed) {
   const cfg = (...args) => tryGit(repo, 'config', ...args);
   const branch = tryGit(repo, 'symbolic-ref', '--short', '-q', 'HEAD');
-  const remote = words.remote ?? (branch && cfg('--get', `branch.${branch}.pushRemote`)) ?? cfg('--get', 'remote.pushDefault') ??
+  return typed ?? (branch && cfg('--get', `branch.${branch}.pushRemote`)) ?? cfg('--get', 'remote.pushDefault') ??
     (branch && cfg('--get', `branch.${branch}.remote`)) ?? 'origin';
-  const name = `remote.${remote}.push`;
+}
+
+/**
+ * What git is configured to push when the push types no refspec and no ref
+ * option, as { name, revs, unnamed, named }: name is the remote.<remote>.push
+ * key read, revs the source of each value (MATCHING for ':' and for
+ * push.default=matching), unnamed the values whose source is a glob or
+ * variable, which name no literal ref. named is true when remote.<remote>.push
+ * has values and every one names its source, so git sends nothing else. A
+ * delete or negative value sends nothing. words is the result of pushWords.
+ */
+export function configuredPush(repo, words) {
+  const none = { name: null, revs: [], unnamed: [], named: false };
+  if (words.refspecs.length || words.flags.some(f => REF_FLAGS.has(f))) return none;
+  const cfg = (...args) => tryGit(repo, 'config', ...args);
+  const name = `remote.${pushRemote(repo, words.remote)}.push`;
   const values = (cfg('--get-all', name) ?? '').split('\n').filter(Boolean);
-  if (!values.length) return { name, revs: cfg('--get', 'push.default') === 'matching' ? ['--branches'] : [], unnamed: [] };
+  if (!values.length) return { ...none, name, revs: cfg('--get', 'push.default') === 'matching' ? [MATCHING] : [] };
   const revs = [], unnamed = [];
   for (const value of values) {
     const spec = value.replace(/^\+/, '');
-    if (spec === ':') { revs.push('--branches'); continue; }
+    if (spec === ':') { revs.push(MATCHING); continue; }
     const src = spec.split(':')[0];
     if (src === '' || src.startsWith('^')) continue;
     if (isLiteral(src)) revs.push(src);
     else unnamed.push(value);
   }
-  return { name, revs, unnamed };
+  return { name, revs, unnamed, named: !unnamed.length };
+}
+
+/** The revisions with MATCHING turned into refs/heads/<branch> for each local branch the remote has. */
+function expandMatching(repo, remote, revs) {
+  if (!revs.includes(MATCHING)) return revs;
+  const prefix = `refs/remotes/${remote}/`;
+  const names = refs => (tryGit(repo, 'for-each-ref', '--format=%(refname)', refs) ?? '').split('\n').filter(Boolean);
+  const theirs = new Set(names(prefix).map(r => r.slice(prefix.length)));
+  const matching = names('refs/heads/').map(r => r.slice('refs/heads/'.length)).filter(b => theirs.has(b)).map(b => `refs/heads/${b}`);
+  return [...revs.filter(r => r !== MATCHING), ...matching];
 }
 
 /**
@@ -327,8 +352,11 @@ export function check(script, sessionCwd) {
     if (!target.sends) continue;
     const rule = identityRule(repo);
     if (!rule) continue;
-    const revs = new Set([...target.revs, ...configuredPush(repo, pushWords(c.args)).revs]);
-    const failing = failingCommits(repo, rule, [...revs]);
+    const words = pushWords(c.args);
+    const configured = configuredPush(repo, words);
+    // with named values git sends only what they name; an unnamed one may send HEAD too
+    const revs = new Set([...(configured.named ? [] : target.revs), ...configured.revs]);
+    const failing = failingCommits(repo, rule, expandMatching(repo, pushRemote(repo, words.remote), [...revs]));
     if (failing.length) return pushRefusal(repo, rule, failing);
   }
   return null;
