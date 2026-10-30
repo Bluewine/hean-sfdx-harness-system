@@ -169,6 +169,7 @@ Always-trigger conditions: manifest creation before any deploy; `apex-classes.tx
 - Prohibited vague recommendations: "add more tests", "improve coverage", "test edge cases", "handle this case".
 - Each scenario must name: the method under test, the input state, the execution path triggered, and the expected outcome.
 - Mock/stub requirements must name the specific class and method being stubbed.
+- A plan item for a line no test reaches as written names the behaviour-preserving seam to add (for example a `protected virtual` method a test subclass overrides, an extracted method, `@TestVisible`, or dependency injection through the project's factory or a constructor overload) and the test that uses it. The seam keeps behaviour, output, the signatures callers depend on and performance characteristics the same. The seam is part of the plan for `developer` to implement, never a question to the caller or the user. Only a line no such refactor reaches is reported as a remaining gap, with why.
 - The plan must be specific enough for the `developer` or `lwc-tester` agent to implement directly without further analysis.
 </Plan_Quality_Rules>
 
@@ -206,6 +207,7 @@ For each class below 100%:
 
 **Class:** `ClassName` | **Coverage:** N% | **Uncovered lines:** [numbers or "not reliably available"]
 **Root cause:** [which branch/condition is not reached and why]
+**Seam to add:** [method and kind of seam the `developer` adds so a test reaches the line, with why behaviour, output, the signatures callers depend on and performance characteristics are unchanged; or "none needed"; or "none possible — why no behaviour-preserving refactor reaches it"]
 **Test changes:** [TestClassName.methodName — what to add; or new TestClassName — method name — scenario]
 **Scenarios to cover:**
 - Scenario 1: [method] called with [input state] → triggers [code path] → assert [outcome]

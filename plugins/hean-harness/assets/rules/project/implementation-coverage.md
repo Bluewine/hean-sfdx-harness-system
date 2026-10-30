@@ -22,6 +22,26 @@ Apply when an implementation creates or changes an Apex class or a Lightning web
 - State the target in every implementer and tester brief as "100% of every whole file in scope";
   never "changed lines", "new code" or "the diff". A subagent takes the brief's narrower scope over
   its own default and leaves the older gaps.
+- Never forbid a behaviour-preserving production change made for testability in an implementer or
+  tester brief. The pre-approval under "Testability refactors" applies to every brief.
+
+## Testability refactors
+
+- **Pre-approved:** A refactor of a class, component or method the work touches that keeps
+  behaviour, output, the signatures callers depend on and performance characteristics the same,
+  made to make the code testable or more loosely coupled. Examples: `protected virtual` seams a
+  test subclass overrides, extracted methods, `@TestVisible`, dependency injection through the
+  project's factory or a constructor overload, an LWC helper moved to its own module. An LWC's
+  `@api` properties and methods are signatures callers depend on.
+- **Never asked:** The agent makes the change and reports it. The agent does not ask the user or
+  the caller first.
+- **Scope:** Only classes and components the work already touches. Every other file stays under
+  the `developer` agent's "No adjacent refactoring" constraint.
+- **Ask only when:** A change would alter behaviour, output, the signatures callers depend on or
+  performance characteristics.
+- **Report every refactor:** The agent lists every such refactor under its own label,
+  "Testability refactors", in its result, with the file, the change and why behaviour is
+  unchanged. The final report to the user lists them under the same label.
 
 ## Coverage check before finishing
 
@@ -34,19 +54,24 @@ Apply when an implementation creates or changes an Apex class or a Lightning web
    result. Every other file in that result is information only: never fix it and never ask the user
    to accept it.
 2. **Close the gaps.** For each touched file below 100%, work out why each uncovered line is not
-   reached, then add the tests that reach it: Apex test classes go to the `developer` agent, LWC
+   reached. Where the cause is code no test can reach as written, make the testability refactor
+   first. Then add the tests that reach it: Apex test classes go to the `developer` agent, LWC
    Jest tests go to the `lwc-tester` agent. Keep going while each attempt raises coverage.
-3. **Recognise a limit.** A line is untestable when no test can run it without changing production
-   code. Decide this for each line from what the code does and the context it runs in; the cases
-   are not limited to a list. Two examples: a branch that runs only when `Test.isRunningTest()` is
-   false, and a call to an API that does not run in a test context. Stop on such a line, and stop on
-   any line where an attempt did not raise coverage. Never repeat an attempt that already failed.
+3. **Recognise a limit.** A line is untestable when no test can run it even after a
+   behaviour-preserving testability refactor. Decide this for each line from what the code does and
+   the context it runs in; the cases are not limited to a list. Two examples: the single line
+   inside a seam that calls an API which does not run in a test context, and a
+   `Test.isRunningTest()` check that no injected flag or overridable method can replace without
+   changing behaviour. Stop on such a line, and stop on any line where an attempt did not raise
+   coverage. Never repeat an attempt that already failed.
 4. **Report every remaining gap.** For each touched file still below 100%, list the uncovered lines,
-   why each cannot be covered, and the production-code change that would make it testable. A
+   why each cannot be covered, and why no behaviour-preserving refactor reaches it. A line a
+   behaviour-preserving refactor can reach is not a gap: close it in step 2. A
    touched file whose coverage was not measured is an open gap with its reason. Link documentation
    when the reason is a platform limit and a page states it.
 5. **Ask the user.** When any gap remains, ask the user in one question whether to accept each
-   gap or keep working.
+   gap or keep working. List the testability refactors made in step 2 beside the question, under
+   their own label.
    - **All gaps accepted:** run `/hean-harness:finish-implementation`.
    - **Any gap kept open:** keep working on it, then return to step 1. Never run
      `/hean-harness:finish-implementation` while a gap the user did not accept remains.
@@ -56,3 +81,4 @@ Apply when an implementation creates or changes an Apex class or a Lightning web
 - Never lower the target, below 100% or to changed lines, without the user's answer.
 - Never add `/* istanbul ignore */` or any other coverage suppression.
 - Never report the work done while a file is below 100% and the user has not answered.
+- Never ask the user whether to make a behaviour-preserving testability refactor.

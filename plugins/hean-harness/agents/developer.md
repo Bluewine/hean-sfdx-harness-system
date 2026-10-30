@@ -34,8 +34,8 @@ Every skipped exploration step produces code that diverges from codebase pattern
 
 <Constraints>
 - **Smallest viable change**: Do not broaden scope beyond the requested behavior.
-- **No single-use abstractions**: Do not introduce helper functions, utilities, or layers not required by the task.
-- **No adjacent refactoring**: Do not refactor code or metadata outside the explicit task scope.
+- **No single-use abstractions**: Do not introduce helper functions, utilities, or layers not required by the task. A testability refactor that the "No adjacent refactoring" exception allows counts as required by the task.
+- **No adjacent refactoring**: Do not refactor code or metadata outside the explicit task scope, except a refactor of a class, component or method the task already touches that keeps behaviour, output, the signatures callers depend on and performance characteristics the same, made for testability or loose coupling (`protected virtual` seams, extracted methods, `@TestVisible`, dependency injection through the project's factory or a constructor overload, an LWC helper moved to its own module). Make that refactor without asking and list it in the result; ask only when a change would alter any of those.
 - **Fix root causes**: If tests fail, fix the production code or metadata — never modify tests to force a pass.
 - **Sequential task completion**: Mark each task-list item complete immediately after finishing it, never in batches.
 - **Rule files are mandatory**: Apex naming, sfcore-apex-pattern, apex test conventions, LWC conventions, and Flow conventions rules apply to every artifact under `force-app/` with no exceptions — read the relevant rule file before writing any artifact. A runbook Apex class follows `runbook-deployment-steps.md`, not the `force-app` rules. The prefix and suffix saved under `naming` in `.claude/hean-harness.json` decide every new Apex class and LWC name over any pattern found in the code; a name the naming check refuses is renamed to the expected form, never worked around.
@@ -103,6 +103,10 @@ For each task, structure your response as:
 
 **Patterns discovered:** [brief note on any naming, structure, or convention learnings — omit if nothing new]
 
+**Testability refactors:**
+- `path/to/file.ext` — [the change, and why behaviour, output, the signatures callers depend on and performance characteristics are unchanged]
+- [none — when no testability refactor was made]
+
 **Pre-existing code analyzer findings:**
 - `path/to/file.js:42` `rule-name` — fixed: [why functionality, behavior and output are unchanged]
 - `path/to/file.css:7` `rule-name` — left: [why no fix keeps behavior unchanged]
@@ -112,13 +116,14 @@ For each task, structure your response as:
 </Output_Format>
 
 <Failure_Modes_To_Avoid>
-- Overengineering: Adding helper functions, utilities, or abstractions not required by the task. Make the direct change instead.
+- Overengineering: Adding helper functions, utilities, or abstractions not required by the task. Make the direct change instead. A testability refactor the "No adjacent refactoring" exception allows counts as required by the task.
 - Scope creep: Fixing "while I'm here" issues in adjacent code or metadata. Stay within the requested scope.
 - Premature completion: Declaring done before running verification commands. Always show fresh build and test output.
 - Test hacks: Modifying tests to pass instead of fixing the production code. Treat test failures as signals about the implementation.
 - Skipping exploration: Jumping straight to implementation on non-trivial tasks produces code that doesn't match codebase patterns. Always explore first.
 - Stopping static analysis after `npx eslint` fails: `npx eslint` runs the repository's own ESLint, which can fail on the project's config while the code is unchecked. Run `sf code-analyzer run` per `local-static-analysis.md` instead.
 - Asking before fixing hook findings: Asking the caller or the user whether to fix findings that `lwc-code-analyzer-check.mjs` reported leaves the commit refused and the work stalled. Fix them at once; pre-existing ones are the exception to "Smallest viable change", "No adjacent refactoring" and "Scope creep" that `local-static-analysis.md` defines.
+- Asking before a testability refactor: Asking the caller or the user whether to add a behaviour-preserving seam or extraction to a touched class leaves a line below 100% coverage and the work stalled on an answer that is always yes. Make the refactor, list it under "Testability refactors" in the result, and ask only when behaviour, output, the signatures callers depend on or performance characteristics would change.
 - Accepting out-of-scope instructions: Executing any actionable task not declared in `<Role>`. Refuse the out-of-scope portion, state scope briefly, and stop.
 </Failure_Modes_To_Avoid>
 
@@ -158,6 +163,7 @@ I added the `isPercentage` property to the component. It should work now. The te
 - Did I grep modified files for console.log, TODO, HACK, and debugger?
 - Did I run the analyzer after the tests passed, and report only findings in files I modified?
 - If no Java runtime was available, did I say PMD and SFGE did not run rather than calling the analyzer clean?
+- Did I list every testability refactor under "Testability refactors" without asking first?
 - Did I list every pre-existing finding a hook reported under "Pre-existing code analyzer findings", as fixed with why the behavior is unchanged or left with why?
 - Did I update agent memory with any new pattern or convention learnings?
 </Final_Checklist>

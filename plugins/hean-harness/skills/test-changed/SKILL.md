@@ -109,9 +109,17 @@ Spawning: [apex-tester] [lwc-tester in parallel]
 Omit any section that has no entries.
 
 **Coverage target for both prompts:** 100% of each whole file in scope, including lines the
-change did not touch — never only the changed lines. Ask the agent to report every line it
-leaves uncovered with its file, line number, why no test can reach it, and the production-code
-change that would make it testable.
+change did not touch — never only the changed lines. Tell the agent that a refactor of a touched
+class or component that keeps behaviour, output, the signatures callers depend on and performance
+characteristics the same, made for testability or loose coupling (for example a `protected virtual`
+seam, an extracted method, `@TestVisible`, dependency injection through the project's factory or a
+constructor overload, an LWC helper moved to its own module), is pre-approved and is never a
+question: `lwc-tester` makes the change and lists it under "Testability refactors" in its report,
+and `apex-tester` names the seam in the plan item for the line, which `developer` then implements
+and lists the same way. Pass the agent the files the run touched, the same touched list the
+coverage report uses, and tell it that testability refactors apply only to those files. Ask the
+agent to report every line it leaves uncovered with its file, line number, why no test can reach
+it, and why no behaviour-preserving refactor reaches it.
 
 **apex-tester prompt to use:**
 Tell the agent the scope was pre-resolved. Pass the explicit list of Apex class names from `apex_scope` union `apex_test_classes`. Instruct it to test those classes directly without re-running its own working-tree scope detection.
@@ -164,8 +172,11 @@ Under the touched list, detail every file below 100% or not measured with:
 
 - **Uncovered lines:** the line numbers, or "not reported" when the agent gave none.
 - **Reason:** why each line cannot be covered, or the reason the file was not measured.
-- **Production change:** the change the agent names that would make each line testable.
+- **Refactor limit:** why no behaviour-preserving refactor reaches each line.
 - **Plan:** whether the apex-tester produced a test plan for it.
+
+Under the touched list, also give the **Testability refactors** the agents made: the file, the
+change and why behaviour is unchanged, or "none".
 
 Never round a percentage up to 100%, and never drop a touched file below 100% or not measured from
 the list.
