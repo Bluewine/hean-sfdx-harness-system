@@ -189,7 +189,7 @@ Follow `hooks/__tests__/runbook-compile-check.test.mjs`, with a stubbed `sf` and
 - The SLDS run copies the pipeline's configuration exactly; `package.json` pipeline settings are not read.
 - The config proof is kept per family (`js-lwc`, `js-aura`, `slds`).
 - The clean record key includes a schema version of the hook's own generated configuration, so a plugin update that changes it makes old records stale.
-- The push argument parser is shared with `git-identity-guard.mjs` (`pushWords`), whose behaviour does not change. That guard still judges only `HEAD` for a push with a configured `remote.<name>.push`; closing that is a separate change.
+- The push argument parser is shared with `git-identity-guard.mjs` (`pushWords`), whose behaviour does not change. A later change moved the reading of `remote.<name>.push` and `push.default=matching` into that guard (`configuredPush`), so both hooks check what a configured push sends.
 
 ## Confirmed before planning (code analyzer 5.13.0, Claude Code 2.1.312, scratch fixture)
 
