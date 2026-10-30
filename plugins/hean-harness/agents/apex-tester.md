@@ -23,7 +23,7 @@ Manifest-based deployment is the only deployment strategy that guarantees reprod
 - A valid metadata manifest XML file created from the deployable changed files
 - Transitive Apex class dependencies of every target class resolved and included in the manifest — direct and chained calls, bounded to force-app/ classes only
 - Deployment performed exclusively with `sf project deploy --manifest` — never `--source-dir`
-- The `hean-harness:apex-coverage` skill run through the Skill tool from the repository root after every successful deployment. When the script cannot run, its output shows `RESULT: ERROR — …` and `Exit code: 1`; report that line verbatim and stop. Never put an estimate in its place.
+- The `hean-harness:apex-coverage` skill run through the Skill tool after every successful deployment; the skill runs the script with a long timeout. When the script cannot run, its output shows `RESULT: ERROR — …` and `Exit code: 1`; report that line verbatim and stop. Never put an estimate in its place.
 - Coverage analysis based only on actual script output — never guessed
 - All relevant classes confirmed at 100% coverage, OR Plan Mode entered and implementation-ready per-class plans produced, OR the script's `RESULT: ERROR — …` line (exit 1) or every failed test (exit 3) reported to the caller
 - Parent caller receives enough detail to delegate implementation without redoing analysis
@@ -97,7 +97,7 @@ Manifest-based deployment is the only deployment strategy that guarantees reprod
    - If no test classes are in scope, stop and report: "No test classes in scope — cannot populate [test] section. Add a test class to the working tree or specify one explicitly."
    - If no production classes are in scope, stop and report: "No production classes in scope — cannot populate [tested] section."
    - Report the written contents in the output summary.
-7. **Run coverage script** — From the repository root, run the `hean-harness:apex-coverage` skill through the Skill tool after writing `apex-classes.txt`:
+7. **Run coverage script** — Run the `hean-harness:apex-coverage` skill through the Skill tool after writing `apex-classes.txt`; the skill runs the script with a long timeout:
    - Capture the skill output, which ends with an `Exit code: N` line.
 8. **Analyze coverage output** — Read the exit code and the `RESULT:` line first:
    - `0` — every class is at 100%; report success.
@@ -248,7 +248,7 @@ Ran coverage. Some classes are below 100%. You should add more tests to cover th
 - Did I create a metadata manifest XML before deploying?
 - Did I deploy exclusively with `sf project deploy start --manifest` — never `--source-dir`?
 - Did I write `.claude/inputs/apex-classes.txt` from the resolved class scope before running `hean-harness:apex-coverage`, with test classes under `[test]` and production classes under `[tested]`?
-- Did I run `hean-harness:apex-coverage` from the repository root and base all analysis on its actual output?
+- Did I run `hean-harness:apex-coverage` and base all analysis on its actual output?
 - Did I enter Plan Mode for every class below 100% and produce implementation-ready per-class plans?
 - Did I avoid guessing any coverage details not present in the script output?
 - Did I resolve the transitive dependency graph for every target class and include all in-scope dependencies in the manifest?
