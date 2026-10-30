@@ -16,7 +16,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SCRIPTS = dirname(dirname(fileURLToPath(import.meta.url)));
-const CLI = join(SCRIPTS, 'apex-coverage.mjs');
+const CLI = join(dirname(SCRIPTS), 'skills', 'apex-coverage', 'scripts', 'apex-coverage.mjs');
 const { formatRanges } = await import(join(SCRIPTS, 'lib', 'apex-coverage.mjs'));
 const { NO_TARGET } = await import(join(SCRIPTS, 'lib', 'runbook-compile.mjs'));
 

@@ -35,6 +35,7 @@ Updated whenever a skill, agent, hook, or rule is added, removed, or renamed —
 | soql-bindvar-resolver | — | pending (exists, not in original scope) |
 | site-publish | Skills | documented |
 | merge-pr | Skills | documented |
+| apex-coverage | — | pending |
 | commit-walk-sync | — | excluded (ships as `SKILL.mdx`, not discoverable) |
 | sync-to-branch | — | excluded (ships as `SKILL.mdx`, not discoverable) |
 

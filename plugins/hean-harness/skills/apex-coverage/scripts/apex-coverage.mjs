@@ -16,9 +16,9 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { deployEntry, deployTarget, NO_TARGET } from './lib/runbook-compile.mjs';
-import { projectRoot } from './lib/org-roles.mjs';
-import { EXIT, errorReport, findSource, mergeCoverage, packageDirectories, parseClassList, renderReport } from './lib/apex-coverage.mjs';
+import { deployEntry, deployTarget, NO_TARGET } from '../../../scripts/lib/runbook-compile.mjs';
+import { projectRoot } from '../../../scripts/lib/org-roles.mjs';
+import { EXIT, errorReport, findSource, mergeCoverage, packageDirectories, parseClassList, renderReport } from '../../../scripts/lib/apex-coverage.mjs';
 
 const fail = reason => { console.log(errorReport(reason)); process.exitCode = EXIT.ERROR; process.exit(); };
 
