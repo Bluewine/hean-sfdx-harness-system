@@ -147,9 +147,6 @@ const NO_COMMIT = revs =>
   `!! The code analyzer check cannot tell what this push sends: ${quoted(revs)} names no commit in this repository. ` +
   'Correct the branch or commit name, then retry this push.';
 
-// options that choose the pushed refs themselves, so git reads no configured refspec
-const REF_FLAGS = new Set(['--all', '--branches', '--tags', '--mirror']);
-
 /**
  * Whether the shell passes the word to git as typed: not when a variable or
  * glob decides it, nor when it holds a brace, which the shell can expand into
@@ -157,32 +154,6 @@ const REF_FLAGS = new Set(['--all', '--branches', '--tags', '--mirror']);
  * share.
  */
 const named = (isLiteral, word) => isLiteral(word) && !word.includes('{');
-
-/**
- * The revisions a push with no typed refspec sends besides HEAD, as { revs }
- * or { deny }: the source side of each remote.<remote>.push value, or
- * --branches for push.default=matching. A configured value whose source is a
- * glob or variable refuses, since it names no literal ref.
- */
-function configuredRevs(tryGit, isLiteral, root, typedRemote) {
-  const cfg = (...args) => tryGit(root, 'config', ...args);
-  const branch = tryGit(root, 'symbolic-ref', '--short', '-q', 'HEAD');
-  const remote = typedRemote ?? (branch && cfg('--get', `branch.${branch}.pushRemote`)) ?? cfg('--get', 'remote.pushDefault') ??
-    (branch && cfg('--get', `branch.${branch}.remote`)) ?? 'origin';
-  const name = `remote.${remote}.push`;
-  const values = (cfg('--get-all', name) ?? '').split('\n').filter(Boolean);
-  if (!values.length) return { revs: cfg('--get', 'push.default') === 'matching' ? ['--branches'] : [] };
-  const revs = [], unnamed = [];
-  for (const value of values) {
-    const spec = value.replace(/^\+/, '');
-    if (spec === ':') { revs.push('--branches'); continue; }   // ':' pushes the matching branches
-    const src = spec.split(':')[0];
-    if (src === '' || src.startsWith('^')) continue;          // a delete or a negative refspec sends nothing
-    if (isLiteral(src)) revs.push(src);
-    else unnamed.push(value);
-  }
-  return unnamed.length ? { deny: CONFIGURED_PUSH(name, unnamed) } : { revs };
-}
 
 const NOT_NAMED = '!! The code analyzer check did not run for this commit: the command stages files its text does not name ' +
   '(a variable, a glob, a pathspec file or picked hunks). Stage the files in their own Bash call, then commit.';
@@ -229,7 +200,7 @@ async function judge(lib, tryGit, root, items, what, sessionId, labelOptions = (
 export async function gateRefusal(command, sessionCwd, sessionId) {
   if (!mayGate(command)) return null;
   // the library loads only for a repository with sfdx-project.json, so its failure never refuses a commit elsewhere
-  const [{ commitsIn, commitIndex }, { git, gitCommands, isLiteral, repoOf, tryGit }, { pushTargets, pushWords }, { operationInProgress }, { isSfdxRepo }] =
+  const [{ commitsIn, commitIndex }, { git, gitCommands, isLiteral, repoOf, tryGit }, { configuredPush, pushTargets, pushWords }, { operationInProgress }, { isSfdxRepo }] =
     await Promise.all([
       import('../scripts/lib/commit-index.mjs'),
       import('../scripts/lib/command-line.mjs'),
@@ -282,14 +253,10 @@ export async function gateRefusal(command, sessionCwd, sessionId) {
     ];
     if (unnamed.length) return { deny: UNNAMED_PUSH(unnamed) };
     const revs = new Set(target.revs);
-    // a typed ':' pushes the matching branches, as a configured one does; pushTargets reads its empty source as a delete
-    if (words.refspecs.some(spec => spec.replace(/^\+/, '') === ':')) revs.add('--branches');
     // with no typed refspec, git sends what remote.<remote>.push or push.default=matching names, not only HEAD
-    if (!words.refspecs.length && !words.flags.some(f => REF_FLAGS.has(f))) {
-      const configured = configuredRevs(tryGit, isLiteral, root, words.remote);
-      if (configured.deny) return configured;
-      for (const rev of configured.revs) revs.add(rev);
-    }
+    const configured = configuredPush(root, words);
+    if (configured.unnamed.length) return { deny: CONFIGURED_PUSH(configured.name, configured.unnamed) };
+    for (const rev of configured.revs) revs.add(rev);
     const tips = new Set(), missing = [];
     for (const rev of revs) {
       // --branches and --tags name every branch or tag; any other revision names one commit, and git refuses a push of one that does not exist

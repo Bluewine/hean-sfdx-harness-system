@@ -215,7 +215,7 @@ const GROUPS = {
 
   // Every check here names its refspec, so none reads SIGNED's HEAD, which the push-refused group moves.
   pushAllowed(fx) {
-    const { SIGNED, WORK, UNSIGNED, UNKNOWN_KEY, NO_GPG } = fx;
+    const { SIGNED, WORK, UNSIGNED, UNKNOWN_KEY, NO_GPG, BRANCHY, CFG_NAMES, CFG_GLOB } = fx;
     const allow = (label, command, cwd = SIGNED, extra) => check(label, command, cwd, null, extra);
     const deny = (label, command, cwd = SIGNED, ...texts) => check(label, command, cwd, texts);
 
@@ -246,11 +246,23 @@ const GROUPS = {
     // Every tag is clean while HEAD is not: a --tags push that read HEAD, or any commit
     // outside the tags, would be refused here.
     allow('tags only, HEAD bad but every tag clean', 'git push origin --tags', WORK);
+
+    // BRANCHY and its variants stay on main, which is clean; feat holds a wrong committer.
+    out('git push: configured and colon pushes');
+    allow('a typed refspec overrides remote.origin.push', 'git push origin good', CFG_NAMES);
+    allow('a typed src:dst refspec overrides remote.origin.push', 'git push origin good:review/good', CFG_NAMES);
+    allow('a glob in remote.origin.push does not refuse by itself', 'git push', CFG_GLOB);
+    allow('a glob in remote.origin.push, remote typed',            'git push origin', CFG_GLOB);
+    allow('no configuration: HEAD only, feat not checked',         'git push', BRANCHY);
+    allow('delete refspec :feat sends nothing',                    'git push origin :feat', BRANCHY);
+    allow('delete refspec :feat sends nothing, configured',        'git push origin :feat', CFG_NAMES);
+    allow('--delete with remote.origin.push sends nothing',        'git push --delete origin feat', CFG_NAMES);
+    allow('dry run with remote.origin.push sends nothing',         'git push --dry-run', CFG_NAMES);
   },
 
   // The only group that moves SIGNED's HEAD.
   pushRefused(fx) {
-    const { SIGNED, PLAIN, KEY, BAD_COMMITTER, UNSIGNED_TEAM, SIGNED_MINE, FRESH_BAD, TWO_BAD_BASE } = fx;
+    const { SIGNED, PLAIN, KEY, BAD_COMMITTER, UNSIGNED_TEAM, SIGNED_MINE, FRESH_BAD, TWO_BAD_BASE, FEAT_BAD, CFG_NAMES, CFG_MATCHING } = fx;
     const allow = (label, command, cwd = SIGNED, extra) => check(label, command, cwd, null, extra);
     const deny = (label, command, cwd = SIGNED, ...texts) => check(label, command, cwd, texts);
     const onBranch = (name, checks) => { setHead(SIGNED, name); checks(); setHead(SIGNED, 'main'); };
@@ -270,6 +282,16 @@ const GROUPS = {
     deny('cd into the repository',             `cd ${SIGNED} && git push origin bad-committer`, PLAIN, BAD_COMMITTER);
     deny('git -C the repository',              `git -C ${SIGNED} push origin bad-committer`, PLAIN, BAD_COMMITTER);
     deny('chained after a commit',             'git commit -m "x" && git push origin bad-committer', SIGNED, BAD_COMMITTER);
+
+    out('git push: configured and colon pushes');
+    deny('remote.origin.push names feat, bare push',   'git push', CFG_NAMES, '!! PUSH REFUSED', FEAT_BAD, 'Wrong on feat');
+    deny('remote.origin.push names feat, remote typed', 'git push origin', CFG_NAMES, FEAT_BAD);
+    deny('remote.origin.push names feat, -u',          'git push -u origin', CFG_NAMES, FEAT_BAD);
+    deny('push.default=matching checks the other branches', 'git push', CFG_MATCHING, FEAT_BAD);
+    deny('push.default=matching, remote typed',        'git push origin', CFG_MATCHING, FEAT_BAD);
+    deny('typed ":" pushes the matching branches',     'git push origin :', SIGNED, BAD_COMMITTER);
+    deny('typed "+:" pushes the matching branches',    'git push origin +:', SIGNED, BAD_COMMITTER);
+    deny('typed ":" in a repository with no configuration', 'git push origin :', CFG_NAMES, FEAT_BAD);
 
     out('git push: the checked-out branch');
     onBranch('good', () => allow('current branch, no refspec, good commits', 'git push'));
@@ -525,6 +547,25 @@ async function main() {
   const PROGRAM = repo('program', `[gpg "openpgp"]\n\tprogram = ${WRAPPER}\n[gpg]\n\tprogram = ${join(sandbox, 'no-such-gpg')}\n`);
   const PROGRAM_MISSING = repo('program-missing', `[gpg]\n\tprogram = ${join(sandbox, 'no-such-gpg')}\n`);
 
+  // BRANCHY: main is clean and on origin; feat holds a commit with a wrong committer. The variants
+  // differ only in what git is configured to push.
+  const BRANCHY = join(sandbox, 'branchy');
+  const b = build(BRANCHY,
+    fiCommit('refs/heads/main', 1, 'Initial') +
+    fiCommit('refs/heads/good', 2, 'Good work', { from: ':1' }) +
+    fiCommit('refs/heads/feat', 3, 'Wrong on feat', { committer: 'other@example.org', from: ':1' }) +
+    fiReset('refs/remotes/origin/main', ':1'),
+    remote + upstream('main'), 'main');
+  const branchy = (name, config) => {
+    const dir = join(sandbox, name);
+    cpSync(BRANCHY, dir, { recursive: true });
+    appendFileSync(join(dir, '.git', 'config'), config);
+    return dir;
+  };
+  const CFG_NAMES = branchy('cfg-names', '[remote "origin"]\n\tpush = refs/heads/feat:refs/heads/feat\n');
+  const CFG_MATCHING = branchy('cfg-matching', '[push]\n\tdefault = matching\n');
+  const CFG_GLOB = branchy('cfg-glob', '[remote "origin"]\n\tpush = refs/heads/*:refs/heads/*\n');
+
   // a folder that is not a repository: only ~/.gitconfig decides
   const PLAIN = join(sandbox, 'plain');
   mkdirSync(PLAIN);
@@ -541,7 +582,7 @@ async function main() {
   const tSetup = Date.now() - T0;
 
   const fx = {
-    sandbox, DOCTOR_HOME, SIGNED, WORK, REPAIR, UNSIGNED, UNKNOWN_KEY, LOCAL_UNSET, LOCAL_KEY, SSH_FORMAT, PROGRAM, PROGRAM_MISSING,
+    sandbox, DOCTOR_HOME, SIGNED, WORK, REPAIR, BRANCHY, CFG_NAMES, CFG_MATCHING, CFG_GLOB, FEAT_BAD: short(b[':3']), UNSIGNED, UNKNOWN_KEY, LOCAL_UNSET, LOCAL_KEY, SSH_FORMAT, PROGRAM, PROGRAM_MISSING,
     PLAIN, NO_GPG, USED, KEY, TEAM_KEY,
     BAD_COMMITTER: short(s[':4']), FRESH_BAD: short(s[':10']), TWO_BAD_BASE: short(s[':11']),
     UNSIGNED_TEAM: short(s[':16']), SIGNED_MINE: short(signedMine)
