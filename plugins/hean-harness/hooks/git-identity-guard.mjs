@@ -217,12 +217,17 @@ export function configuredPush(repo, words) {
   return { name, revs, unnamed, named: !unnamed.length };
 }
 
-/** The revisions with MATCHING turned into refs/heads/<branch> for each local branch the remote has. */
+/**
+ * The revisions with MATCHING turned into refs/heads/<branch> for each local branch the remote has.
+ * A remote with no remote-tracking refs, such as a URL or a remote never fetched, cannot say which
+ * branches it has, so every local branch is checked.
+ */
 function expandMatching(repo, remote, revs) {
   if (!revs.includes(MATCHING)) return revs;
   const prefix = `refs/remotes/${remote}/`;
   const names = refs => (tryGit(repo, 'for-each-ref', '--format=%(refname)', refs) ?? '').split('\n').filter(Boolean);
   const theirs = new Set(names(prefix).map(r => r.slice(prefix.length)));
+  if (!theirs.size) return [...revs.filter(r => r !== MATCHING), '--branches'];
   const matching = names('refs/heads/').map(r => r.slice('refs/heads/'.length)).filter(b => theirs.has(b)).map(b => `refs/heads/${b}`);
   return [...revs.filter(r => r !== MATCHING), ...matching];
 }

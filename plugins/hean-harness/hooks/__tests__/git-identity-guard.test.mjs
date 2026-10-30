@@ -305,6 +305,9 @@ const GROUPS = {
     report('typed ":" leaves out the branch the remote lacks', colon !== null && !colon.includes('Wrong on local-only'));
     deny('typed "+:" pushes the matching branches',    'git push origin +:', BRANCHY, FEAT_BAD);
     deny('typed ":" with a configured push still pushes the matching branches', 'git push origin :', CFG_NAMES, FEAT_BAD);
+    const unfetched = deny('typed ":" to a URL with no tracking refs checks every branch', 'git push https://host/r.git :', BRANCHY, FEAT_BAD);
+    report('every branch includes the local-only one', unfetched !== null && unfetched.includes('Wrong on local-only'));
+    deny('typed ":" to a remote never fetched checks every branch', 'git push upstream +:', BRANCHY, FEAT_BAD);
     deny('an unnamed configured value keeps HEAD with the named ones', 'git push', CFG_MIXED, HEAD_BAD);
 
     out('git push: the checked-out branch');
