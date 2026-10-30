@@ -215,7 +215,7 @@ const GROUPS = {
 
   // Every check here names its refspec, so none reads SIGNED's HEAD, which the push-refused group moves.
   pushAllowed(fx) {
-    const { SIGNED, WORK, UNSIGNED, UNKNOWN_KEY, NO_GPG, BRANCHY, CFG_NAMES, CFG_GLOB, CFG_NAMED_OK, MATCH_LOCAL } = fx;
+    const { SIGNED, WORK, UNSIGNED, UNKNOWN_KEY, NO_GPG, BRANCHY, CFG_NAMES, CFG_GLOB, CFG_NAMED_OK, MATCH_LOCAL, MATCH_HEAD } = fx;
     const allow = (label, command, cwd = SIGNED, extra) => check(label, command, cwd, null, extra);
     const deny = (label, command, cwd = SIGNED, ...texts) => check(label, command, cwd, texts);
 
@@ -266,6 +266,8 @@ const GROUPS = {
     allow('push.default=matching, remote typed',                    'git push origin', MATCH_LOCAL);
     allow('typed ":" skips branches the remote lacks',              'git push origin :', MATCH_LOCAL);
     allow('typed "+:" skips branches the remote lacks',             'git push origin +:', MATCH_LOCAL);
+    allow('push.default=matching, HEAD local-only and bad: HEAD is not sent', 'git push', MATCH_HEAD);
+    allow('push.default=matching, HEAD local-only and bad, remote typed',     'git push origin', MATCH_HEAD);
   },
 
   // The only group that moves SIGNED's HEAD.
@@ -596,6 +598,7 @@ async function main() {
     appendFileSync(join(dir, '.git', 'config'), config);
     return dir;
   };
+  const MATCH_HEAD = headbad('match-head', '[push]\n\tdefault = matching\n');
   const CFG_NAMED_OK = headbad('cfg-named-ok', '[remote "origin"]\n\tpush = refs/heads/feat:refs/heads/feat\n');
   const CFG_MIXED = headbad('cfg-mixed', '[remote "origin"]\n\tpush = refs/heads/feat:refs/heads/feat\n\tpush = refs/heads/*:refs/heads/*\n');
 
@@ -615,7 +618,7 @@ async function main() {
   const tSetup = Date.now() - T0;
 
   const fx = {
-    sandbox, DOCTOR_HOME, SIGNED, WORK, REPAIR, BRANCHY, CFG_NAMES, CFG_MATCHING, CFG_GLOB, MATCH_LOCAL, CFG_NAMED_OK, CFG_MIXED, FEAT_BAD: short(b[':3']), HEAD_BAD: short(hb[':2']), UNSIGNED, UNKNOWN_KEY, LOCAL_UNSET, LOCAL_KEY, SSH_FORMAT, PROGRAM, PROGRAM_MISSING,
+    sandbox, DOCTOR_HOME, SIGNED, WORK, REPAIR, BRANCHY, CFG_NAMES, CFG_MATCHING, CFG_GLOB, MATCH_LOCAL, CFG_NAMED_OK, CFG_MIXED, MATCH_HEAD, FEAT_BAD: short(b[':3']), HEAD_BAD: short(hb[':2']), UNSIGNED, UNKNOWN_KEY, LOCAL_UNSET, LOCAL_KEY, SSH_FORMAT, PROGRAM, PROGRAM_MISSING,
     PLAIN, NO_GPG, USED, KEY, TEAM_KEY,
     BAD_COMMITTER: short(s[':4']), FRESH_BAD: short(s[':10']), TWO_BAD_BASE: short(s[':11']),
     UNSIGNED_TEAM: short(s[':16']), SIGNED_MINE: short(signedMine)

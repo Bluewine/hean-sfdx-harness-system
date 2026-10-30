@@ -191,7 +191,8 @@ function pushRemote(repo, typed) {
  * key read, revs the source of each value (MATCHING for ':' and for
  * push.default=matching), unnamed the values whose source is a glob or
  * variable, which name no literal ref. named is true when remote.<remote>.push
- * has values and every one names its source, so git sends nothing else. A
+ * has values and every one names its source, or has none and
+ * push.default=matching, so git sends nothing besides revs. A
  * delete or negative value sends nothing. words is the result of pushWords.
  */
 export function configuredPush(repo, words) {
@@ -200,7 +201,10 @@ export function configuredPush(repo, words) {
   const cfg = (...args) => tryGit(repo, 'config', ...args);
   const name = `remote.${pushRemote(repo, words.remote)}.push`;
   const values = (cfg('--get-all', name) ?? '').split('\n').filter(Boolean);
-  if (!values.length) return { ...none, name, revs: cfg('--get', 'push.default') === 'matching' ? [MATCHING] : [] };
+  if (!values.length) {
+    if (cfg('--get', 'push.default') !== 'matching') return { ...none, name };
+    return { ...none, name, revs: [MATCHING], named: true };   // only the matching branches, HEAD among them if it matches
+  }
   const revs = [], unnamed = [];
   for (const value of values) {
     const spec = value.replace(/^\+/, '');
@@ -354,7 +358,7 @@ export function check(script, sessionCwd) {
     if (!rule) continue;
     const words = pushWords(c.args);
     const configured = configuredPush(repo, words);
-    // with named values git sends only what they name; an unnamed one may send HEAD too
+    // with named values or matching git sends only revs; an unnamed value may send HEAD too
     const revs = new Set([...(configured.named ? [] : target.revs), ...configured.revs]);
     const failing = failingCommits(repo, rule, expandMatching(repo, pushRemote(repo, words.remote), [...revs]));
     if (failing.length) return pushRefusal(repo, rule, failing);
