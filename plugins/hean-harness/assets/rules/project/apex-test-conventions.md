@@ -20,6 +20,39 @@ Apply these rules **every time** an Apex test class is created, edited, extended
 - Coverage threshold is **100%** (enforced in CI).
 
 
+## Org-Independent Test Data
+
+A record inserted with no `RecordTypeId` takes the running user's default record type, and a field
+left empty takes the default that record type or the field defines. Both are org configuration. CI
+runs tests as a deploy user whose profile can differ in every org, so a test that passes on one
+pipeline org fails with `REQUIRED_FIELD_MISSING` or `INVALID_OR_NULL_FOR_RESTRICTED_PICKLIST` on
+the next.
+
+- **Record type:** Set `RecordTypeId` on every test record of an object that has record types.
+  Resolve it by developer name, never by label or hardcoded ID:
+  `Schema.SObjectType.WorkType.getRecordTypeInfosByDeveloperName().get('Administrative').getRecordTypeId()`.
+- **Required fields:** Set every required field explicitly, including every required picklist. Never
+  rely on a record type default or a field default.
+- **Restricted picklists:** Use a value the chosen record type allows. Read it from that record
+  type's `<picklistValues>` in `force-app/**/objects/<Object>/recordTypes/<RecordType>.recordType-meta.xml`.
+  When the record type is not in source, retrieve it from the development org before choosing.
+- **Shared helpers:** Apply these rules to every helper and `@testSetup` method that inserts records.
+  Copy an existing helper's record type and values only after checking them against these rules.
+- **Branch build:** A pass on one pipeline org does not prove the test is org-independent. Check the
+  record type and required fields of each inserted record before committing.
+
+```apex
+// ❌ Depends on the running user's default record type and its Category__c default
+new WorkType(Name = 'Submitted Work Type', EstimatedDuration = 1, DurationType = 'Hours');
+
+// ✅ Same result in every org
+Id adminRt = Schema.SObjectType.WorkType.getRecordTypeInfosByDeveloperName()
+    .get('Administrative').getRecordTypeId();
+new WorkType(Name = 'Submitted Work Type', EstimatedDuration = 1, DurationType = 'Hours',
+             RecordTypeId = adminRt, Category__c = 'HVAC');
+```
+
+
 ## Controller Tests — `SFCORE_Stub.Builder` + `MockFactory` pattern
 
 Use `SFCORE_Stub.Builder` to mock the service and inject it via a private `MockFactory` that extends `ACME_Factory`:
@@ -139,6 +172,8 @@ SFCORE_TestUtilities.generateIds(mockAccounts);
 
 - [ ] Test data created via `SFCORE_TestFactory.createSObject` or built manually for Name-less SObjects
 - [ ] Shared setup uses `@testSetup`
+- [ ] Every inserted record of an object with record types sets `RecordTypeId` by developer name
+- [ ] Every required field and required picklist is set explicitly, with a value its record type allows
 - [ ] Controller test uses `SFCORE_Stub.Builder` + private `MockFactory extends ACME_Factory`
 - [ ] Service test uses `ACME_Factory.getFactory().withMocks` + `SFCORE_RepoFactoryMock.QueryResults`
 - [ ] Mock data for Name-less SObjects (`ServiceAppointment`, `Task`, `Event`) built manually, not via `SFCORE_TestFactory.createSObjectList`
