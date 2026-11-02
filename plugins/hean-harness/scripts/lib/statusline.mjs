@@ -13,7 +13,7 @@
 
 import { readFileSync, readdirSync, statSync, mkdirSync, rmSync, writeFileSync, existsSync, utimesSync, renameSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, sep } from 'node:path';
+import { basename, dirname, join, sep } from 'node:path';
 
 import { STATE_DIR } from './manifest.mjs';
 import { orgOf } from './org-roles.mjs';
@@ -31,6 +31,26 @@ export function fmtNum(n) {
 export function homePath(dir, home = homedir()) {
   if (dir === home) return '~';
   return dir.startsWith(home + sep) ? `~${dir.slice(home.length)}` : dir;
+}
+
+/**
+ * The folder, from the project's root folder: the main checkout's folder name,
+ * then the path below it. A linked worktree inside the main checkout (such as
+ * .claude/worktrees/x) shows its path from the main checkout. The main checkout
+ * is the folder that holds the shared git directory; a bare or submodule git
+ * directory has none, so the work tree's top folder is the root instead. A
+ * worktree outside the main checkout starts at its own top folder, and a folder
+ * outside git starts at ~.
+ */
+export function projectPath(dir, top, common, home = homedir()) {
+  const roots = [];
+  if (common && basename(common) === '.git') roots.push(dirname(common));
+  if (top) roots.push(top);
+  for (const root of roots) {
+    if (dir === root) return basename(root);
+    if (dir.startsWith(root + sep)) return `${basename(root)}${dir.slice(root.length)}`;
+  }
+  return homePath(dir, home);
 }
 
 // ── Line 1 ──────────────────────────────────────────────────────────────────

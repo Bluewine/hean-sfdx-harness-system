@@ -42,6 +42,25 @@ try {
   check('a folder outside home keeps its full path', lib.homePath('/opt/x', home) === '/opt/x');
   check('a sibling whose name starts with home\'s is not shortened',
         lib.homePath(`${home}other`, home) === `${home}other`);
+  {
+    const repo = join(home, 'git', 'repo');
+    const gitDir = join(repo, '.git');
+    check('the main checkout\'s root folder shows its name',
+          lib.projectPath(repo, repo, gitDir, home) === 'repo');
+    check('a subfolder of the main checkout starts at the root folder',
+          lib.projectPath(join(repo, 'force-app', 'main'), repo, gitDir, home) === 'repo/force-app/main');
+    const inner = join(repo, '.claude', 'worktrees', 'A-wt');
+    check('a subfolder of a worktree inside the main checkout starts at the main checkout',
+          lib.projectPath(join(inner, 'lwc'), inner, gitDir, home) === 'repo/.claude/worktrees/A-wt/lwc');
+    const outer = join(home, 'git', 'repo-wt');
+    check('a worktree outside the main checkout starts at its own top folder',
+          lib.projectPath(join(outer, 'lwc'), outer, gitDir, home) === 'repo-wt/lwc');
+    check('a submodule starts at its own top folder',
+          lib.projectPath(join(repo, 'sub', 'x'), join(repo, 'sub'), join(gitDir, 'modules', 'sub'), home) === 'sub/x');
+    check('a folder outside git starts at ~', lib.projectPath(join(home, 'notes'), '', '', home) === '~/notes');
+    check('a sibling whose name starts with the root\'s is not shortened',
+          lib.projectPath(`${repo}2`, repo, gitDir, home) === '~/git/repo2');
+  }
 
   // ── commit preference ──────────────────────────────────────────────────────
   check('commit per task reads per task', lib.commitsText({ mode: 'main', commits: 'yes' }) === 'commits: per task');
@@ -233,8 +252,8 @@ try {
   const r = runScript(fixture(repo));
   const [s1, s2, s3] = strip(r.stdout).split('\n');
   check('the script exits 0', r.status === 0, r.stderr);
-  check('line 1 shows the path from ~, the branch, the default org, the context and the turn',
-        s1 === '➜  📁 ~/repo 🌿 work-ABC ☁️ hean-dev 📊 10% (100.0k/1.0M) │ ↑2.0k ↓300', s1);
+  check('line 1 shows the path from the project\'s root folder, the branch, the default org, the context and the turn',
+        s1 === '➜  📁 repo 🌿 work-ABC ☁️ hean-dev 📊 10% (100.0k/1.0M) │ ↑2.0k ↓300', s1);
   check('line 2 shows the commit preference, the deploy org and the count of other connected orgs',
         s2 === '💾 commits: per task │ 🛠️ dev:hean-dev🔓[work-ABC] · +0 connected orgs', s2);
   const shared = JSON.parse(readFileSync(join(stateDir, 'meter', 's1.orgs.json'), 'utf8'));
@@ -263,7 +282,7 @@ try {
   git('-C', repo, 'worktree', 'add', '-q', '-b', 'work-WT', wt);
   const wtLine = strip(runScript(fixture(wt)).stdout).split('\n')[0];
   check('in a linked worktree the branch is followed by the worktree folder name',
-        wtLine.includes('📁 ~/repo-wt 🌿 work-WT (repo-wt)'), wtLine);
+        wtLine.includes('📁 repo-wt 🌿 work-WT (repo-wt)'), wtLine);
   const wtOrgs = strip(runScript(fixture(wt)).stdout).split('\n')[1];
   check('a linked worktree reads the main checkout\'s org roles and shows its own work branch',
         wtOrgs === '💾 commits: per task │ 🛠️ dev:hean-dev🔓[work-WT] · +0 connected orgs', wtOrgs);

@@ -2,7 +2,7 @@
 /**
  * The status line: three lines.
  *
- *   1. path from ~, branch (and worktree), default org, context, the current turn's tokens
+ *   1. path from the project's root folder, branch (and worktree), default org, context, the current turn's tokens
  *   2. the saved commit preference, then the orgs agents may deploy to and a count of the other connected orgs
  *      (the full list goes to a file the statusline-meter mod reads to draw the strip above the prompt)
  *   3. session name, model and effort, then the session's tokens and dollars
@@ -23,7 +23,7 @@ import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { basename, resolve } from 'node:path';
 
-import { line1, line2, line3, homePath, readMeter, prepareMeterDir, orgRows, otherConnected, writeOrgList } from '../../scripts/lib/statusline.mjs';
+import { line1, line2, line3, projectPath, readMeter, prepareMeterDir, orgRows, otherConnected, writeOrgList } from '../../scripts/lib/statusline.mjs';
 import { readPreference } from '../../scripts/lib/commit-lifecycle.mjs';
 import { readRoles, projectRoot, defaultOrg, orgOf } from '../../scripts/lib/org-roles.mjs';
 
@@ -75,7 +75,7 @@ const meter = readMeter(sessionId);
 const usedRaw = get('context_window.used_percentage', '');
 const lines = [
   safe(() => line1({
-    dir: cwd ? homePath(cwd) : '',
+    dir: cwd ? projectPath(cwd, inside === 'true' ? top : '', inside === 'true' ? common : '') : '',
     branch,
     worktree,
     org: root ? (safe(() => defaultOrg(root)?.name, '') ?? '') : '',
