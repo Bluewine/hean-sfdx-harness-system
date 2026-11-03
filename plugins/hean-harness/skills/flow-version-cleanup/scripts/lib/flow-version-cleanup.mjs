@@ -24,6 +24,16 @@ export function parseCount(value) {
   return Number(value);
 }
 
+/** The --min-versions value: 50 when absent; a whole number from 2 to 50, or an Error. */
+export function parseMinVersions(value) {
+  if (value === undefined) return VERSION_LIMIT;
+  const n = Number(value);
+  if (!/^\d+$/.test(String(value)) || n < 2 || n > VERSION_LIMIT) {
+    throw new Error(`--min-versions must be a whole number from 2 to ${VERSION_LIMIT}, got "${value}"`);
+  }
+  return n;
+}
+
 /**
  * The logged-in orgs a name matches, ignoring case: by alias or username first,
  * then by sandbox name (the part of a sandbox username after its last dot).
@@ -44,8 +54,8 @@ export function checkComplete(result) {
   }
 }
 
-/** The flows at the limit and, for each with an Active version, its `count` lowest-numbered non-Active versions. */
-export function selectVersions(records, count) {
+/** The flows with `minVersions` or more versions and, for each with an Active version, its `count` lowest-numbered non-Active versions. */
+export function selectVersions(records, count, minVersions = VERSION_LIMIT) {
   const byFlow = new Map();
   for (const r of records) {
     const f = byFlow.get(r.DefinitionId) ??
@@ -56,7 +66,7 @@ export function selectVersions(records, count) {
   const flows = [];
   const skipped = [];
   for (const f of [...byFlow.values()].sort((a, b) => a.name.localeCompare(b.name))) {
-    if (f.versions.length < VERSION_LIMIT) continue;
+    if (f.versions.length < minVersions) continue;
     const active = f.versions.find(v => v.status === 'Active');
     if (!active) {
       skipped.push({ definitionId: f.definitionId, name: f.name, present: f.versions.length });
@@ -71,12 +81,13 @@ export function selectVersions(records, count) {
 
 /**
  * Splits planned versions by the org now: a version already gone, now Active, or no longer among the
- * `count` oldest non-Active versions of a flow still at the limit with an Active version is not sent.
+ * `count` oldest non-Active versions of a flow still holding `minVersions` or more versions with an Active
+ * version is not sent.
  */
-export function stillDeletable(planned, records, count) {
+export function stillDeletable(planned, records, count, minVersions = VERSION_LIMIT) {
   const now = new Map(records.map(r => [r.Id, r.Status]));
   const selected = count === undefined ? null
-    : new Set(selectVersions(records, count).flows.flatMap(f => f.delete.map(v => v.id)));
+    : new Set(selectVersions(records, count, minVersions).flows.flatMap(f => f.delete.map(v => v.id)));
   const keep = [];
   const dropped = [];
   for (const v of planned) {
@@ -153,10 +164,13 @@ export function roleCommands(previous, name, rolesScript) {
 const skippedLines = skipped => skipped.length
   ? ['', 'SKIPPED (no Active version)', ...skipped.map(s => `${s.name}: ${s.present} versions`)] : [];
 
-export function renderPlan({ count, flows, skipped }) {
+export function renderPlan({ count, minVersions = VERSION_LIMIT, flows, skipped }) {
   const total = flows.reduce((n, f) => n + f.delete.length, 0);
   const lines = [`COUNT: ${count} oldest non-Active versions per flow`,
-                 `AT LIMIT: ${flows.length + skipped.length} flows with ${VERSION_LIMIT} or more versions`];
+                 `AT LIMIT: ${flows.length + skipped.length} flows with ${minVersions} or more versions`];
+  if (minVersions < VERSION_LIMIT) {
+    lines.push(`PREVENTIVE: flows with ${minVersions} or more versions, below the ${VERSION_LIMIT}-version limit`);
+  }
   if (flows.length) {
     lines.push('', '| Flow | Versions | Active | To delete | Version numbers |', '|---|---|---|---|---|');
     for (const f of flows) {

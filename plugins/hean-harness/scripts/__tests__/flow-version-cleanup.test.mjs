@@ -39,6 +39,14 @@ for (const bad of ['0', '-2', 'abc', '1.5', '']) {
   check(`refuses "${bad}"`, threw);
 }
 
+console.log('parseMinVersions');
+check('default is 50', lib.parseMinVersions(undefined) === 50);
+for (const ok of ['2', '30', '50']) check(`accepts ${ok}`, lib.parseMinVersions(ok) === Number(ok));
+for (const bad of ['1', '51', '0', 'x', '2.5']) {
+  let threw = false; try { lib.parseMinVersions(bad); } catch (e) { threw = e.message === `--min-versions must be a whole number from 2 to 50, got "${bad}"`; }
+  check(`refuses "${bad}"`, threw);
+}
+
 console.log('matchOrg');
 const orgs = [
   { username: 'me@example.com.qa', aliases: ['qaOrg'], isSandbox: true },
@@ -87,6 +95,15 @@ console.log('selectVersions');
         same(lib.selectVersions(gaps, 3).flows[0].delete.map(v => v.version), [1, 4, 7]));
 }
 
+console.log('selectVersions with --min-versions');
+{
+  const records = [...flow('Mid', 34, 34), ...flow('Few', 12, 12), ...flow('Almost', 49, 49)];
+  const { flows } = lib.selectVersions(records, 10, 30);
+  check('30 includes a 34-version flow', flows.some(f => f.name === 'Mid' && f.delete.length === 10));
+  check('30 excludes a 12-version flow', !flows.some(f => f.name === 'Few'));
+  check('default still excludes a 49-version flow', lib.selectVersions(records, 5).flows.length === 0);
+}
+
 console.log('stillDeletable');
 {
   const planned = [{ id: 'a', version: 1 }, { id: 'b', version: 2 }, { id: 'c', version: 3 }];
@@ -94,6 +111,13 @@ console.log('stillDeletable');
   check('keeps an inactive version', same(keep.map(v => v.id), ['a']));
   check('drops a version now Active', dropped.some(d => d.id === 'b' && d.reason === 'now Active'));
   check('drops a version already deleted', dropped.some(d => d.id === 'c' && d.reason === 'already deleted'));
+  const small = flow('Mid', 34, 34);
+  const one = [{ id: small[0].Id, version: 1 }];
+  check('kept while the flow still has minVersions', lib.stillDeletable(one, small, 5, 30).keep.length === 1);
+  check('dropped when the flow fell below minVersions',
+        lib.stillDeletable(one, small.slice(10), 5, 30).dropped.length === 1 &&
+        lib.stillDeletable(one, small.slice(10), 5, 30).dropped[0].reason === 'already deleted' &&
+        lib.stillDeletable(one, small.slice(0, 1).concat(small.slice(20)), 5, 30).dropped[0].reason === 'no longer selected');
 }
 
 console.log('buildBatches');
@@ -157,6 +181,10 @@ console.log('renderPlan and renderReport');
   check('plan row with ranges', text.includes('| `Full` | 50 | v50 | 5 | 1-5 |'));
   check('plan total', text.includes('TOTAL: 5 versions from 1 flows'));
   check('plan lists skipped', text.includes('NoActive: 50 versions'));
+  check('no PREVENTIVE line at 50', !text.includes('PREVENTIVE:'));
+  const pre = lib.renderPlan({ count: 5, minVersions: 30, flows, skipped });
+  check('PREVENTIVE line below 50, after AT LIMIT',
+        pre.includes('AT LIMIT: 2 flows with 30 or more versions\nPREVENTIVE: flows with 30 or more versions, below the 50-version limit'));
   const before = flow('Full', 50, 50);
   const after = before.slice(4);
   const results = [1, 2, 3, 4].map(v => ({ id: `x${v}`, version: v, name: 'Full', definitionId: '300Full', ok: true }))
