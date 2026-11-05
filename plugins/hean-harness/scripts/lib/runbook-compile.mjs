@@ -26,7 +26,7 @@
  * Jenkins deploys a stage's runbooks/<stage>-deploy/metaData/ folder before it
  * runs the stage's apex/ scripts, so a script may call a runbook class the org
  * does not hold yet. When a compile problem names a class whose .cls and
- * .cls-meta.xml are in the script's own stage folder (stageClass), deployClass
+ * .cls-meta.xml are in the script's own stage folder (stageClasses), deployClass
  * deploys those two files to the same org with `sf project deploy start
  * --metadata-dir`, which takes a folder outside the project's packageDirectories.
  * No other call is made to the org.
@@ -185,29 +185,36 @@ export async function compileScript({ repoRoot, file, alias }) {
   };
 }
 
-/** Compile problems that can name a class the org does not hold, and the name they give. */
-const CLASS_NAMED = [/Variable does not exist: ([A-Za-z]\w*)/g, /Invalid type: ([A-Za-z]\w*)/g, /from the type ([A-Za-z]\w*)/g];
+/**
+ * Compile problems that mean the org does not hold a class, and the name they give. A
+ * "Method does not exist ... from the type X" problem means the org holds X, so it never
+ * leads to a deploy: the development org may be shared, and another copy of X may be newer.
+ */
+const CLASS_NAMED = [/Variable does not exist: ([A-Za-z]\w*)/g, /Invalid type: ([A-Za-z]\w*)/g];
 
 /**
- * The runbook class a compile problem names that sits in the script's own stage
- * folder, runbooks/<stage>-deploy/metaData/classes/, with its -meta.xml:
- * { name, folder, cls, meta } with name as the file spells it and folder
- * repository-relative, or null. Apex names ignore case, so the file name does too.
+ * Every runbook class a compile problem names that sits in the script's own stage
+ * folder, runbooks/<stage>-deploy/metaData/classes/, with its -meta.xml, in the
+ * order the problem names them: [{ name, folder, cls, meta }] with name as the file
+ * spells it and folder repository-relative. Apex names ignore case, so the file name does too.
  */
-export function stageClass(repoRoot, rel, problem) {
+export function stageClasses(repoRoot, rel, problem) {
   const stage = String(rel).match(RUNBOOK_SCRIPT)?.[1];
-  if (!stage || !problem) return null;
+  if (!stage || !problem) return [];
   const folder = `runbooks/${stage}-deploy/metaData/classes/`;
   let files;
-  try { files = readdirSync(join(repoRoot, folder)); } catch { return null; }
+  try { files = readdirSync(join(repoRoot, folder)); } catch { return []; }
+  const found = new Map();
   for (const named of CLASS_NAMED.flatMap(p => [...String(problem).matchAll(p)].map(m => m[1].toLowerCase()))) {
     const cls = files.find(f => f.toLowerCase() === `${named}.cls`);
-    if (!cls || !files.includes(`${cls}-meta.xml`)) continue;
-    const name = cls.slice(0, -'.cls'.length);
-    return { name, folder, cls: join(repoRoot, folder, cls), meta: join(repoRoot, folder, `${cls}-meta.xml`) };
+    if (!cls || !files.includes(`${cls}-meta.xml`) || found.has(cls)) continue;
+    found.set(cls, { name: cls.slice(0, -'.cls'.length), folder, cls: join(repoRoot, folder, cls), meta: join(repoRoot, folder, `${cls}-meta.xml`) });
   }
-  return null;
+  return [...found.values()];
 }
+
+/** The error the CLI gives when --wait runs out; the deploy keeps running in the org. */
+const WAIT_TIMED_OUT = json => /ClientTimeout/.test(json?.name ?? '') || /deployment is still running/.test(json?.message ?? '');
 
 /** What a failed `sf project deploy start --json` says went wrong. */
 function deployProblem(json, run) {
@@ -218,8 +225,9 @@ function deployProblem(json, run) {
 }
 
 /**
- * Deploy one runbook class from stageClass to alias, the org compileScript
- * compiled against: { deployed: true } or { error }. The class goes up as a
+ * Deploy one runbook class from stageClasses to alias, the org compileScript
+ * compiled against: { deployed: true } or { error, timedOut }, timedOut set when
+ * the wait ran out and the deploy may still be running. The class goes up as a
  * metadata-format folder (package.xml and classes/), the shape the stage's
  * metadata step converts the folder to.
  */
@@ -245,10 +253,10 @@ export function deployClass({ repoRoot, name, cls, meta, alias }) {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
-  if (run.error) return { error: `sf project deploy start did not finish: ${run.error.message}` };
+  if (run.error) return { error: `sf project deploy start did not finish: ${run.error.message}`, timedOut: run.error.code === 'ETIMEDOUT' };
   const json = parseCliJson(run.stdout);
   if (run.status === 0 && json?.result?.status === 'Succeeded') return { deployed: true };
-  return { error: deployProblem(json, run) };
+  return { error: deployProblem(json, run), timedOut: WAIT_TIMED_OUT(json) };
 }
 
 /** Where this repository's compile record lives. */

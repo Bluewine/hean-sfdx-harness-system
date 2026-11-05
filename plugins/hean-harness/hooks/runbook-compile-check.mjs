@@ -38,7 +38,7 @@ import { gitCommands, repoOf, tryGit } from '../scripts/lib/command-line.mjs';
 import { stagingOf, stagesInteractively } from '../scripts/lib/staging.mjs';
 import {
   RUNBOOK_SCRIPT, compileScript, isVersionGap, readRecord, recordCompiled, isRecorded, pipelineApiVersion,
-  stageClass, deployClass, COMPILE_TIMEOUT_MS, DEPLOY_TIMEOUT_MS
+  stageClasses, deployClass, COMPILE_TIMEOUT_MS, DEPLOY_TIMEOUT_MS
 } from '../scripts/lib/runbook-compile.mjs';
 import { readDeploySteps, requiredStep, stepPresent, missingStep } from '../scripts/lib/deploy-steps.mjs';
 
@@ -68,12 +68,18 @@ export async function check(root, rel) {
   try {
     result = await compileScript({ repoRoot: root, file });
     // deploy each class the compile names from the script's own stage folder, never one twice
-    for (let cls; !result.skipped && !result.compiled && (cls = stageClass(root, rel, result.problem)) && !deployed.includes(cls.name);) {
+    const next = () => stageClasses(root, rel, result.problem).find(c => !deployed.includes(c.name));
+    for (let cls; !result.skipped && !result.compiled && (cls = next());) {
       if (Date.now() - started + ROUND_MS > BUDGET_MS) {
         return { kind: 'fail', text: `!! ${rel} calls ${cls.name} from ${cls.folder}, which ${result.alias} does not hold, and the check ` +
           `ran out of time before deploying it. Run\n\n    ${HOOK.replace('<file>', join(root, rel))}\n\nto finish the check.` };
       }
       const d = deployClass({ repoRoot: root, ...cls, alias: result.alias });
+      if (d.timedOut) {
+        return { kind: 'fail', text: `!! ${rel} calls ${cls.name}, and the deploy of ${cls.name} from ${cls.folder} to ` +
+          `${result.alias} timed out: ${d.error}. The deploy may still be running in ${result.alias}. ${rel} was not ` +
+          `compiled. Once the deploy finishes, run\n\n    ${HOOK.replace('<file>', join(root, rel))}\n\nto check the script again.` };
+      }
       if (d.error) {
         return { kind: 'fail', text: `!! ${rel} calls ${cls.name}, and deploying ${cls.name} from ${cls.folder} to ${result.alias} ` +
           `failed: ${d.error}. ${rel} was not compiled. Fix the class, then edit the script again so this check re-runs.` };
@@ -104,7 +110,7 @@ export async function check(root, rel) {
   const where = `${rel}${result.line ? ` line ${result.line}` : ''}${result.column ? `, column ${result.column}` : ''}`;
   const head = `!! ${where} does not compile at API ${result.version} on ${result.alias}, the version the Jenkins ` +
                `pipeline runs anonymous Apex at: ${result.problem ?? '(no problem text returned)'}`;
-  const named = stageClass(root, rel, result.problem);
+  const [named] = stageClasses(root, rel, result.problem);
   const fix = named
     ? `${named.name} is a runbook class in ${named.folder}, deployed to ${result.alias} by this check. Fix the call in the ` +
       'script or the class, then edit the script again so this check re-runs.'

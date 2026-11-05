@@ -32,7 +32,8 @@ mkdirSync(BIN);
 const SF_ARGS = join(sandbox, 'sf-args.log');
 const DEPLOYS = join(sandbox, 'deploys.log');
 // FAKE_SF_MODE: unset = JSON like the real CLI; 'color' = JSON wrapped in ANSI codes; 'auth' = CLI error JSON; 'runtime' = compiled but threw; 'text' = no JSON;
-// 'deployfail' = a deploy fails with one component failure, shaped as plugin-deploy-retrieve prints it.
+// 'deployfail' = a deploy fails with one component failure, shaped as plugin-deploy-retrieve prints it;
+// 'deploytimeout' = --wait runs out, the error plugin-deploy-retrieve prints for error.ClientTimeout.
 const FAKE_SF = `#!/usr/bin/env node
 const fs = require('fs');
 const path = require('path');
@@ -46,6 +47,10 @@ if (args[0] === 'project' && args[1] === 'deploy' && args[2] === 'start') {
   const files = fs.readdirSync(path.join(dir, 'classes')).sort();
   const name = files[0].replace(/\\.cls$/, '');
   fs.appendFileSync(DEPLOYS, JSON.stringify({ name, files, target: arg('--target-org'), packageXml: fs.readFileSync(path.join(dir, 'package.xml'), 'utf8') }) + '\\n');
+  if (process.env.FAKE_SF_MODE === 'deploytimeout') {
+    console.log(JSON.stringify({ status: 1, name: 'ClientTimeoutError', message: 'The command has timed out, although the deployment is still running. Use "sf project deploy resume" to resume watching the deployment.' }));
+    process.exit(1);
+  }
   if (process.env.FAKE_SF_MODE === 'deployfail') {
     console.log(JSON.stringify({ status: 1, result: { status: 'Failed', success: false, details: { componentFailures:
       { fullName: name, componentType: 'ApexClass', lineNumber: '4', problem: 'Unexpected token \\'}\\'.' } } } }));
@@ -64,10 +69,13 @@ if (mode === 'text') { console.error('Error: something went wrong'); process.exi
 const lines = body.split('\\n');
 const hit = (word, problem) => { const i = lines.findIndex(l => l.includes(word)); return i < 0 ? null :
   { success: false, compiled: false, compileProblem: problem, exceptionMessage: '', exceptionStackTrace: '', line: i + 1, column: lines[i].indexOf(word) + 1, logs: '' }; };
-// ACME_Stuck never compiles, deployed or not; any other ACME_ class compiles once deployed to the same org
+// ACME_Stuck never compiles, deployed or not; any other ACME_ class compiles once deployed to the same org.
+// A line that names an undeployed class gets a problem naming every ACME_ class on that line, in line order.
 const held = new Set(deploys().filter(d => d.target === arg('--target-org') && d.name !== 'ACME_Stuck').map(d => d.name));
-const missing = lines.flatMap(l => l.match(/\\bACME_\\w+/g) ?? []).find(n => !held.has(n));
-const failure = (missing && hit(missing, 'Variable does not exist: ' + missing)) ?? hit('New_Field__c', "No such column 'New_Field__c' on entity 'Account'.") ?? hit('oops', "Unexpected token 'oops'.");
+const missingLine = lines.find(l => (l.match(/\\bACME_\\w+/g) ?? []).some(n => !held.has(n)));
+const named = missingLine ? missingLine.match(/\\bACME_\\w+/g) : [];
+const failure = hit('missingMethod', 'Method does not exist or incorrect signature: void missingMethod() from the type ACME_Held')
+  ?? (missingLine && hit(named[0], named.map(n => 'Variable does not exist: ' + n).join('; '))) ?? hit('New_Field__c', "No such column 'New_Field__c' on entity 'Account'.") ?? hit('oops', "Unexpected token 'oops'.");
 const out = failure
   ? { status: 1, name: 'executeCompileFailure', message: 'Compilation failed', data: failure, exitCode: 1, warnings: [] }
   : { status: 0, result: { success: true, compiled: true, compileProblem: '', exceptionMessage: '', exceptionStackTrace: '', line: -1, column: -1, logs: '' }, warnings: [] };
@@ -444,6 +452,33 @@ console.log('Stage classes');
   check('a failed deploy does not compile again', !ctx?.includes('compiles at API'), ctx);
   git(r, 'add', '--', POST);
   has('a failed deploy records no pass', refusal(r, 'git commit -m "x"'), POST);
+
+  runbookClass('post', 'ACME_Held');
+  write(r, POST, 'ACME_Held.missingMethod();\n');
+  ctx = afterWrite(r, POST).hookSpecificOutput?.additionalContext;
+  check('a "Method does not exist ... from the type" problem deploys nothing', deploysOf('ACME_Held').length === 0, JSON.stringify(deploysOf('ACME_Held')));
+  has('that problem gives the existing failure', ctx, '!! ', 'from the type ACME_Held', 'newer than API 42.0');
+
+  runbookClass('post', 'ACME_Slow');
+  write(r, POST, 'ACME_Slow.run();\n');
+  env.FAKE_SF_MODE = 'deploytimeout';
+  ctx = afterWrite(r, POST).hookSpecificOutput?.additionalContext;
+  delete env.FAKE_SF_MODE;
+  has('a deploy whose wait ran out says it may still be running and to run --check again', ctx,
+    '!! ', `the deploy of ACME_Slow from ${POST_FOLDER} to dev@example.com timed out`, 'deployment is still running',
+    'The deploy may still be running in dev@example.com', 'Once the deploy finishes, run', `--check ${join(r, POST)}`);
+  check('a deploy whose wait ran out never says to fix the class', !ctx?.includes('Fix the class'), ctx);
+  git(r, 'add', '--', POST);
+  has('a deploy whose wait ran out records no pass', refusal(r, 'git commit -m "x"'), POST);
+
+  runbookClass('post', 'ACME_Left');
+  runbookClass('post', 'ACME_Right');
+  write(r, POST, 'ACME_Left.run(ACME_Right.value());\n');
+  ctx = afterWrite(r, POST).hookSpecificOutput?.additionalContext;
+  check('a problem naming a deployed class first still deploys the next class it names',
+    ctx === `${POST} compiles at API 42.0 on dev@example.com after deploying ACME_Left and ACME_Right from ${POST_FOLDER} ` +
+      "(the stage's metadata step deploys them first in Jenkins).", ctx);
+  check('each of those classes is deployed once', deploysOf('ACME_Left').length === 1 && deploysOf('ACME_Right').length === 1, JSON.stringify(deploys()));
 
   runbookClass('post', 'ACME_CliJob');
   write(r, POST, 'ACME_CliJob.run();\n');
