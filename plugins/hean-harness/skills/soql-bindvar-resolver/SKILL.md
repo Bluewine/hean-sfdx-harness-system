@@ -92,7 +92,7 @@ prefix, drop that alternative and match on the controller name alone:
 ```bash
 grep -n "METHOD_ENTRY\|METHOD_EXIT" "<path>/file.log" \
   | grep "<ClassPrefix>\|<ControllerClassName>" \
-  | awk -F'[:\t]' '$1 >= <start_line> && $1 <= <query_line>'
+  | awk -F'[:\t]' '$(1) >= <start_line> && $(1) <= <query_line>'
 ```
 
 The outermost `CODE_UNIT_STARTED` entry identifies the Apex action (`ACTION$methodName`). The immediately enclosing `METHOD_ENTRY` before the filter/repo calls names the compute or KPI method.

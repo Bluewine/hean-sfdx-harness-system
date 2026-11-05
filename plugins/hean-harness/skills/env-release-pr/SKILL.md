@@ -48,7 +48,7 @@ columns and nothing else. Whether a story was already deployed by a hotfix is st
 in a cell, a footnote under the table, or a fifth column. Changing the table's shape breaks the
 contract this section defines.
 
-**Work ID and Sprint are always links, Assignee and Subject never are.** The Work ID cell links to the Linear issue, the Sprint cell to the Linear cycle, or to the Linear project when the project fallback applies. A bare work ID or a bare sprint name is a defect, not a style choice.
+**Work ID and Sprint are always links, Assignee and Subject never are.** The Work ID cell links to the Linear issue, the Sprint cell to the Linear cycle, to the Linear project when the project fallback applies, or to the cycle number when the story has no project either. A bare work ID or a bare sprint name is a defect, not a style choice.
 
 **Never hand-author presentation.** GitHub stripes alternating row backgrounds itself from its own stylesheet, from plain pipe-delimited markdown containing no HTML. Emitting a `<table>`, a `style` attribute, or a `class` to chase striping or column widths gets the attributes stripped on render and violates the contract above. Pipe-delimited markdown only.
 
@@ -101,12 +101,13 @@ Collect these. Take any the invoking request already supplied.
 - `HEAD` — for `uat`, `integration`, except for a hotfix re-deploy, where it is that hotfix's `hotfix-{WORK-ID}` branch instead; for `prod`, always `release`, because a production hotfix also reaches `master` through `release`. Every later phase is unchanged. Confirm the kind and both branches at the Phase 6 checkpoint regardless — stating them back to the user catches a mismatched request before Phase 2 computes a range from the wrong pair.
 - `PR_NUMBER` — the deployment PR being updated. **Mode is set by the request's intent, not by this value.** A request to update an existing deployment PR is update mode even when it names no number; `PR_NUMBER` is merely the number that intent resolves to, discovered from the `gh pr list` call in Phase 6 and confirmed at the checkpoint rather than guessed. Absent any such intent the mode is create, and `PR_NUMBER` stays unset. Decide the mode here, in Phase 1, so Phase 6 never has to infer it — an update run that silently falls through to create mode opens a second PR for a deployment that already has one. When Phase 0 already read a PR, that PR is `PR_NUMBER`.
 - `ASSIGNEES` and `REVIEWERS` — only the people the requester named. When the requester names anyone to assign or to review, by argument or in words, read `${CLAUDE_SKILL_DIR}/references/assignees-and-reviewers.md` and collect them by it. Usually empty. `$pr` counts as a PR number only when it is all digits, so `prod --assignee <login>` never reads `--assignee` as a PR. Likewise `--work-id <value>` and `--runlist <link>` are never read as `$kind` or `$pr`; their values belong to `RELEASE_ID` and `RUNLIST_URL`.
-- `RUNLIST_URL` — the deployment runlist spreadsheet link. Sources, in this order: the `--runlist <link>` argument or a link in the requester's words; then, when updating, the `[Runlist](…)` link of the existing PR body; otherwise ask for it at the Phase 6 checkpoint. When the argument differs from the existing body's link, the argument wins, and the checkpoint and the Phase 7 report show `(was {OLD_LINK})`. Do not invent a URL. Do not reuse one from a *different* deployment — the runlist already in the same PR's body is the same deployment's runlist.
+- `RUNLIST_URL` — the deployment runlist spreadsheet link. Sources, in this order: the `--runlist <link>` argument or a link in the requester's words; then, when updating, the `[Runlist](…)` link of the existing PR body; then the `Runlist:` link in the release issue's description (see the release issue read under `RELEASE_ID`), written as a markdown link or a bare URL; otherwise ask for it at the Phase 6 checkpoint. When the argument differs from the existing body's link, the argument wins, and the checkpoint and the Phase 7 report show `(was {OLD_LINK})`. Do not invent a URL. Do not reuse one from a *different* deployment — the runlist already in the same PR's body, and the one on this deployment's own release issue, are the same deployment's runlist.
 - `RELEASE_ID` — the work ID of the Linear issue that tracks this release (for example `ABC-401`). Required for both kinds. Sources, in this order: the `--work-id <value>` argument (a work ID or a Linear issue link), or the requester's words naming the release issue; then, when updating, the `Resolves {ID}` line of the existing PR body, read with `gh pr view {PR_NUMBER} --json body --jq .body` (the same read supplies the existing runlist link and the table difference); otherwise (a new PR, or an older PR body without the line) ask for it at the Phase 6 checkpoint. When `--work-id` is given and the existing body has a different `Resolves` ID, the argument wins and the checkpoint shows the change. An ID equal to a table row's work ID, or a work ID given to another skill in the session (for example `merge-pr`'s `--work-id` for a story), is not the release ID: treat it as not known and ask. The release issue never becomes a table row and never changes the row set.
   - Accept the work ID or the issue's Linear link, in the argument or in the answer. From a link, take the work ID from the `/issue/{ID}/` path segment. Keep only the work ID.
   - The same validation applies to an argument value. When Linear MCP is available, look the ID up with `get_issue`; a value Linear does not find counts as not known: ask at the Phase 6 checkpoint, saying it was not found. When Linear MCP is unavailable, accept an answer of the shape `[A-Z]+-[0-9]+` (optional `-[A-Z]{2}` suffix) as given; an answer without that shape counts as not known: ask again at the checkpoint.
+  - **Release issue read.** When Linear MCP responds and `RELEASE_ID` is known before the checkpoint, call `get_issue` for it (the validation call above is that call) and keep its `title` and `description`. `RUNLIST_URL` takes the first `Runlist:` link in the description verbatim; `DEPLOY_DATE` takes the one `YYYY.MM.DD` date in the title. A description with no `Runlist:` link, or a title with no such date or with more than one, supplies nothing and the value is asked at the checkpoint. When `RELEASE_ID` is answered at the checkpoint, the `get_issue` call that validates the answer supplies the description and title the same way; ask a follow-up only for a value the issue does not hold. Without Linear MCP nothing is read and both are asked.
   - Inside a subagent (no `AskUserQuestion`), when the ID is needed and not given, the whole reply is `needs input: release work ID — the Linear issue that tracks this release`. The caller then calls again with `--work-id <ID>`. Stop once the ID is known to be missing: before Phase 2 in create mode, right after reading the body in update mode.
-- `DEPLOY_DATE` — the deployment date as `YYYY.MM.DD`. **Never compute this and never default it to today.** Deployment dates are set by release champions, not by the day the PR happens to be drafted, so the system clock is not a source for it and neither is any inference from recent activity or the previous deployment's cadence. When opening a new PR, request it at the Phase 6 checkpoint. **When updating, take it from the existing PR's title** — that title already carries the champion's date, and recomputing renames the PR away from the deployment it names and orphans the review file the previous run wrote.
+- `DEPLOY_DATE` — the deployment date as `YYYY.MM.DD`. **Never compute this and never default it to today.** Deployment dates are set by release champions, not by the day the PR happens to be drafted, so the system clock is not a source for it and neither is any inference from recent activity or the previous deployment's cadence. When opening a new PR, take it from the release issue's title when the release issue read above supplied it; otherwise request it at the Phase 6 checkpoint. The release issue's title is written by the release champion, so it is a source, not a computation. **When updating, take it from the existing PR's title** — that title already carries the champion's date, and recomputing renames the PR away from the deployment it names and orphans the review file the previous run wrote.
 
 **The range is only as correct as the refs it is computed from**, so verify freshness rather than assuming it. Never run the fetch under `--quiet`, which hides the failure:
 
@@ -132,11 +133,11 @@ This is every commit in `HEAD` not yet in `BASE`. Extract candidate work IDs fro
 ```bash
 CANDIDATES=$(git log --format='%s' origin/{BASE}..origin/{HEAD} \
   | grep -oE '\b[A-Z]{2,}-[0-9]+' \
-  | awk '!seen[$0]++')
+  | awk '!seen[$(0)]++')
 printf '%s\n' "$CANDIDATES"
 ```
 
-Assign `CANDIDATES` here so the two tests below are self-contained and run in the same shell invocation. `{BASE}` and `{HEAD}` are placeholders you substitute; `$CANDIDATES` is a real shell variable this command creates.
+Assign `CANDIDATES` here so the tests below are self-contained and run in the same shell invocation. `{BASE}` and `{HEAD}` are placeholders you substitute; `$CANDIDATES` is a real shell variable this command creates.
 
 Before changing the work-ID regex or a Phase 2 loop, read `${CLAUDE_SKILL_DIR}/references/command-rationale.md`.
 
@@ -144,28 +145,77 @@ This list is `CANDIDATES`, not yet the row set. Its order carries no meaning —
 
 ### Test 1 — does the story have commits of its own here?
 
-A candidate earns a row only if it *owns* at least one commit — appearing as the `@ID:` subject prefix, or as the `work-ID` branch name in a merge subject. A candidate that appears only inside another story's subject is a cross-reference, not shipped work:
+A candidate earns a row only if it *owns* at least one commit. A merge subject `Merge pull request #N from <org>/work-ID…` is owned by the branch's ID alone, even when an `@OTHER-ID:` prefix precedes it: the prefix names the issue the merge was recorded under, not the work merged. Any other commit is owned by its `@ID:` subject prefix, or by a `work-ID` branch name in its subject. A candidate that appears only inside another story's subject, or only as the prefix of a merge subject, is a cross-reference, not shipped work:
 
 ```bash
+SUBJECTS=$(git log --format='%s' origin/{BASE}..origin/{HEAD})
 printf '%s\n' "$CANDIDATES" | while IFS= read -r id; do
   [ -z "$id" ] && continue
-  own=$(git log --format='%s' origin/{BASE}..origin/{HEAD} \
-        | grep -cE "(^@?${id}:|work[-_]${id}([^0-9]|\$))")
-  printf '%-14s owning=%s\n' "$id" "$own"
+  prefixed=$(printf '%s\n' "$SUBJECTS" \
+        | grep -vE '^(@[A-Z]+-[0-9]+(-[A-Z]{2})?: )?Merge pull request #[0-9]+ from ' \
+        | grep -cE "^@?${id}:")
+  branch=$(printf '%s\n' "$SUBJECTS" | grep -cE "work[-_]${id}([^0-9]|\$)")
+  printf '%-14s owning=%s\n' "$id" "$((prefixed + branch))"
 done
 ```
 
-`owning=0` → drop it from the row set and report it at the Phase 6 checkpoint with the subjects it appeared in. This is a real case, not a hypothetical: an ID has reached a range solely through subjects like `@ABC-96: Adjust Profile according to XYZ-205`, where `XYZ-205` is delivered in a different repository. Do not relax this test because the ID resolves in Linear — resolving proves the issue exists, not that it shipped here.
+`owning=0` → drop it from the row set and report it at the Phase 6 checkpoint with the subjects it appeared in. This is a real case, not a hypothetical: an ID has reached a range solely through subjects like `@ABC-96: Adjust Profile according to XYZ-205`, where `XYZ-205` is delivered in a different repository. Do not relax this test because the ID resolves in Linear — resolving proves the issue exists, not that it shipped here. A second real case: `@ABC-401: Merge pull request #304 from <org>/work-ABC-379` carries the previous release's issue as its prefix; `ABC-401` owns nothing in this range and is dropped, and `ABC-379` owns the merge.
 
-Commits carrying no work ID produce no row. Release plumbing such as `Update Release Version`, `Deprecate Runbook from UAT Deployment ...`, and bare `Merge pull request #N from <org>/work-updateVersion` lines is expected here and correctly excluded.
+Commits carrying no work ID produce no row. Release plumbing such as `Update Release Version`, `Deprecate Runbook from UAT Deployment ...`, and bare `Merge pull request #N from <org>/work-updateVersion` lines is expected here and correctly excluded. Release plumbing whose subject does name a work ID is excluded too, by Test 1b, which judges the commits by the files they changed and never by their subject.
+
+### Test 1b — are the story's commits only version-bump housekeeping?
+
+After a UAT deployment, `version-bump` raises the release version and deletes spent runbook files. Those commits ship nothing, so a candidate whose commits are only that is not a story, whatever its subject says. A candidate counts as housekeeping only when it owns a version-bump commit — one whose only change is the `"version"` line of `package.json` — beside any deletion commits: a story whose only commit removes a destructive-changes entry or deletes its own runbook script is still a story. Run this over the candidates Test 1 kept. For each, inspect every non-merge commit it owns in the range. A commit is housekeeping when every file it changes is one of:
+
+- `package.json`, where the only changed lines are the `"version"` line;
+- a deleted runbook script, staged class or other staged file under `runbooks/` or `deletePackage/`, except the files `version-bump` never deletes: the `.keep` files and the keep-list in `${CLAUDE_SKILL_DIR}/../version-bump/SKILL.md` Phase 4;
+- a container file edited only by removing lines (an entry removed from a destructive-changes manifest, a line removed from `commands.txt`): `deletePackage/pre/destructiveChangesPre.xml`, `deletePackage/post/destructiveChangesPost.xml`, `deletePackage/pre/package.xml`, `deletePackage/post/package.xml`, `runbooks/pre-deploy/sf/commands.txt`, `runbooks/post-deploy/sf/commands.txt`.
+
+```bash
+non_housekeeping_files() {
+  git diff-tree --no-commit-id --name-status -r --no-renames "$SHA" | while IFS=$'\t' read -r st changed; do
+    case "$st:$changed" in
+      M:package.json)
+        git diff -U0 "$SHA^" "$SHA" -- package.json | grep -E '^[+-][^+-]' | grep -qvE '^[+-][[:space:]]*"version"' && echo "$changed" ;;
+      D:*/.keep|D:*/00_predeployApexScript.apex|D:*/00_postdeployApexScript.apex|D:*/01_sampleDataSetup.apex|D:*/02_sampleConfigSetup.apex|D:*/SampleDeployment.cls*|D:*/SampleDataSetup.cls*|D:deletePackage/*/package.xml|D:deletePackage/*/destructiveChanges*.xml|D:runbooks/*/sf/commands.txt)
+        echo "$changed" ;;
+      D:runbooks/*|D:deletePackage/*) ;;
+      M:deletePackage/*/package.xml|M:deletePackage/*/destructiveChanges*.xml|M:runbooks/*/sf/commands.txt)
+        git diff -U0 "$SHA^" "$SHA" -- "$changed" | grep -qE '^\+[^+]' && echo "$changed" ;;
+      *) echo "$changed" ;;
+    esac
+  done
+}
+KEPT=$(printf '%s\n' {IDS_TEST_1_KEPT})
+printf '%s\n' "$KEPT" | while IFS= read -r id; do
+  [ -z "$id" ] && continue
+  commits=$(git log --no-merges --format='%H %s' origin/{BASE}..origin/{HEAD} \
+        | grep -E "^[0-9a-f]+ @?${id}:" | cut -d' ' -f1)
+  n=0; other=0; bumps=0
+  while IFS= read -r SHA; do
+    [ -z "$SHA" ] && continue
+    n=$((n + 1))
+    if [ -n "$(non_housekeeping_files)" ]; then
+      other=$((other + 1))
+    elif git diff-tree --no-commit-id --name-only -r "$SHA" | grep -qx package.json; then
+      bumps=$((bumps + 1))
+    fi
+  done <<< "$commits"
+  printf '%-14s commits=%s other=%s bumps=%s\n' "$id" "$n" "$other" "$bumps"
+done
+```
+
+Replace `{IDS_TEST_1_KEPT}` with the work IDs Test 1 printed with `owning` above 0, separated by spaces, because a shell variable does not survive from one command to the next. `bumps` counts the version-bump commits. The function reads the commit from `SHA`, which the loop sets. The keep-list names in the second `case` pattern are the sample names in `version-bump`; read the project's current keep-list there and adjust them.
+
+`commits` ≥ 1, `other=0` and `bumps` ≥ 1 → the candidate is housekeeping: it gets no row. Never ask about it: the Phase 6 checkpoint lists it in one information line. Any other result keeps the row, including `commits=0` (the candidate owns only merge commits, so there is nothing to inspect), `bumps=0` (deletion commits alone are a story's own cleanup) and a candidate with one real commit among its housekeeping commits.
 
 ### Test 2 — how each story reached `BASE`
 
-**Every story Test 1 kept gets a row. This test never removes one.** It works out how each story's
+**Every story Tests 1 and 1b kept gets a row. This test never removes one.** It works out how each story's
 work reached `BASE`, because one of the three answers has to be said out loud in the closing report.
 Nothing here filters anything.
 
-Run the mirror of Test 1 against `BASE` history, over the candidates Test 1 kept:
+Run the mirror of Test 1 against `BASE` history, over the candidates Tests 1 and 1b kept:
 
 ```bash
 printf '%s\n' "$CANDIDATES" | while IFS= read -r id; do
@@ -209,7 +259,7 @@ Read `.claude/rules/linear-story-resolution.md` first.
 
 When Linear MCP responds, read `${CLAUDE_SKILL_DIR}/references/linear-mcp.md` and take each surviving candidate's fields by it.
 
-A surviving candidate from another team is a legitimate row — Phase 4 resolves its sprint against its own team. Team prefix decides nothing; the two Phase 2 tests already did.
+A surviving candidate from another team is a legitimate row — Phase 4 resolves its sprint against its own team. Team prefix decides nothing; the Phase 2 tests already did.
 
 **When an ID does not resolve**, never silently drop it and never guess a substitute. Common causes are a typo'd prefix in a commit subject, or an ID belonging to a non-Linear tracker. Collect every unresolved ID with the subject it came from and carry it to the Phase 6 checkpoint. If the user maps one to a corrected ID that is already a row, the two are one story and stay one row.
 
@@ -217,15 +267,15 @@ A surviving candidate from another team is a legitimate row — Phase 4 resolves
 
 When Linear MCP is unavailable, say that cost first, then read `${CLAUDE_SKILL_DIR}/references/linear-fallback.md` and ask for each work ID by it.
 
-**Every unresolved or "none" answer goes to the Phase 6 checkpoint**, exactly as an unresolved field from Linear does. A story with a sprint name and sprint URL, or with no sprint but a project name and URL (items 7 and 8), has a Sprint cell and needs no question; only a story with neither goes to the checkpoint. The fallback changes where a value comes from. It does not lower the bar for a blank or an invented cell.
+**Every unresolved or "none" answer goes to the Phase 6 checkpoint**, exactly as an unresolved field from Linear does. A story with a sprint name and sprint URL, or with no sprint but a project name and URL (items 7 and 8), or with neither but a sprint URL ending `/cycle/{number}` (item 5), has a Sprint cell and needs no question; only a story with none of these goes to the checkpoint. The fallback changes where a value comes from. It does not lower the bar for a blank or an invented cell.
 
 ## Phase 4 — Resolve the sprint for each story
 
-**Skip this phase for any story resolved through the Phase 3 fallback** — items 4 to 6 of that prompt already carry its sprint name, link and start date, and items 7 and 8 carry its project name and link for the project fallback. Run it for the stories that came from `get_issue`, which is all of them whenever Linear is connected.
+**Skip this phase for any story resolved through the Phase 3 fallback** — items 4 to 6 of that prompt already carry its sprint name, link and start date, and items 7 and 8 carry its project name and link for the project fallback, and item 5 carries the cycle link for the cycle-number fallback. Run it for the stories that came from `get_issue`, which is all of them whenever Linear is connected.
 
 For the stories that came from `get_issue`, read `${CLAUDE_SKILL_DIR}/references/linear-sprints.md` and map each `cycleId` by it.
 
-Cycles are not guaranteed to have a `title` — future and unstarted cycles routinely return none. If a story's cycle has no title, or the story has no `cycleId` at all, use the story's Linear project instead, as `${CLAUDE_SKILL_DIR}/references/linear-sprints.md` describes under "Project fallback". Only a story with no project either is raised at the Phase 6 checkpoint, because a blank or invented cell is never emitted.
+Cycles are not guaranteed to have a `title` — future and unstarted cycles routinely return none. If a story's cycle has no title, or the story has no `cycleId` at all, use the story's Linear project instead, as `${CLAUDE_SKILL_DIR}/references/linear-sprints.md` describes under "Project fallback". When the story has no project either but has a cycle, use the cycle's number, as the same file describes under "Cycle-number fallback". Only a story with no project and no cycle is raised at the Phase 6 checkpoint, because a blank or invented cell is never emitted.
 
 ## Phase 5 — Order the rows
 
@@ -261,8 +311,10 @@ the questions alone:
   this as a difference against the existing PR body — rows added, rows removed, rows that moved — not as
   a fresh table. The user already approved the rows that are staying.
 - **Title** — the `PR_TITLE`, and whether it was kept from the existing PR or worked out.
+- **Not stories** — `Not stories (version-bump housekeeping): {ID} ({N} commits), …`, shown only when Test 1b excluded a candidate. It is information, not a question.
 - **Release issue** — `Release issue: {RELEASE_ID}`, shown only when it is known: kept from the existing PR body or given in the request. When `--work-id` replaces a different `Resolves` ID in the existing body, show both: `Release issue: {NEW_ID} (was {OLD_ID})`.
-- **Runlist** — the runlist link, shown only when it is known, with ` (was {OLD_LINK})` when a `--runlist` argument or a link in the request replaced the existing body's link.
+- **Runlist** — the runlist link with its source, shown only when it is known: `Runlist: {URL} (from {RELEASE_ID})` when the release issue supplied it, `(from the existing PR)`, or `(from the request)`; add ` (was {OLD_LINK})` when a `--runlist` argument or a link in the request replaced the existing body's link. A value found in a source is shown, never asked about.
+- **Deployment date** — for a new PR, shown only when it is known: `Deployment date: {DEPLOY_DATE} (from {RELEASE_ID})`. When updating it is the existing title's date and needs no line.
 
 **What you need answered — numbered 1, 2, 3, each needing its own answer.**
 
@@ -275,10 +327,10 @@ a passing remark.
 | A work ID that appears only inside some other story's commit message | that commit subject | "I would leave `{ID}` out. Answer: `leave out`, or `include`" |
 | A story whose fix already reached `BASE` through a hotfix | the `hotfix-*` merge subject | "`{ID}` already went live through `{BRANCH}`, so this PR only carries the commit copying it back. It stays in the table either way. Answer: `right`, or `no, some of its work is still going out now`" |
 | A work ID that is not in the issue tracker | the commit subject it came from | "I cannot find `{ID}`. Answer: the correct ID, or `leave out`" |
-| A story missing its sprint and its project | that neither is set | "`{ID}` has no sprint and no project. Answer: the sprint or project name with its Linear link, or `leave blank`" |
+| A story missing its sprint, its project and its cycle | that none is set | "`{ID}` has no sprint, no project and no cycle. Answer: the sprint or project name with its Linear link, or `leave blank`" |
 | A story whose sprint has no link | the sprint name | "`{ID}` is in `{SPRINT}` but has no sprint link. Answer: the sprint URL, or `leave blank`" |
 | A story missing its assignee | that it is unassigned | "`{ID}` has no assignee. Answer: the value, or `leave blank`" |
-| Something the run needs and was not given — the deployment date, the runlist link, which PR to update, or confirmation of the two branches | what is missing and why it is needed | ask for it directly |
+| Something the run needs and was not given — the deployment date or the runlist link when the request, the existing PR and the release issue supplied none, which PR to update, or confirmation of the two branches | what is missing and why it is needed | ask for it directly |
 | The release issue's work ID is not known, or was given and not found in Linear | that the PR body ends with a `Resolves` line and none was found or given, or which value was not found | "Which Linear issue tracks this release? Answer: the work ID (`ABC-401`) or its Linear link." When the answer did not resolve in Linear, ask again with the same wording plus what was not found |
 
 **Write the question out in plain words every time.** No internal shorthand in anything the user reads:
@@ -323,6 +375,14 @@ For a story whose cycle has no `title`, or that has no cycle, and that has a pro
 ```
 
 A story whose cycle has a `title` never uses this row. In `{PROJECT_NAME}`, escape every `[` as `\[`, every `]` as `\]` and every `|` as `\|`.
+
+For a story with no project whose cycle has no `title`, the Sprint cell is the cycle-number fallback:
+
+```
+[{WORK-ID}]({ISSUE_URL}) | {TITLE} | {ASSIGNEE} | [Cycle {NUMBER}](https://linear.app/{WORKSPACE}/team/{TEAM_KEY}/cycle/{NUMBER})
+```
+
+A story with a project never uses this row.
 
 Write the body with a shell heredoc, never the Write tool:
 
@@ -371,7 +431,7 @@ Runlist: {RUNLIST_URL}
 Review or edit the file, then type `yes` to submit.
 ```
 
-Append ` (was {OLD_ID})` to the `Release issue` line when an argument replaced the existing `Resolves` ID, and ` (was {OLD_LINK})` to the `Runlist` line when an argument replaced the existing link.
+Append ` (was {OLD_ID})` to the `Release issue` line when an argument replaced the existing `Resolves` ID, and ` (was {OLD_LINK})` to the `Runlist` line when an argument replaced the existing link. Append ` (from {RELEASE_ID})` to the `Runlist` line when the release issue supplied the link.
 
 Leave the hotfix line out entirely when no story was already deployed by one. A line reading `0 of them` is noise.
 When there is one, name every ID — a count alone tells the reader something is there and not what.
@@ -461,7 +521,7 @@ user's `yes` to publishing as consent to clean up. They are separate decisions.
 ```bash
 git rev-parse --git-dir
 git rev-parse --git-common-dir
-git worktree list --porcelain | awk '/^worktree /{print $2; exit}'
+git worktree list --porcelain | awk '/^worktree /{print $(2); exit}'
 git rev-parse --show-toplevel
 git branch --show-current
 ```

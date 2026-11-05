@@ -6,7 +6,7 @@
 gh pr list --base {BASE} --state all --limit 20 --json number,title,headRefName
 ```
 
-Take the prevailing title stem from those results, then resolve `{DEPLOY_DATE}` into it **only once the date is known**. If the date is still open, show the stem with `{DEPLOY_DATE}` left unresolved, request it as its own numbered question, and finalize the title from the answer. Never fill the placeholder with today's date just to have something to display — a date shown at the checkpoint reads as decided, and the user approves it without noticing it was invented.
+Take the prevailing title stem from those results, then resolve `{DEPLOY_DATE}` into it **only once the date is known** — from the release issue's title, which Phase 1 reads and the checkpoint shows with its source, or from the user's answer. If neither supplied it, show the stem with `{DEPLOY_DATE}` left unresolved, request it as its own numbered question, and finalize the title from the answer. Never fill the placeholder with today's date just to have something to display — a date shown at the checkpoint reads as decided, and the user approves it without noticing it was invented.
 
 Two things drive a suffix, and they are independent:
 

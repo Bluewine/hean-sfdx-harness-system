@@ -87,7 +87,7 @@ Repeat for `work-{ID}-HF` and `work-{ID}-BM` to get `A`, `B`, `C`. Call the winn
 # more than one matches, or none does.
 git show <ref>:deploy-config.yml | grep -oE 'name: [A-Za-z0-9_-]+-QA'
 
-git show <ref>:deploy-config.yml | awk '/name: {QA_ENV}/{getline; print $2}'
+git show <ref>:deploy-config.yml | awk '/name: {QA_ENV}/{getline; print $(2)}'
 ```
 
 Read it at `REF(work-{ID}-HF)` and `REF(hotfix-{ID})` to get `Q_HF` and `Q_PARENT`.
@@ -432,9 +432,9 @@ Both refs are always explicit — none of these PRs targets `integration` by def
 Once `PR3_MERGED` holds, confirm the swimlane reset reached everywhere it propagated:
 
 ```bash
-git show origin/integration:deploy-config.yml | awk '/name: {QA_ENV}/{getline; print $2}'
-git show origin/release:deploy-config.yml | awk '/name: {QA_ENV}/{getline; print $2}'
-git show origin/master:deploy-config.yml | awk '/name: {QA_ENV}/{getline; print $2}'
+git show origin/integration:deploy-config.yml | awk '/name: {QA_ENV}/{getline; print $(2)}'
+git show origin/release:deploy-config.yml | awk '/name: {QA_ENV}/{getline; print $(2)}'
+git show origin/master:deploy-config.yml | awk '/name: {QA_ENV}/{getline; print $(2)}'
 ```
 
 `origin/integration` must read `integration`. Any ref still naming a `hotfix-` branch is unreset drift — report it with the ref name. A `hotfix-` value on `origin/master` means production's QA swimlane points at a branch that has very likely been deleted.

@@ -144,7 +144,7 @@ Compute the ordered, de-duplicated list of work-ID groups (first appearance firs
 ```bash
 MB=$(git merge-base origin/{BASE} HEAD)
 git log --no-merges --reverse --topo-order --format='%s' "$MB"..HEAD \
-  | sed -nE 's/^@([A-Z]+-[0-9]+):.*/\1/p' | awk '!seen[$0]++'
+  | sed -nE 's/^@([A-Z]+-[0-9]+):.*/\1/p' | awk '!seen[$(0)]++'
 ```
 
 - `--no-merges` excludes merge commits, including back-merges of `integration` (`@XXX: Merge integration`), so they never form a story.

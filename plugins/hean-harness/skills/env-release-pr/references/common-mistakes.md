@@ -6,7 +6,11 @@
 | One story split across several rows | Dedupe on work ID — many commits, one row |
 | Row set pulled from a Linear cycle or board | Only `git log {BASE}..{HEAD}` defines the row set |
 | A work ID given a row because the tracker knows it, though it has no commits of its own here | Being in the tracker proves the issue exists, not that it was delivered here; require at least one commit of its own |
-| Hotfix story dropped because its fix already reached `BASE` | Every candidate Test 1 kept is a row; Test 2 classifies, it never drops |
+| Merge subject credited to its `@ID:` prefix | A `Merge pull request #N from <org>/work-ID` subject is owned by the branch's ID alone; a candidate that owns only such prefixes drops like any `owning=0` candidate |
+| A story given a row because its commits only raise the version or remove spent runbook files | Test 1b: when every non-merge commit a candidate owns changes only the `"version"` line or removes spent runbook items, and at least one of them is a version-bump commit, it gets no row and is listed in one information line, never asked about; deletion commits alone are a story's own cleanup and keep the row |
+| Housekeeping judged by the commit subject | Judge by the files each commit changed; a subject naming a work ID can still be plumbing, and a real change can wear a plumbing subject |
+| Runlist link or deployment date asked though the release issue holds it | Read the release issue with `get_issue`: the `Runlist:` link in its description, the one `YYYY.MM.DD` in its title; show each with its source and ask nothing |
+| Hotfix story dropped because its fix already reached `BASE` | Every candidate Tests 1 and 1b kept is a row; Test 2 classifies, it never drops |
 | Hotfix row included silently | Name it in the closing report, or the table reads as a claim that the fix ships today |
 | "Already deployed" written into a table cell or an extra column | The table's four columns are fixed; say it in the closing report |
 | Hotfix block reduced to a count | Name every work ID and title; a count says a category exists, not which story |
@@ -19,6 +23,8 @@
 | Sprint cell filled with the `cycleId` UUID | Map via `list_cycles`; use `title` and `number` |
 | Project link built from the project name | Copy the `url` `get_project` returned, or the URL the user pasted |
 | Project shown for a story whose cycle has a title | The sprint wins whenever the cycle has a title |
+| A story with a title-less cycle and no project asked about at the checkpoint | Show `[Cycle {number}](…)`; ask only for a story with no sprint, no project and no cycle |
+| Cycle number shown for a story that has a project | Order is sprint title, then project, then cycle number |
 | Sprint blocks ordered by cycle `number` | Numbers restart per team; order blocks by `startsAt` |
 | Work IDs sorted as text within a sprint | Compare the numeric part as a number — `-96` precedes `-146` |
 | Assignee inferred from commit author | Use Linear's `assignee`; commit author is who pushed, not who owned |
@@ -31,8 +37,8 @@
 | Kind guessed from the current branch, open PRs or the calendar | Only the Phase 0 rules decide; otherwise ask, or return the needs-input line to the caller |
 | Kind question attempted inside a subagent | `AskUserQuestion` is absent there; return the needs-input line before any git or GitHub call |
 | A `prod` request and a PR based on `release` resolved by picking one | Stop, report both, and ask |
-| Runlist URL reused from a prior PR | It is per-deployment; ask for it. The same PR's own runlist is not a prior PR's |
-| `DEPLOY_DATE` defaulted to today | Release champions set deployment dates; ask for it, never read the clock |
+| Runlist URL reused from a prior PR | It is per-deployment; take it from the argument, this PR's body or this release issue's description, else ask. The same PR's own runlist is not a prior PR's |
+| `DEPLOY_DATE` defaulted to today | Release champions set deployment dates; take it from the release issue's title, else ask, never read the clock |
 | Placeholder date shown at the checkpoint to fill the title | An invented date reads as decided and gets approved unnoticed; leave it unresolved |
 | Title recomputed when updating | Take it from the existing PR; it already carries the champion's date |
 | `--title` passed to `gh pr edit` | Body plus named people only; the title is the deployment's identity |

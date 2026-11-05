@@ -50,7 +50,7 @@ Sort by `startsAt`, never by `number` — numbers restart per team, so ordering 
 
 ## Missing data
 
-Cycles are not guaranteed to have a `title`; future and unstarted cycles routinely return `null`. When a cycle has no `title`, or the issue has no `cycleId`, show the issue's project as `[Project: {name}]({url})`. `{name}` is `get_issue`'s `project`, with every `[` escaped as `\[`, every `]` as `\]` and every `|` as `\|`. `{url}` is `get_project`'s `url`, copied verbatim, from one `get_project` call per distinct `projectId`; never build it from the name. A cycle with a `title` always shows the sprint. `startsAt` still orders a title-less cycle. With no project either, surface the gap rather than emitting a blank or invented value.
+Cycles are not guaranteed to have a `title`; future and unstarted cycles routinely return `null`. When a cycle has no `title`, or the issue has no `cycleId`, show the issue's project as `[Project: {name}]({url})`. `{name}` is `get_issue`'s `project`, with every `[` escaped as `\[`, every `]` as `\]` and every `|` as `\|`. `{url}` is `get_project`'s `url`, copied verbatim, from one `get_project` call per distinct `projectId`; never build it from the name. A cycle with a `title` always shows the sprint. `startsAt` still orders a title-less cycle. With no project either, but a cycle, show `[Cycle {number}](https://linear.app/{WORKSPACE}/team/{TEAM_KEY}/cycle/{number})`, with `number` from `list_cycles` and `{WORKSPACE}` as in cycle resolution. With no project and no cycle, surface the gap rather than emitting a blank or invented value.
 
 Cycle assignment is read live. A report reflects Linear at generation time, not at merge time.
 

@@ -18,6 +18,14 @@
 - Cell text: `[Project: {PROJECT_NAME}]({PROJECT_URL})`. `{PROJECT_NAME}` is `get_issue`'s `project`, verbatim except that every `[` becomes `\[`, every `]` becomes `\]` and every `|` becomes `\|`. Example: `[Project: Billing Migration](https://linear.app/{WORKSPACE}/project/billing-migration-1a2b3c4d5e6f)`.
 - `{PROJECT_URL}` is `get_project`'s `url`, copied verbatim. Never build it from the name: the URL ends in a slug plus a hash that the name does not reproduce, for the same reason the issue URL is never slugified.
 - Ordering does not change. A story whose cycle has a `startsAt` but no `title` keeps its place by `startsAt`. A story with no cycle stays in the final no-start-date block, ordered by work ID.
-- A story with no `projectId`, or whose `get_project` result has no `url`, has no project either: raise it at the Phase 6 checkpoint.
+- A story with no `projectId`, or whose `get_project` result has no `url`, has no project either: use the cycle-number fallback when the story has a cycle, and raise it at the Phase 6 checkpoint only when it has no cycle.
+
+## Cycle-number fallback
+
+**When it applies:** the story has no project (see above) and its cycle has no `title`. The order is therefore the cycle's `title`, then the project, then the cycle's number. A story whose cycle has a `title` shows the sprint, and a story with a project shows the project, never this cell.
+
+- Cell text: `[Cycle {number}](https://linear.app/{WORKSPACE}/team/{TEAM_KEY}/cycle/{number})`, with `number`, `{WORKSPACE}` and `{TEAM_KEY}` taken as for a sprint link above. Example: `[Cycle 13](https://linear.app/{WORKSPACE}/team/{TEAM_KEY}/cycle/13)`.
+- Ordering does not change: the cycle's `startsAt` places the story in its block.
+- A story with no `cycleId` has no cycle: with no project either, raise it at the Phase 6 checkpoint.
 
 Cycle assignment is read live and issues do get re-assigned between cycles, so a row's sprint reflects Linear at generation time, not at merge time.
