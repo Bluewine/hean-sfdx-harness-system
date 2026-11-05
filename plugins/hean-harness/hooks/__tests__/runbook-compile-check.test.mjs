@@ -7,7 +7,9 @@
  * @store-sfdcbt-net/CICD_node-run-list-exec-lib,
  * @store-sfdcbt-net/CICD_node-jsforce-util and a jsforce copy that only declares
  * a default API version, and PATH starts with a fake `sf` that answers
- * `apex run` from the source file it is given and records its arguments. The
+ * `apex run` from the source file it is given and records its arguments. It
+ * answers `project deploy start` too, recording the class files in the
+ * --metadata-dir folder; an ACME_ class compiles only after it is deployed. The
  * record lives in a throwaway CLAUDE_CONFIG_DIR.
  *
  * Run: node hooks/__tests__/runbook-compile-check.test.mjs
@@ -28,12 +30,30 @@ const BIN = join(sandbox, 'bin');
 const CALLS = join(sandbox, 'calls.log');
 mkdirSync(BIN);
 const SF_ARGS = join(sandbox, 'sf-args.log');
-// FAKE_SF_MODE: unset = JSON like the real CLI; 'color' = JSON wrapped in ANSI codes; 'auth' = CLI error JSON; 'runtime' = compiled but threw; 'text' = no JSON.
+const DEPLOYS = join(sandbox, 'deploys.log');
+// FAKE_SF_MODE: unset = JSON like the real CLI; 'color' = JSON wrapped in ANSI codes; 'auth' = CLI error JSON; 'runtime' = compiled but threw; 'text' = no JSON;
+// 'deployfail' = a deploy fails with one component failure, shaped as plugin-deploy-retrieve prints it.
 const FAKE_SF = `#!/usr/bin/env node
 const fs = require('fs');
+const path = require('path');
 const args = process.argv.slice(2);
 fs.appendFileSync(${JSON.stringify(SF_ARGS)}, args.join(' ') + '\\n');
 const arg = n => args[args.indexOf(n) + 1];
+const DEPLOYS = ${JSON.stringify(DEPLOYS)};
+const deploys = () => fs.existsSync(DEPLOYS) ? fs.readFileSync(DEPLOYS, 'utf8').split('\\n').filter(Boolean).map(l => JSON.parse(l)) : [];
+if (args[0] === 'project' && args[1] === 'deploy' && args[2] === 'start') {
+  const dir = arg('--metadata-dir');
+  const files = fs.readdirSync(path.join(dir, 'classes')).sort();
+  const name = files[0].replace(/\\.cls$/, '');
+  fs.appendFileSync(DEPLOYS, JSON.stringify({ name, files, target: arg('--target-org'), packageXml: fs.readFileSync(path.join(dir, 'package.xml'), 'utf8') }) + '\\n');
+  if (process.env.FAKE_SF_MODE === 'deployfail') {
+    console.log(JSON.stringify({ status: 1, result: { status: 'Failed', success: false, details: { componentFailures:
+      { fullName: name, componentType: 'ApexClass', lineNumber: '4', problem: 'Unexpected token \\'}\\'.' } } } }));
+    process.exit(1);
+  }
+  console.log(JSON.stringify({ status: 0, result: { status: 'Succeeded', success: true, details: {} } }));
+  process.exit(0);
+}
 if (args[0] !== 'apex' || args[1] !== 'run') { console.log(JSON.stringify({ status: 1, name: 'UnexpectedCommand', message: args.join(' ') })); process.exit(1); }
 const body = fs.readFileSync(arg('--file'), 'utf8');
 fs.appendFileSync(process.env.FAKE_SF_LOG, JSON.stringify({ args, version: arg('--api-version'), target: arg('--target-org'), body, env: { NO_COLOR: process.env.NO_COLOR, FORCE_COLOR: process.env.FORCE_COLOR } }) + '\\n');
@@ -44,7 +64,10 @@ if (mode === 'text') { console.error('Error: something went wrong'); process.exi
 const lines = body.split('\\n');
 const hit = (word, problem) => { const i = lines.findIndex(l => l.includes(word)); return i < 0 ? null :
   { success: false, compiled: false, compileProblem: problem, exceptionMessage: '', exceptionStackTrace: '', line: i + 1, column: lines[i].indexOf(word) + 1, logs: '' }; };
-const failure = hit('New_Field__c', "No such column 'New_Field__c' on entity 'Account'.") ?? hit('oops', "Unexpected token 'oops'.");
+// ACME_Stuck never compiles, deployed or not; any other ACME_ class compiles once deployed to the same org
+const held = new Set(deploys().filter(d => d.target === arg('--target-org') && d.name !== 'ACME_Stuck').map(d => d.name));
+const missing = lines.flatMap(l => l.match(/\\bACME_\\w+/g) ?? []).find(n => !held.has(n));
+const failure = (missing && hit(missing, 'Variable does not exist: ' + missing)) ?? hit('New_Field__c', "No such column 'New_Field__c' on entity 'Account'.") ?? hit('oops', "Unexpected token 'oops'.");
 const out = failure
   ? { status: 1, name: 'executeCompileFailure', message: 'Compilation failed', data: failure, exitCode: 1, warnings: [] }
   : { status: 0, result: { success: true, compiled: true, compileProblem: '', exceptionMessage: '', exceptionStackTrace: '', line: -1, column: -1, logs: '' }, warnings: [] };
@@ -349,6 +372,83 @@ const destructive = members => '<?xml version="1.0" encoding="UTF-8"?>\n<Package
   has('an unreadable deploy.yml adds one !! line, and the script still compiles', afterWrite(broken, POST).hookSpecificOutput?.additionalContext,
     `!! The runbook stage check did not run for ${POST}: deploy.yml could not be read`, `${POST} compiles at API 42.0`);
   check('an unreadable deploy.yml says nothing for a file outside the stage folders', JSON.stringify(afterWrite(broken, 'notes.txt')) === '{}');
+}
+
+console.log('Stage classes');
+{
+  const r = makeRepo('stage-classes');
+  const deploys = () => existsSync(DEPLOYS) ? readFileSync(DEPLOYS, 'utf8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l)) : [];
+  const deploysOf = name => deploys().filter(d => d.name === name);
+  const runbookClass = (stage, name, { meta = true } = {}) => {
+    write(r, `runbooks/${stage}-deploy/metaData/classes/${name}.cls`, `public class ${name} {\n    public static void run() {}\n}\n`);
+    if (meta) write(r, `runbooks/${stage}-deploy/metaData/classes/${name}.cls-meta.xml`,
+      '<?xml version="1.0" encoding="UTF-8"?>\n<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">\n    <apiVersion>62.0</apiVersion>\n    <status>Active</status>\n</ApexClass>\n');
+  };
+  const POST_FOLDER = 'runbooks/post-deploy/metaData/classes/';
+
+  runbookClass('post', 'ACME_SetupJob');
+  runbookClass('post', 'ACME_Other');
+  write(r, POST, 'ACME_SetupJob.run();\n');
+  let ctx = afterWrite(r, POST).hookSpecificOutput?.additionalContext;
+  check('a same-stage class is deployed, then the script compiles',
+    ctx === `${POST} compiles at API 42.0 on dev@example.com after deploying ACME_SetupJob from ${POST_FOLDER} ` +
+      "(the stage's metadata step deploys it first in Jenkins).", ctx);
+  const d = deploysOf('ACME_SetupJob');
+  check('only the named class and its -meta.xml are deployed, once, to the compile org',
+    d.length === 1 && d[0].target === 'dev@example.com' && JSON.stringify(d[0].files) === '["ACME_SetupJob.cls","ACME_SetupJob.cls-meta.xml"]', JSON.stringify(d));
+  has('the deploy manifest lists the class at its -meta.xml API version', d[0]?.packageXml, '<members>ACME_SetupJob</members>', '<name>ApexClass</name>', '<version>62.0</version>');
+  has('the deploy is a metadata-format folder deploy with no tests', readFileSync(SF_ARGS, 'utf8'),
+    'project deploy start --metadata-dir', '--target-org dev@example.com --test-level NoTestRun --wait 1 --json');
+  check('a class the compile does not name is not deployed', deploysOf('ACME_Other').length === 0);
+  git(r, 'add', '--', POST);
+  check('a pass after a deploy is recorded', refusal(r, 'git commit -m "x"') === null);
+
+  runbookClass('post', 'ACME_First');
+  runbookClass('post', 'ACME_Second');
+  write(r, POST, 'ACME_First.run();\nACME_Second.run();\n');
+  ctx = afterWrite(r, POST).hookSpecificOutput?.additionalContext;
+  check('each class a new compile names is deployed in turn',
+    ctx === `${POST} compiles at API 42.0 on dev@example.com after deploying ACME_First and ACME_Second from ${POST_FOLDER} ` +
+      "(the stage's metadata step deploys them first in Jenkins).", ctx);
+
+  runbookClass('pre', 'ACME_PreJob');
+  write(r, POST, 'ACME_PreJob.run();\n');
+  ctx = afterWrite(r, POST).hookSpecificOutput?.additionalContext;
+  check('a class in the other stage\'s folder is not deployed', deploysOf('ACME_PreJob').length === 0, JSON.stringify(deploys()));
+  has('a class in the other stage\'s folder gives the existing failure', ctx, '!! ', `${POST} line 1`, 'Variable does not exist: ACME_PreJob', 'force-app Apex class');
+
+  write(r, POST, 'ACME_Elsewhere.run();\n');
+  ctx = afterWrite(r, POST).hookSpecificOutput?.additionalContext;
+  check('a class in no stage folder is not deployed', deploysOf('ACME_Elsewhere').length === 0);
+  has('a class in no stage folder gives the existing failure', ctx, '!! ', 'Variable does not exist: ACME_Elsewhere', 'force-app Apex class');
+
+  runbookClass('post', 'ACME_NoMeta', { meta: false });
+  write(r, POST, 'ACME_NoMeta.run();\n');
+  afterWrite(r, POST);
+  check('a class without its -meta.xml is not deployed', deploysOf('ACME_NoMeta').length === 0);
+
+  runbookClass('post', 'ACME_Stuck');
+  write(r, POST, 'ACME_Stuck.run();\n');
+  ctx = afterWrite(r, POST).hookSpecificOutput?.additionalContext;
+  check('a class the compile still names after its deploy is not deployed twice', deploysOf('ACME_Stuck').length === 1, JSON.stringify(deploysOf('ACME_Stuck')));
+  has('that failure names the stage class', ctx, '!! ', 'Variable does not exist: ACME_Stuck', `ACME_Stuck is a runbook class in ${POST_FOLDER}`);
+  check('that failure gives no version-gap advice', !ctx?.includes('force-app Apex class') && !ctx?.includes('newer than API'), ctx);
+
+  runbookClass('post', 'ACME_Broken');
+  write(r, POST, 'ACME_Broken.run();\n');
+  env.FAKE_SF_MODE = 'deployfail';
+  ctx = afterWrite(r, POST).hookSpecificOutput?.additionalContext;
+  delete env.FAKE_SF_MODE;
+  has('a failed deploy is a !! failure naming the class, the org and the deploy error', ctx,
+    '!! ', `deploying ACME_Broken from ${POST_FOLDER} to dev@example.com failed`, "ACME_Broken line 4: Unexpected token '}'.");
+  check('a failed deploy does not compile again', !ctx?.includes('compiles at API'), ctx);
+  git(r, 'add', '--', POST);
+  has('a failed deploy records no pass', refusal(r, 'git commit -m "x"'), POST);
+
+  runbookClass('post', 'ACME_CliJob');
+  write(r, POST, 'ACME_CliJob.run();\n');
+  const cli = spawnSync('node', [HOOK, '--check', join(r, POST)], { env, encoding: 'utf8' });
+  check('--check deploys a same-stage class too', cli.status === 0 && cli.stdout.includes('after deploying ACME_CliJob') && deploysOf('ACME_CliJob').length === 1, cli.stdout + cli.stderr);
 }
 
 rmSync(sandbox, { recursive: true, force: true });

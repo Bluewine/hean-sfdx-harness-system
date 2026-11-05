@@ -22,12 +22,19 @@
  * compiles the whole block before running any of it, so the compile result is
  * the script's, and the guard keeps anything after the first line from running.
  * The empty else keeps a script that starts with `else` from attaching to the guard.
+ *
+ * Jenkins deploys a stage's runbooks/<stage>-deploy/metaData/ folder before it
+ * runs the stage's apex/ scripts, so a script may call a runbook class the org
+ * does not hold yet. When a compile problem names a class whose .cls and
+ * .cls-meta.xml are in the script's own stage folder (stageClass), deployClass
+ * deploys those two files to the same org with `sf project deploy start
+ * --metadata-dir`, which takes a folder outside the project's packageDirectories.
  * No other call is made to the org.
  */
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync, copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -44,6 +51,10 @@ export const RUNBOOK_SCRIPT = /^runbooks\/(pre|post)-deploy\/apex\/[^/]+\.apex$/
 export const VERSION_GAP_PROBLEMS = ['No such column', 'Invalid type', 'Variable does not exist', 'Method does not exist'];
 
 export const GUARD = 'if (true) { return; } else {}\n';
+
+/** How long one `sf apex run` and one `sf project deploy start` may take before they are killed. */
+export const COMPILE_TIMEOUT_MS = 45000;
+export const DEPLOY_TIMEOUT_MS = 90000;
 
 export const isVersionGap = problem => VERSION_GAP_PROBLEMS.some(p => String(problem ?? '').includes(p));
 
@@ -103,7 +114,11 @@ export function deployEntry(repoRoot) {
   return Object.values(readRoles(repoRoot)).find(r => r?.role === 'development' && r.deploy === true) ?? null;
 }
 
-/** The username (or alias) of the org saved with role development and deploy allowed, or null. */
+/**
+ * The username (or alias) of the org saved with role development and deploy allowed, or null.
+ * deployClass writes only to this org: a role-development org saved with deploy allowed is
+ * always one hooks/org-write-gate.mjs lets an agent deploy to.
+ */
 export function deployTarget(repoRoot) {
   const found = deployEntry(repoRoot);
   return found ? (found.username ?? found.alias ?? null) : null;
@@ -113,7 +128,7 @@ export const NO_TARGET = `No development deploy target is saved for this project
 
 const ANSI = /\u001b\[[0-9;?]*[ -/]*[@-~]/g;
 
-/** What `sf apex run --json` printed, parsed whatever the exit code, or null when it is not JSON. */
+/** What `sf --json` printed, parsed whatever the exit code, or null when it is not JSON. */
 function parseCliJson(stdout) {
   const text = String(stdout ?? '').replace(ANSI, '').trim();
   for (const candidate of [text, text.slice(text.indexOf('{'))]) {
@@ -143,7 +158,7 @@ export async function compileScript({ repoRoot, file, alias }) {
     const tmp = join(dir, 'script.apex');
     writeFileSync(tmp, source);
     run = spawnSync('sf', ['apex', 'run', '--file', tmp, '--api-version', pipeline.version, '--target-org', target, '--json'],
-      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 45000, cwd: repoRoot,
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: COMPILE_TIMEOUT_MS, cwd: repoRoot,
         env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0' } });
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -168,6 +183,72 @@ export async function compileScript({ repoRoot, file, alias }) {
     version: pipeline.version,
     alias: target
   };
+}
+
+/** Compile problems that can name a class the org does not hold, and the name they give. */
+const CLASS_NAMED = [/Variable does not exist: ([A-Za-z]\w*)/g, /Invalid type: ([A-Za-z]\w*)/g, /from the type ([A-Za-z]\w*)/g];
+
+/**
+ * The runbook class a compile problem names that sits in the script's own stage
+ * folder, runbooks/<stage>-deploy/metaData/classes/, with its -meta.xml:
+ * { name, folder, cls, meta } with name as the file spells it and folder
+ * repository-relative, or null. Apex names ignore case, so the file name does too.
+ */
+export function stageClass(repoRoot, rel, problem) {
+  const stage = String(rel).match(RUNBOOK_SCRIPT)?.[1];
+  if (!stage || !problem) return null;
+  const folder = `runbooks/${stage}-deploy/metaData/classes/`;
+  let files;
+  try { files = readdirSync(join(repoRoot, folder)); } catch { return null; }
+  for (const named of CLASS_NAMED.flatMap(p => [...String(problem).matchAll(p)].map(m => m[1].toLowerCase()))) {
+    const cls = files.find(f => f.toLowerCase() === `${named}.cls`);
+    if (!cls || !files.includes(`${cls}-meta.xml`)) continue;
+    const name = cls.slice(0, -'.cls'.length);
+    return { name, folder, cls: join(repoRoot, folder, cls), meta: join(repoRoot, folder, `${cls}-meta.xml`) };
+  }
+  return null;
+}
+
+/** What a failed `sf project deploy start --json` says went wrong. */
+function deployProblem(json, run) {
+  const failures = [json?.result?.details?.componentFailures ?? []].flat()
+    .map(f => `${f.fullName ?? f.fileName ?? '?'}${f.lineNumber ? ` line ${f.lineNumber}` : ''}: ${f.problem}`);
+  if (failures.length) return failures.join('; ');
+  return json?.message ?? json?.result?.errorMessage ?? (String(run.stderr || run.stdout || '').replace(ANSI, '').trim() || `exit ${run.status}`);
+}
+
+/**
+ * Deploy one runbook class from stageClass to alias, the org compileScript
+ * compiled against: { deployed: true } or { error }. The class goes up as a
+ * metadata-format folder (package.xml and classes/), the shape the stage's
+ * metadata step converts the folder to.
+ */
+export function deployClass({ repoRoot, name, cls, meta, alias }) {
+  const dir = mkdtempSync(join(tmpdir(), 'runbook-class-'));
+  let run;
+  try {
+    mkdirSync(join(dir, 'classes'));
+    copyFileSync(cls, join(dir, 'classes', `${name}.cls`));
+    copyFileSync(meta, join(dir, 'classes', `${name}.cls-meta.xml`));
+    const version = readFileSync(meta, 'utf8').match(/<apiVersion>\s*([\d.]+)\s*<\/apiVersion>/)?.[1];
+    writeFileSync(join(dir, 'package.xml'), '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<Package xmlns="http://soap.sforce.com/2006/04/metadata">\n' +
+      `    <types>\n        <members>${name}</members>\n        <name>ApexClass</name>\n    </types>\n` +
+      (version ? `    <version>${version}</version>\n` : '') + '</Package>\n');
+    // --wait 1 ends the CLI before the 90 s kill, so an unfinished deploy still prints JSON
+    run = spawnSync('sf', ['project', 'deploy', 'start', '--metadata-dir', dir, '--target-org', alias,
+      '--test-level', 'NoTestRun', '--wait', '1', '--json'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: DEPLOY_TIMEOUT_MS, cwd: repoRoot,
+        env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0' } });
+  } catch (e) {
+    return { error: e.message };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  if (run.error) return { error: `sf project deploy start did not finish: ${run.error.message}` };
+  const json = parseCliJson(run.stdout);
+  if (run.status === 0 && json?.result?.status === 'Succeeded') return { deployed: true };
+  return { error: deployProblem(json, run) };
 }
 
 /** Where this repository's compile record lives. */

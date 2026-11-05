@@ -6,6 +6,11 @@
  *
  *   PostToolUse, Write|Edit   a write to runbooks/<pre|post>-deploy/apex/*.apex
  *                             compiles the file (scripts/lib/runbook-compile.mjs).
+ *                             When the compile names a class whose .cls and
+ *                             -meta.xml are in the same stage's metaData/classes/
+ *                             folder, that class is deployed to the same org and
+ *                             the file compiled again, once per class: Jenkins
+ *                             deploys that folder before it runs the scripts.
  *                             A compile error is returned as context starting
  *                             with "!! " and says what to fix; a pass records
  *                             the file's git object id. A write to a stage
@@ -32,7 +37,8 @@ import { fileURLToPath } from 'node:url';
 import { gitCommands, repoOf, tryGit } from '../scripts/lib/command-line.mjs';
 import { stagingOf, stagesInteractively } from '../scripts/lib/staging.mjs';
 import {
-  RUNBOOK_SCRIPT, compileScript, isVersionGap, readRecord, recordCompiled, isRecorded, pipelineApiVersion
+  RUNBOOK_SCRIPT, compileScript, isVersionGap, readRecord, recordCompiled, isRecorded, pipelineApiVersion,
+  stageClass, deployClass, COMPILE_TIMEOUT_MS, DEPLOY_TIMEOUT_MS
 } from '../scripts/lib/runbook-compile.mjs';
 import { readDeploySteps, requiredStep, stepPresent, missingStep } from '../scripts/lib/deploy-steps.mjs';
 
@@ -47,12 +53,35 @@ function locate(file) {
   return { root, rel: relative(realpathSync(root), real).split(sep).join('/') };
 }
 
+/** The PostToolUse Write|Edit timeout in hooks.json is 300 s; a deploy round starts only while one fits below it. */
+const BUDGET_MS = 280000;
+const ROUND_MS = DEPLOY_TIMEOUT_MS + COMPILE_TIMEOUT_MS;
+
+const listed = names => names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+
 /** Compile one script and record a pass: { kind: 'pass'|'fail'|'skip'|'error', text }. */
 export async function check(root, rel) {
   const file = join(root, rel);
-  let result;
+  const started = Date.now();
+  const deployed = [];
+  let result, folder;
   try {
     result = await compileScript({ repoRoot: root, file });
+    // deploy each class the compile names from the script's own stage folder, never one twice
+    for (let cls; !result.skipped && !result.compiled && (cls = stageClass(root, rel, result.problem)) && !deployed.includes(cls.name);) {
+      if (Date.now() - started + ROUND_MS > BUDGET_MS) {
+        return { kind: 'fail', text: `!! ${rel} calls ${cls.name} from ${cls.folder}, which ${result.alias} does not hold, and the check ` +
+          `ran out of time before deploying it. Run\n\n    ${HOOK.replace('<file>', join(root, rel))}\n\nto finish the check.` };
+      }
+      const d = deployClass({ repoRoot: root, ...cls, alias: result.alias });
+      if (d.error) {
+        return { kind: 'fail', text: `!! ${rel} calls ${cls.name}, and deploying ${cls.name} from ${cls.folder} to ${result.alias} ` +
+          `failed: ${d.error}. ${rel} was not compiled. Fix the class, then edit the script again so this check re-runs.` };
+      }
+      deployed.push(cls.name);
+      folder = cls.folder;
+      result = await compileScript({ repoRoot: root, file, alias: result.alias });
+    }
   } catch (e) {
     return { kind: 'error', text: `The runbook compile check could not run for ${rel}: ${e.message}. The script was not compiled.` };
   }
@@ -68,12 +97,18 @@ export async function check(root, rel) {
     const oid = objectId(root, rel);
     if (!oid) return { kind: 'error', text: `${rel} compiles at API ${result.version} on ${result.alias}, but git could not hash it, so the pass was not recorded.` };
     recordCompiled(root, rel, oid, result.version);
-    return { kind: 'pass', text: `${rel} compiles at API ${result.version} on ${result.alias} (the pipeline's anonymous Apex version).` };
+    if (!deployed.length) return { kind: 'pass', text: `${rel} compiles at API ${result.version} on ${result.alias} (the pipeline's anonymous Apex version).` };
+    return { kind: 'pass', text: `${rel} compiles at API ${result.version} on ${result.alias} after deploying ${listed(deployed)} from ` +
+      `${folder} (the stage's metadata step deploys ${deployed.length > 1 ? 'them' : 'it'} first in Jenkins).` };
   }
   const where = `${rel}${result.line ? ` line ${result.line}` : ''}${result.column ? `, column ${result.column}` : ''}`;
   const head = `!! ${where} does not compile at API ${result.version} on ${result.alias}, the version the Jenkins ` +
                `pipeline runs anonymous Apex at: ${result.problem ?? '(no problem text returned)'}`;
-  const fix = isVersionGap(result.problem)
+  const named = stageClass(root, rel, result.problem);
+  const fix = named
+    ? `${named.name} is a runbook class in ${named.folder}, deployed to ${result.alias} by this check. Fix the call in the ` +
+      'script or the class, then edit the script again so this check re-runs.'
+    : isVersionGap(result.problem)
     ? `This element is newer than API ${result.version}. The script passes \`sf apex run\` locally but will fail in ` +
       `Jenkins. Move the logic into a force-app Apex class whose apiVersion is new enough for the element, add a ` +
       `test class for it to the project's coverage target, reduce the script to a call of that class, then edit ` +
