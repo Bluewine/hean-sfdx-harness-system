@@ -457,7 +457,12 @@ console.log('Stage classes');
   write(r, POST, 'ACME_Held.missingMethod();\n');
   ctx = afterWrite(r, POST).hookSpecificOutput?.additionalContext;
   check('a "Method does not exist ... from the type" problem deploys nothing', deploysOf('ACME_Held').length === 0, JSON.stringify(deploysOf('ACME_Held')));
-  has('that problem gives the existing failure', ctx, '!! ', 'from the type ACME_Held', 'newer than API 42.0');
+  has('a stage class with a missing method says the org holds an older copy and to deploy it by hand', ctx, '!! ', 'from the type ACME_Held',
+    'dev@example.com holds an older copy of ACME_Held without the method the script calls',
+    `the stage's metadata step deploys the branch's copy from ${POST_FOLDER} first`,
+    "Deploy the branch's copy of ACME_Held to dev@example.com by hand once you have checked that no one else's newer copy would be overwritten",
+    `--check ${join(r, POST)}`);
+  check('that problem gives no version-gap advice', !ctx?.includes('newer than API') && !ctx?.includes('force-app Apex class'), ctx);
 
   runbookClass('post', 'ACME_Slow');
   write(r, POST, 'ACME_Slow.run();\n');

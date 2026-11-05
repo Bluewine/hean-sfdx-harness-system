@@ -192,26 +192,32 @@ export async function compileScript({ repoRoot, file, alias }) {
  */
 const CLASS_NAMED = [/Variable does not exist: ([A-Za-z]\w*)/g, /Invalid type: ([A-Za-z]\w*)/g];
 
+/** The class a "Method does not exist ... from the type X" problem names: the org holds an older copy of X. */
+const CLASS_HELD = [/from the type ([A-Za-z]\w*)/g];
+
 /**
  * Every runbook class a compile problem names that sits in the script's own stage
  * folder, runbooks/<stage>-deploy/metaData/classes/, with its -meta.xml, in the
  * order the problem names them: [{ name, folder, cls, meta }] with name as the file
  * spells it and folder repository-relative. Apex names ignore case, so the file name does too.
  */
-export function stageClasses(repoRoot, rel, problem) {
+export function stageClasses(repoRoot, rel, problem, patterns = CLASS_NAMED) {
   const stage = String(rel).match(RUNBOOK_SCRIPT)?.[1];
   if (!stage || !problem) return [];
   const folder = `runbooks/${stage}-deploy/metaData/classes/`;
   let files;
   try { files = readdirSync(join(repoRoot, folder)); } catch { return []; }
   const found = new Map();
-  for (const named of CLASS_NAMED.flatMap(p => [...String(problem).matchAll(p)].map(m => m[1].toLowerCase()))) {
+  for (const named of patterns.flatMap(p => [...String(problem).matchAll(p)].map(m => m[1].toLowerCase()))) {
     const cls = files.find(f => f.toLowerCase() === `${named}.cls`);
     if (!cls || !files.includes(`${cls}-meta.xml`) || found.has(cls)) continue;
     found.set(cls, { name: cls.slice(0, -'.cls'.length), folder, cls: join(repoRoot, folder, cls), meta: join(repoRoot, folder, `${cls}-meta.xml`) });
   }
   return [...found.values()];
 }
+
+/** The stage-folder classes a problem names as held by the org with a method missing; never deployed. */
+export const heldStageClasses = (repoRoot, rel, problem) => stageClasses(repoRoot, rel, problem, CLASS_HELD);
 
 /** The error the CLI gives when --wait runs out; the deploy keeps running in the org. */
 const WAIT_TIMED_OUT = json => /ClientTimeout/.test(json?.name ?? '') || /deployment is still running/.test(json?.message ?? '');

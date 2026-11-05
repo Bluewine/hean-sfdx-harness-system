@@ -38,7 +38,7 @@ import { gitCommands, repoOf, tryGit } from '../scripts/lib/command-line.mjs';
 import { stagingOf, stagesInteractively } from '../scripts/lib/staging.mjs';
 import {
   RUNBOOK_SCRIPT, compileScript, isVersionGap, readRecord, recordCompiled, isRecorded, pipelineApiVersion,
-  stageClasses, deployClass, COMPILE_TIMEOUT_MS, DEPLOY_TIMEOUT_MS
+  stageClasses, heldStageClasses, deployClass, COMPILE_TIMEOUT_MS, DEPLOY_TIMEOUT_MS
 } from '../scripts/lib/runbook-compile.mjs';
 import { readDeploySteps, requiredStep, stepPresent, missingStep } from '../scripts/lib/deploy-steps.mjs';
 
@@ -111,9 +111,16 @@ export async function check(root, rel) {
   const head = `!! ${where} does not compile at API ${result.version} on ${result.alias}, the version the Jenkins ` +
                `pipeline runs anonymous Apex at: ${result.problem ?? '(no problem text returned)'}`;
   const [named] = stageClasses(root, rel, result.problem);
+  const [held] = named ? [] : heldStageClasses(root, rel, result.problem);
   const fix = named
     ? `${named.name} is a runbook class in ${named.folder}, deployed to ${result.alias} by this check. Fix the call in the ` +
       'script or the class, then edit the script again so this check re-runs.'
+    : held
+    // never deployed by the check: the shared development org may hold someone else's newer copy
+    ? `${result.alias} holds an older copy of ${held.name} without the method the script calls. In Jenkins the stage's ` +
+      `metadata step deploys the branch's copy from ${held.folder} first. Deploy the branch's copy of ${held.name} to ` +
+      `${result.alias} by hand once you have checked that no one else's newer copy would be overwritten, then run\n\n` +
+      `    ${HOOK.replace('<file>', join(root, rel))}\n\nagain.`
     : isVersionGap(result.problem)
     ? `This element is newer than API ${result.version}. The script passes \`sf apex run\` locally but will fail in ` +
       `Jenkins. Move the logic into a force-app Apex class whose apiVersion is new enough for the element, add a ` +
