@@ -79,7 +79,7 @@ function plan() {
   const root = sfdxRoot();
   let keep;
   try { keep = parseKeep(argv.includes('--keep') ? opt('--keep') ?? '' : undefined); } catch (e) { fail(e.message); }
-  if (keep !== undefined && !argv.includes('--min-versions')) {
+  if (keep !== undefined && opt('--min-versions') === undefined) {
     fail('--keep needs --min-versions: name the version count of the flows to clean, for example --keep 15 --min-versions 30');
   }
   if (keep !== undefined && argv.includes('--count')) fail('--keep and --count cannot be used together');

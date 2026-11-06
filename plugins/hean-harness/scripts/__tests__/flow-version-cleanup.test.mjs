@@ -319,6 +319,9 @@ process.exit(a.code || 0);
         (r => r.status === 1 && r.calls.length === 0 && r.stdout.includes(
           'ERROR: --keep needs --min-versions: name the version count of the flows to clean, for example --keep 15 --min-versions 30'))(
           run(['plan', '--keep', '15'], { roles: LOCKED, answers: {} })));
+  check('--keep with an empty --min-versions refused before any query',
+        (r => r.status === 1 && r.calls.length === 0 && r.stdout.includes('ERROR: --keep needs --min-versions'))(
+          run(['plan', '--keep', '15', '--min-versions'], { roles: LOCKED, answers: {} })));
   check('--keep with --count refused before any query',
         (r => r.status === 1 && r.calls.length === 0 && r.stdout.includes('ERROR: --keep and --count cannot be used together'))(
           run(['plan', '--keep', '15', '--count', '5', '--min-versions', '30'], { roles: LOCKED, answers: {} })));
