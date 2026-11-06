@@ -1,8 +1,8 @@
 ---
 name: flow-version-cleanup
-description: Flow version cleanup for one Salesforce org — finds flows at the 50-version limit, or with at least `--min-versions` versions for a preventive cleanup, and deletes its oldest non-Active versions through the Tooling API, with one confirmation and a temporary write permission that is always reset, never Apex or a deploy
-when_to_use: A flow save or deploy fails because the flow has reached the 50-version limit, or the user asks to delete old flow versions in an org — "delete old flow versions", "flow at the 50-version limit", "too many versions of a flow", "clean up flow versions in qa", "preventive flow version cleanup", "clean flows with more than 30 versions". Only flows at the 50-version limit are cleaned, or with at least `--min-versions` versions when the user names a version count. The user may give the org, the minimum version count and the number of versions to delete in plain words or as flags; pass `--min-versions` and `--count` only when the user names them.
-argument-hint: "[org alias or username] [--count <N, default 5>] [--min-versions <N, 2-50, default 50>]"
+description: Single-org Salesforce flow version cleanup — finds flows at the 50-version limit or with at least `--min-versions` versions and deletes their oldest non-Active versions, or all but the `--keep` newest, via Tooling API with one confirmation and a temporary write permission that is always reset, never Apex or a deploy
+when_to_use: A flow save or deploy fails because the flow has reached the 50-version limit, or the user asks to delete old flow versions in an org — "delete old flow versions", "flow at the 50-version limit", "too many versions of a flow", "clean up flow versions in qa", "preventive flow version cleanup", "clean flows with more than 30 versions", "keep the last 15 versions", "delete all but the 15 newest versions". Only flows at the 50-version limit are cleaned, or with at least `--min-versions` versions when the user names a version count. The user may give the org, the minimum version count, the number of versions to delete and the number of versions to keep in plain words or as flags; pass `--min-versions`, `--count` and `--keep` only when the user names them.
+argument-hint: "[org alias or username] [--count <N, default 5>] [--keep <N, 1-48>] [--min-versions <N, 2-50, default 50>]"
 ---
 
 # Flow version cleanup
@@ -10,7 +10,8 @@ argument-hint: "[org alias or username] [--count <N, default 5>] [--min-versions
 A flow holds at most 50 versions (Salesforce Help, "General Flow Limits"). At the limit, saving or
 deploying the flow fails. This skill finds every flow at the limit in one org and deletes its oldest
 non-Active versions. With `--min-versions <N>` it also cleans flows below the limit that have at least N
-versions, as a preventive cleanup.
+versions, as a preventive cleanup. With `--keep <N>` it deletes every non-Active version of those flows
+except the N newest, and never the Active version.
 
 ## Why no Apex
 
@@ -38,16 +39,31 @@ Run every command from the SFDX project root.
    a version count for which flows to include: "flows with 30 or more versions" is 30, "more than 30
    versions" is 31, "anything above 40" is 41, "at 45 versions" is 45. Take `--count <N>` when given,
    or derive it from words that name how many old versions to delete: "delete the 10 oldest",
-   "remove 10 versions from each". When the words name neither, leave the option out. When one
-   number in the words could be either value, such as "clean up 30 flow versions", ask one
-   `AskUserQuestion` question that names the two readings (flows with at least 30 versions, or 30
-   versions deleted from each flow) before step 2. Never ask which flows: the script finds them.
+   "remove 10 versions from each". Take `--keep <N>` when given, or derive it from words that name how
+   many recent inactive versions to keep: "keep the latest 15 versions", "keep only the 15 newest",
+   "delete everything except the last 15 versions", "leave 15 inactive versions" and "trim flows down
+   to 15 versions plus the active one" all mean `--keep 15`. One sentence can give two values: "for
+   flows with 30 or more versions keep the latest 15" means `--min-versions 30 --keep 15`. When the
+   words name none of these, leave the option out. Ask one `AskUserQuestion` question before step 2,
+   and never guess, in each of these cases:
+   - **One number that could be a minimum or a count to delete**, such as "clean up 30 flow
+     versions": name the two readings (flows with at least 30 versions, or 30 versions deleted from
+     each flow).
+   - **A keep number with no version count**, such as "keep the latest 15": ask which flows to clean,
+     as flows with how many versions. `--keep` never applies to every flow on its own.
+   - **One number that could be a count to delete or a count to keep**, such as "clean flows to 15":
+     name the two readings (15 versions deleted from each flow, or the 15 newest inactive versions
+     kept).
+   - **Words that name both a count to delete and a count to keep**, such as "delete 10 and keep 15":
+     ask which one applies; the script refuses both together.
+
+   Without a keep number, never ask which flows: the script finds them.
 
 2. **Plan (read-only).** Run, leaving out `--org` when no org was named, `--count` when no count
-   was given, and `--min-versions` when no minimum was given:
+   was given, `--keep` when no keep number was given, and `--min-versions` when no minimum was given:
 
    ```bash
-   node "${CLAUDE_SKILL_DIR}/scripts/flow-version-cleanup.mjs" plan --org <org> --count <N> --min-versions <N>
+   node "${CLAUDE_SKILL_DIR}/scripts/flow-version-cleanup.mjs" plan --org <org> --count <N> --keep <N> --min-versions <N>
    ```
 
    - **Exit 1 with "matches more than one org", "no org logged in on this machine matches", "no org
@@ -57,14 +73,15 @@ Run every command from the SFDX project root.
      `AskUserQuestion` call listing the logged-in orgs, then run step 2 again with that alias.
    - **Any other exit 1:** report the `ERROR:` line and stop.
    - **Exit 2:** report that no flow has the minimum number of versions (50 unless
-     `--min-versions` was given), or that every one was skipped.
+     `--min-versions` was given), that every one was skipped, or, with `--keep <N>`, that every
+     selected flow already has N or fewer inactive versions.
      When the script printed a SKIPPED list, paste it into the reply exactly as printed. Then stop.
    - **Exit 0:** go to step 3. Keep the `ALLOW:`, `RESTORE:` and `PLAN_FILE:` values for later
      steps.
 
 3. **Flow list.** This is the first action after the plan, before any other tool call or question.
    Paste these into the reply text exactly as printed:
-   - the `ORG:`, `COUNT:` and `AT LIMIT:` lines, and the `PREVENTIVE:` line when printed, in printed
+   - the `ORG:`, `COUNT:` or `KEEP:`, and `AT LIMIT:` lines, and the `PREVENTIVE:` line when printed, in printed
      order;
    - the markdown table;
    - the `TOTAL:` line;
@@ -75,8 +92,8 @@ Run every command from the SFDX project root.
    line starting with `!!` word for word.
 
 4. **One confirmation.** Ask the question only after the reply text with the step 3 table. Ask one
-   `AskUserQuestion` question that names the org alias, the count, the minimum version count, the
-   number of versions and the number of flows. Put the same table and the `TOTAL:` line in the
+   `AskUserQuestion` question that names the org alias, the count or, with `--keep`, the keep number,
+   the minimum version count, the number of versions and the number of flows. Put the same table and the `TOTAL:` line in the
    `preview` field of the first option.
    - Org printed `ROLE: … saved deploy target`: options "Delete" (with the `preview`) and "Cancel".
    - Org printed `!! … locked for writes`: options "Allow writes for this run, delete, then reset

@@ -2,9 +2,11 @@
 /**
  * Deletes the oldest non-Active versions of every flow at the platform's
  * 50-version limit, or with at least --min-versions versions for a preventive
- * cleanup, through the Tooling API from the Salesforce CLI.
+ * cleanup, through the Tooling API from the Salesforce CLI. --count deletes N
+ * per flow; --keep deletes every non-Active version except the N newest, and
+ * needs --min-versions so it never applies to every flow on its own.
  *
- *   flow-version-cleanup.mjs plan [--org <alias|username|sandbox name>] [--count <N>]
+ *   flow-version-cleanup.mjs plan [--org <alias|username|sandbox name>] [--count <N> | --keep <N, 1-48>]
  *                             [--min-versions <N, 2-50, default 50>]
  *   flow-version-cleanup.mjs apply <plan file>
  *
@@ -24,10 +26,10 @@ import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { connectedOrgs, defaultOrg, orgOf, projectRoot, readRoles, recordHome, refusal } from '../../../scripts/lib/org-roles.mjs';
 import { EXIT, FLOW_QUERY, buildBatches, checkComplete, isLockError, matchOrg, parseBatchResponse, parseCount,
-         parseMinVersions, reconcile, renderPlan, renderReport, roleCommands, selectVersions, stillDeletable } from './lib/flow-version-cleanup.mjs';
+         parseKeep, parseMinVersions, reconcile, renderPlan, renderReport, roleCommands, selectVersions, stillDeletable } from './lib/flow-version-cleanup.mjs';
 
 const ROLES_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'scripts', 'org-roles.mjs');
-const USAGE = 'Usage: flow-version-cleanup.mjs plan [--org <name>] [--count <N>] [--min-versions <N>]\n' +
+const USAGE = 'Usage: flow-version-cleanup.mjs plan [--org <name>] [--count <N> | --keep <N>] [--min-versions <N>]\n' +
               '       flow-version-cleanup.mjs apply <plan file>';
 const argv = process.argv.slice(2);
 const opt = name => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
@@ -75,14 +77,20 @@ function resolveOrg(root) {
 
 function plan() {
   const root = sfdxRoot();
+  let keep;
+  try { keep = parseKeep(argv.includes('--keep') ? opt('--keep') ?? '' : undefined); } catch (e) { fail(e.message); }
+  if (keep !== undefined && !argv.includes('--min-versions')) {
+    fail('--keep needs --min-versions: name the version count of the flows to clean, for example --keep 15 --min-versions 30');
+  }
+  if (keep !== undefined && argv.includes('--count')) fail('--keep and --count cannot be used together');
   let count;
-  try { count = parseCount(opt('--count')); } catch (e) { fail(e.message); }
+  if (keep === undefined) { try { count = parseCount(opt('--count')); } catch (e) { fail(e.message); } }
   let minVersions;
   try { minVersions = parseMinVersions(opt('--min-versions')); } catch (e) { fail(e.message); }
   const org = resolveOrg(root);
   console.log(`ORG: ${org.name} (${org.username}, org ${org.orgId})`);
-  const { flows, skipped } = selectVersions(queryFlows(org.username), count, minVersions);
-  console.log(renderPlan({ count, minVersions, flows, skipped }));
+  const { flows, skipped } = selectVersions(queryFlows(org.username), keep === undefined ? { count } : { keep }, minVersions);
+  console.log(renderPlan({ count, keep, minVersions, flows, skipped }));
 
   const saved = readRoles(recordHome(root))[org.orgId] ?? null;
   // org-roles.mjs resolves the name through this machine's aliases now; a saved alias that was renamed or
@@ -99,7 +107,7 @@ function plan() {
 
   if (!flows.some(f => f.delete.length)) { console.log('RESULT: nothing to delete'); process.exit(EXIT.NOTHING); }
   const file = join(mkdtempSync(join(tmpdir(), 'flow-version-cleanup-')), 'plan.json');
-  writeFileSync(file, JSON.stringify({ org: { name: org.name, username: org.username, orgId: org.orgId }, count, minVersions, flows, skipped }, null, 2));
+  writeFileSync(file, JSON.stringify({ org: { name: org.name, username: org.username, orgId: org.orgId }, count, keep, minVersions, flows, skipped }, null, 2));
   console.log(`PLAN_FILE: ${file}`);
   process.exit(EXIT.OK);
 }
@@ -126,7 +134,9 @@ function apply() {
 
   const before = queryFlows(username);
   const planned = saved.flows.flatMap(f => f.delete.map(v => ({ ...v, name: f.name, definitionId: f.definitionId })));
-  const { keep, dropped } = stillDeletable(planned, before, saved.count, saved.minVersions);
+  // A plan file without keep, including one written before --keep existed, is count mode.
+  const mode = saved.keep == null ? saved.count : { keep: saved.keep };
+  const { keep, dropped } = stillDeletable(planned, before, mode, saved.minVersions);
 
   const dir = mkdtempSync(join(tmpdir(), 'flow-version-cleanup-batches-'));
   cleanup.push(dir);

@@ -47,6 +47,14 @@ for (const bad of ['1', '51', '0', 'x', '2.5']) {
   check(`refuses "${bad}"`, threw);
 }
 
+console.log('parseKeep');
+check('absent is undefined', lib.parseKeep(undefined) === undefined);
+for (const ok of ['1', '15', '48']) check(`accepts ${ok}`, lib.parseKeep(ok) === Number(ok));
+for (const bad of ['0', '49', 'x', '2.5']) {
+  let threw = false; try { lib.parseKeep(bad); } catch (e) { threw = e.message === `--keep must be a whole number from 1 to 48, got "${bad}"`; }
+  check(`refuses "${bad}"`, threw);
+}
+
 console.log('matchOrg');
 const orgs = [
   { username: 'me@example.com.qa', aliases: ['qaOrg'], isSandbox: true },
@@ -104,6 +112,18 @@ console.log('selectVersions with --min-versions');
   check('default still excludes a 49-version flow', lib.selectVersions(records, 5).flows.length === 0);
 }
 
+console.log('selectVersions with --keep');
+{
+  const range = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+  const latest = lib.selectVersions(flow('Latest', 50, 50), { keep: 15 }, 30).flows[0];
+  check('Active 50: deletes 1-34', same(latest.delete.map(v => v.version), range(1, 34)));
+  const middle = lib.selectVersions(flow('Middle', 50, 40), { keep: 15 }, 30).flows[0];
+  check('Active 40: deletes 1-34, keeps 35-39 and 41-50', same(middle.delete.map(v => v.version), range(1, 34)));
+  const few = lib.selectVersions([...flow('Exact', 16, 16), ...flow('Fewer', 12, 3)], { keep: 15 }, 10).flows;
+  check('15 or fewer inactive versions: listed, nothing deleted', few.length === 2 && few.every(f => f.delete.length === 0));
+  check('a number still means count', same(lib.selectVersions(flow('Num', 50, 50), 5).flows[0].delete.map(v => v.version), range(1, 5)));
+}
+
 console.log('stillDeletable');
 {
   const planned = [{ id: 'a', version: 1 }, { id: 'b', version: 2 }, { id: 'c', version: 3 }];
@@ -118,6 +138,17 @@ console.log('stillDeletable');
         lib.stillDeletable(one, small.slice(10), 5, 30).dropped.length === 1 &&
         lib.stillDeletable(one, small.slice(10), 5, 30).dropped[0].reason === 'already deleted' &&
         lib.stillDeletable(one, small.slice(0, 1).concat(small.slice(20)), 5, 30).dropped[0].reason === 'no longer selected');
+  const all = flow('Keep', 50, 50);
+  const plannedKeep = lib.selectVersions(all, { keep: 15 }, 30).flows[0].delete.map(v => ({ id: v.id, version: v.version }));
+  check('keep mode: unchanged org keeps the whole plan', lib.stillDeletable(plannedKeep, all, { keep: 15 }, 30).keep.length === 34);
+  const shrunk = all.filter(r => r.VersionNumber < 40 || r.VersionNumber > 49);
+  const res = lib.stillDeletable(plannedKeep, shrunk, { keep: 15 }, 30);
+  check('keep mode: versions now among the 15 newest are dropped',
+        same(res.dropped.map(d => d.version), [25, 26, 27, 28, 29, 30, 31, 32, 33, 34]) &&
+        res.dropped.every(d => d.reason === 'no longer selected') && res.keep.length === 24);
+  const nowActive = all.map(r => r.VersionNumber === 10 ? { ...r, Status: 'Active' } : r.VersionNumber === 50 ? { ...r, Status: 'Obsolete' } : r);
+  check('keep mode: a version now Active is dropped',
+        lib.stillDeletable(plannedKeep, nowActive, { keep: 15 }, 30).dropped.some(d => d.version === 10 && d.reason === 'now Active'));
 }
 
 console.log('buildBatches');
@@ -182,6 +213,11 @@ console.log('renderPlan and renderReport');
   check('plan total', text.includes('TOTAL: 5 versions from 1 flows'));
   check('plan lists skipped', text.includes('NoActive: 50 versions'));
   check('no PREVENTIVE line at 50', !text.includes('PREVENTIVE:'));
+  const kept = lib.selectVersions(flow('Full', 50, 50), { keep: 15 }, 30);
+  const keepText = lib.renderPlan({ keep: 15, minVersions: 30, ...kept });
+  check('plan names the keep number instead of the count',
+        keepText.startsWith('KEEP: the 15 newest inactive versions of each flow, plus the Active version\n') && !keepText.includes('COUNT:'));
+  check('keep plan row', keepText.includes('| `Full` | 50 | v50 | 34 | 1-34 |'));
   const pre = lib.renderPlan({ count: 5, minVersions: 30, flows, skipped });
   check('PREVENTIVE line below 50, after AT LIMIT',
         pre.includes('AT LIMIT: 2 flows with 30 or more versions\nPREVENTIVE: flows with 30 or more versions, below the 50-version limit'));
@@ -279,6 +315,16 @@ process.exit(a.code || 0);
   // plan edge cases
   check('bad count refused before any query',
         (r => r.status === 1 && /whole number/.test(r.stdout) && r.calls.length === 0)(run(['plan', '--count', '0'], { roles: LOCKED, answers: {} })));
+  check('--keep without --min-versions refused before any query',
+        (r => r.status === 1 && r.calls.length === 0 && r.stdout.includes(
+          'ERROR: --keep needs --min-versions: name the version count of the flows to clean, for example --keep 15 --min-versions 30'))(
+          run(['plan', '--keep', '15'], { roles: LOCKED, answers: {} })));
+  check('--keep with --count refused before any query',
+        (r => r.status === 1 && r.calls.length === 0 && r.stdout.includes('ERROR: --keep and --count cannot be used together'))(
+          run(['plan', '--keep', '15', '--count', '5', '--min-versions', '30'], { roles: LOCKED, answers: {} })));
+  check('bad keep refused before any query',
+        (r => r.status === 1 && r.calls.length === 0 && r.stdout.includes('ERROR: --keep must be a whole number from 1 to 48, got "49"'))(
+          run(['plan', '--keep', '49', '--min-versions', '30'], { roles: LOCKED, answers: {} })));
   check('unknown org refused', run(['plan', '--org', 'nowhere'], { roles: LOCKED, answers: {} }).stdout.includes('no org logged in on this machine matches'));
   check('nothing at the limit exits 2',
         run(['plan', '--org', 'qa'], { roles: OPEN, answers: { 'data query': [query(flow('Small', 10, 10))] } }).status === 2);
@@ -351,6 +397,21 @@ process.exit(a.code || 0);
       { statusCode: 400, result: [{ errorCode: 'DEPENDENCY_EXISTS', message: 'referenced in a flow interview' }] }] } }]
   } });
   check('dependency error exits 3 and is listed', dep.status === 3 && dep.stdout.includes('Full v3: DEPENDENCY_EXISTS: referenced in a flow interview'));
+
+  // keep mode end to end: 34 versions go out in two batches, 25 then 9
+  const kp = run(['plan', '--org', 'qa', '--keep', '15', '--min-versions', '30'], { roles: OPEN, answers: { 'data query': [query(records)] } });
+  const keepPlan = kp.stdout.match(/^PLAN_FILE: (.+)$/m)?.[1];
+  check('keep plan exits 0 and saves keep, not count', kp.status === 0 && kp.stdout.includes('| `Full` | 50 | v50 | 34 | 1-34 |') &&
+        (s => s.keep === 15 && !('count' in s))(JSON.parse(readFileSync(keepPlan, 'utf8'))), kp.stdout);
+  const ka = run(['apply', keepPlan], { roles: OPEN, answers: {
+    'org display': [display],
+    'data query': [query(records), query(records.filter(r => !(r.DefinitionId === '300Full' && r.VersionNumber <= 34)))],
+    'api request': [batchOk(25), batchOk(9)]
+  } });
+  check('keep apply sends 25 then 9 and reports 16 left', ka.status === 0 &&
+        same(ka.bodies.map(b => JSON.parse(b).batchRequests.length), [25, 9]) &&
+        ka.stdout.includes('RESULT: 34 deleted, 0 failed in qa') && ka.stdout.includes('Full | 50 | 16'), ka.stdout + ka.stderr);
+  rmSync(dirname(keepPlan), { recursive: true, force: true });
 
   rmSync(dirname(planFile), { recursive: true, force: true });
   rmSync(sandbox, { recursive: true, force: true });
