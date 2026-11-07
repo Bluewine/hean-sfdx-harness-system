@@ -77,7 +77,7 @@ export function factsFor(root, known) {
     settingsFile: () => (ask() ? join(checkoutOf(where.common, root), '.claude', 'hean-harness.json') : settingsFile(root)),
     indexFile: () => ask()?.index,
     commonDir: () => ask()?.common,
-    // git's answer listing the staged files but deletions, as the Collection Filter and feature toggle checks read them
+    // git's answer listing the staged files but deletions, as the Collection Filter, feature toggle and before-save update checks read them
     staged: () => (staged ??= spawnSync('git', ['-C', root, 'diff', '--cached', '--name-only', '--diff-filter=d', '-z'],
                                        { encoding: 'utf8', maxBuffer: MAX_BUFFER }))
   };

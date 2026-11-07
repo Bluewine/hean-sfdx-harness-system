@@ -82,8 +82,18 @@ check('a flow with no Update Records element is not a finding', beforeSaveUpdate
 
 const head = flow(BEFORE, byReference('Set_Status'));
 check('an element unchanged from HEAD is not a finding', beforeSaveUpdateFindings(head, head, P).length === 0);
-f = beforeSaveUpdateFindings(flow(BEFORE, byReference('Set_Status', assignments)), head, P);
-check('an element whose block changed is a finding', f.length === 1 && f[0].element === 'Set_Status', JSON.stringify(f));
+check('an element already in HEAD with a new field list is not a finding',
+  beforeSaveUpdateFindings(flow(BEFORE, byReference('Set_Status', assignments)), head, P).length === 0);
+const connector = '\n        <connector><targetReference>New_Step</targetReference></connector>';
+check('an element already in HEAD with a new connector is not a finding',
+  beforeSaveUpdateFindings(flow(BEFORE, byReference('Set_Status', connector)), head, P).length === 0);
+check('an element already in HEAD with a new location is not a finding',
+  beforeSaveUpdateFindings(flow(BEFORE, byReference('Set_Status', '\n        <locationX>300</locationX>')),
+    flow(BEFORE, byReference('Set_Status', '\n        <locationX>176</locationX>')), P).length === 0);
+check('an element already in HEAD with other whitespace and line endings is not a finding',
+  beforeSaveUpdateFindings(head.replace(/\n {4}/g, '\r\n  ').replace(/\n {8}/g, '\r\n\t'), head, P).length === 0);
+check('an element renamed from HEAD is a finding',
+  beforeSaveUpdateFindings(flow(BEFORE, byReference('Set_Priority')), head, P)[0]?.element === 'Set_Priority');
 f = beforeSaveUpdateFindings(flow(BEFORE, byReference('Set_Status'), byReference('Set_Priority')), head, P);
 check('only the added element reports', f.length === 1 && f[0].element === 'Set_Priority', JSON.stringify(f));
 f = beforeSaveUpdateFindings(flow(BEFORE, byReference('Set_Status'), byFilter('Update_Same')),

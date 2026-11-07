@@ -862,6 +862,10 @@ try {
       { env: envP, encoding: 'utf8', cwd: root });
     check('the fixed copy of the feature toggle check loads with only the files copied',
           toggleRun.status === 0 && !toggleRun.stderr.includes('ERR_MODULE_NOT_FOUND'), toggleRun.stderr);
+    const beforeSaveRun = spawnSync('node', [join(checkDir, 'scripts', 'lib', 'flow-before-save-update.mjs'), '--git-hook'],
+      { env: envP, encoding: 'utf8', cwd: root });
+    check('the fixed copy of the before-save update check loads with only the files copied',
+          beforeSaveRun.status === 0 && !beforeSaveRun.stderr.includes('ERR_MODULE_NOT_FOUND'), beforeSaveRun.stderr);
     const headerRun = spawnSync('node', [join(checkDir, 'scripts', 'lib', 'apex-class-header.mjs'), '--git-hook'],
       { env: envP, encoding: 'utf8', cwd: root });
     check('the fixed copy of the Apex class header check loads with only the files copied',

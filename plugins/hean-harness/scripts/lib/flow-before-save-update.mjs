@@ -9,10 +9,12 @@
  *
  * An Update Records element counts as updating the triggering record when its
  * inputReference is $Record, or when it updates the object of the flow's
- * <start> and filters on Id = $Record.Id. Only an element added or changed in
- * the commit counts, so flows already in the repository are never blocked for
- * what they hold. A flow whose HEAD copy had another trigger type is treated
- * as changed throughout.
+ * <start> and filters on Id = $Record.Id. Only an element added in the commit
+ * counts: one whose <name> HEAD already held as such an update in a before-save
+ * flow is never refused, whatever else changed in it (connector, location,
+ * whitespace, fields), so flows already in the repository are never blocked
+ * for what they hold. A flow whose HEAD copy had another trigger type is
+ * treated as new throughout.
  *
  * Shared by the Claude Code hook and the git pre-commit hook. Setup copies this
  * file to <config>/hean-harness/hooks/scripts/lib/ with the files
@@ -65,8 +67,8 @@ export function beforeSaveUpdateFindings(xml, headXml, path) {
   const updates = triggeringUpdates(xml);
   if (!updates.length) return [];
   const sameTiming = headXml != null && tag(startOf(headXml), 'triggerType') === 'RecordBeforeSave';
-  const before = new Map(sameTiming ? triggeringUpdates(headXml).map(u => [u.name, u.block]) : []);
-  return updates.filter(u => before.get(u.name) !== u.block).map(u => ({ path, element: u.name }));
+  const held = new Set(sameTiming ? triggeringUpdates(headXml).map(u => u.name) : []);
+  return updates.filter(u => !held.has(u.name)).map(u => ({ path, element: u.name }));
 }
 
 /** The refusal for a commit that adds these findings. */
