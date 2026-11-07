@@ -60,7 +60,7 @@ function triggeringUpdates(xml) {
 
 /**
  * Every Update Records element on the triggering record that this commit adds
- * or changes in a record-triggered before-save flow: { path, element }.
+ * to a record-triggered before-save flow: { path, element }.
  */
 export function beforeSaveUpdateFindings(xml, headXml, path) {
   if (tag(startOf(xml), 'triggerType') !== 'RecordBeforeSave') return [];

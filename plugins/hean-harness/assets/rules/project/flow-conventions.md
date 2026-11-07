@@ -291,7 +291,7 @@ Apply when the org has the feature toggle package: the `FeatureToggleInvocableAc
 - **Before-save flow** (`<triggerType>RecordBeforeSave</triggerType>`): set field values on the triggering record with an Assignment element (`assignToReference` `$Record.<Field>`). Never use an Update Records element on the triggering record, whether it is set to "Use the record that triggered the flow" (`inputReference` `$Record`) or updates the same object filtered by `Id` = `$Record.Id`.
 - **After-save flow**: an assignment to `$Record` is not saved. Change the triggering record with an Update Records element on it.
 - **Reason**: Salesforce Help, "Record Triggers for Flows That Make Before-Save Updates": "When the flow changes the values in the `$Record` global variable, Salesforce automatically applies those new values to the record. So there's no need to add an Update Records element to save the new values to the database." The same guide, "Considerations for Fast Field Updates", lists the supported elements: "Only these elements are supported: Assignment, Decision, Get Records, and Loop." The platform accepts and runs an Update Records element on the triggering record in a before-save flow, and Flow Builder still offers it; this rule is a project convention, and the Salesforce guide says the element is not needed.
-- **Detection**: the plugin's `flow-before-save-update-gate.mjs` hook and the git `pre-commit` hook setup installs refuse a commit that adds or changes such an element in a before-save flow.
+- **Detection**: the plugin's `flow-before-save-update-gate.mjs` hook and the git `pre-commit` hook setup installs refuse a commit that adds such an element to a before-save flow; an element the flow already held is not refused.
 
 ## Entry criteria filters
 
