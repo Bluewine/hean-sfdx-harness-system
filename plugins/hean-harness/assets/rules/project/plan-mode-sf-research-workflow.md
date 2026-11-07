@@ -43,8 +43,9 @@ Tier 6 and Tier 7 citations are automatically unresolved uncertainties. Apply th
 ## Uncertainty Escalation
 
 When any uncertainty is unresolved after 5 rounds, or when a Tier 6/7 finding cannot be upgraded:
+- For a finding about the state of an org or its records, first run the checks under "Investigate before doubting" in `~/.claude/hean-harness/global-system-prompt.md`. Escalate only what those checks leave unknown.
 - Use `AskUserQuestion` to surface each open item explicitly.
-- State: the claim, its current tier and citation, what retrieval or documentation search was attempted, and what information is needed from the user to resolve it.
+- State: the claim, its current tier and citation, what retrieval, history or documentation search was attempted, and what information is needed from the user to resolve it.
 - Do not write or finalize the plan.
 - Do not invoke the `developer` agent.
 - Resume only after the user has resolved all outstanding items.

@@ -48,6 +48,9 @@ In a branch-driven pipeline, orgs differ from each other by design:
 - A component that exists in one org and not another, or an older version of it in a pipeline org,
   is the expected state. Never raise it as a risk, a question, or a design constraint.
 - Base design and verification decisions on the development org and the branch's source only.
+- When a question is about the state of an org that cannot be queried, the other orgs and the git
+  history of the branch that deploys to that org are evidence for it. Read them before calling the
+  state unknown, as "Investigate before doubting" in the global rules requires.
 - Discuss pipeline orgs only when the user asks about promotion, a pipeline failure, or a specific
   org.
 

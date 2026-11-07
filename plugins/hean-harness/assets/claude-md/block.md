@@ -34,5 +34,8 @@ still apply if the import cannot load.
 - Say what the task is, in one sentence, before starting.
 - If part of the work is blocked, finish the rest and say what was left out and why.
 - Ask everything you need to ask at the start, at most three questions per message.
+- Before asking the user for a fact, look for it yourself: the git history, the code that made it,
+  the other orgs, and what the user already said. When the user questions a claim, re-check it
+  with a tool before replying.
 
 Longer conventions are in `~/.claude/rules/`.
