@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Copies the per-story manifest check, the Collection Filter check, the
- * feature toggle check and the Apex class header check to a fixed folder, <config>/hean-harness/hooks/, where the git pre-commit hook
+ * feature toggle check, the before-save triggering record update check and the Apex class header check to a fixed folder, <config>/hean-harness/hooks/, where the git pre-commit hook
  * setup installs runs them from.
  *
  * The plugin's own folder moves when the plugin updates, so a git hook
@@ -22,8 +22,8 @@ const PLUGIN_ROOT = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.ur
 const DEST = join(STATE_DIR, 'hooks');
 // In copy order: every file after the files it loads, so a copy stopped part way never pairs a new file
 // with an old one it loads. The libraries, then branch-manifest.mjs, then manifest-check.mjs, which loads
-// it, then flow-collection-filter.mjs, flow-feature-toggle.mjs and apex-class-header.mjs, which load
-// manifest-check.mjs, and last pre-commit-checks.mjs, which runs the four in one node process.
+// it, then flow-collection-filter.mjs, flow-feature-toggle.mjs, flow-before-save-update.mjs and apex-class-header.mjs, which load
+// manifest-check.mjs, and last pre-commit-checks.mjs, which runs the five in one node process.
 const FILES = [
   'scripts/lib/command-line.mjs',
   'scripts/lib/merge-base.mjs',
@@ -35,10 +35,11 @@ const FILES = [
   'scripts/lib/manifest-check.mjs',
   'scripts/lib/flow-collection-filter.mjs',
   'scripts/lib/flow-feature-toggle.mjs',
+  'scripts/lib/flow-before-save-update.mjs',
   'scripts/lib/apex-class-header.mjs',
   'scripts/lib/pre-commit-checks.mjs'
 ];
-// The two files the "Checks" lines name: the manifest check and the last of the four checks
+// The two files the "Checks" lines name: the manifest check and the last of the five checks
 const SHOWN = ['scripts/lib/manifest-check.mjs', 'scripts/lib/apex-class-header.mjs'];
 const dryRun = process.argv.includes('--dry-run');
 const log = (...a) => console.log(...a);

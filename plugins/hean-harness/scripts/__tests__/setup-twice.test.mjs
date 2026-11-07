@@ -839,9 +839,9 @@ try {
     chmodSync(lfsHook, 0o755);
     const outL = runP(repoL, ['--commit-format', 'on']);
     check('a working hook in .git/hooks keeps core.hooksPath unset', hooksPathOf(repoL) === undefined, String(hooksPathOf(repoL)));
-    check('the hooks left working are named on a !! line, with the manifest, Collection Filter, feature toggle and Apex class header checks for terminal commits off',
+    check('the hooks left working are named on a !! line, with the manifest, Collection Filter, feature toggle, before-save update and Apex class header checks for terminal commits off',
           outL.split('\n').some(l => l.startsWith('!! ') && l.includes('post-checkout')) &&
-            outL.includes('manifest check, Collection Filter check, feature toggle check and Apex class header check for terminal commits is off'), outL);
+            outL.includes('manifest check, Collection Filter check, feature toggle check, before-save update check and Apex class header check for terminal commits is off'), outL);
     check('the commit-msg hook says the commit format check for terminal commits is off too',
           outL.includes('commit format check for terminal commits is off') && !outL.includes('Set core.hooksPath'), outL);
 

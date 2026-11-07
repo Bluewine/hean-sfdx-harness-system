@@ -286,6 +286,13 @@ Apply when the org has the feature toggle package: the `FeatureToggleInvocableAc
 - **A record-triggered before-save flow** cannot call actions, so it reads toggles with Get Records: at most one Get Records on `Feature_Toggle__mdt`, and one on `Child_Feature_Toggle__mdt` only when a child toggle decides. Reuse the result; never add a second lookup of the same type.
 - **Detection**: the plugin's `flow-feature-toggle-gate.mjs` hook refuses a commit that adds or changes a toggle read that breaks these rules, when the saved development org has the package.
 
+## Triggering record updates
+
+- **Before-save flow** (`<triggerType>RecordBeforeSave</triggerType>`): set field values on the triggering record with an Assignment element (`assignToReference` `$Record.<Field>`). Never use an Update Records element on the triggering record, whether it is set to "Use the record that triggered the flow" (`inputReference` `$Record`) or updates the same object filtered by `Id` = `$Record.Id`.
+- **After-save flow**: an assignment to `$Record` is not saved. Change the triggering record with an Update Records element on it.
+- **Reason**: Salesforce Help, "Record Triggers for Flows That Make Before-Save Updates": "When the flow changes the values in the `$Record` global variable, Salesforce automatically applies those new values to the record. So there's no need to add an Update Records element to save the new values to the database." The same guide, "Considerations for Fast Field Updates", lists the supported elements: "Only these elements are supported: Assignment, Decision, Get Records, and Loop." Flow Builder still offers Update Records in a before-save flow, so nothing stops the mistake until the flow runs.
+- **Detection**: the plugin's `flow-before-save-update-gate.mjs` hook and the git `pre-commit` hook setup installs refuse a commit that adds or changes such an element in a before-save flow.
+
 ## Entry criteria filters
 
 When adding `IsChanged` filters to a record-triggered flow's `<start>` element, order the `<filters>` blocks alphabetically by `<field>` name. This is consistent with the overall alphabetical XML ordering rule and keeps diffs clean when fields are added or removed.
@@ -350,6 +357,7 @@ The platform rejects each construct below at deploy time. These are restrictions
 |---|---|
 | Platform-event-triggered | Cannot call a `subflows` element at all. Inline the logic; a shared helper must be an invocable Apex action instead. |
 | Before-delete record-triggered | Cannot write setup objects (`Group`, `GroupMember`, `User`, permission assignments). Publish a platform event and let a subscriber perform the write. `$Record` field values **are** readable in this context. |
+| Before-save record-triggered | Cannot update `$Record` with an Update Records element. Set the fields with an Assignment element (see "Triggering record updates"). |
 
 ## Decision branch layout
 
@@ -371,5 +379,6 @@ Before deploying any record-triggered flow, confirm:
 - [ ] Autolaunched/async/platform-event/subflow: fault paths build error-log records into an `Errors` collection persisted by one `Log_Errors` create; `Error` + `Errors` are variables of the org's error-log object
 - [ ] The error-log object was confirmed to exist in the connected org before the pattern was written
 - [ ] Trigger order review run after the flow was finished; dependency table reported to the user; no `triggerOrder` changed without the user's answer
+- [ ] A before-save flow sets the triggering record with Assignment elements on `$Record`, never an Update Records element on it
 - [ ] Nested decisions alternate the continuation branch side per level (vertical decisions exempt)
 - [ ] `<status>Active</status>` is set

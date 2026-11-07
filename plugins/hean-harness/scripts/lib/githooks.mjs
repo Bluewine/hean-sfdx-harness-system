@@ -110,7 +110,7 @@ const PLUGIN_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 export const PRE_COMMIT_SOURCE = join(PLUGIN_ROOT, 'assets', 'githooks', 'pre-commit');
 
 /**
- * Put the pre-commit hook that checks the per-story manifest, Collection Filter conditions, feature toggle reads and Apex class headers in place (the feature toggle check
+ * Put the pre-commit hook that checks the per-story manifest, Collection Filter conditions, feature toggle reads, before-save triggering record updates and Apex class headers in place (the feature toggle check
  * in a terminal uses the org answer saved by an earlier Claude Code commit and makes no org call), and
  * point git at it. Only in an SFDX repository whose .githooks/ folder git does
  * not track: a tracked folder is the repository's, and commits made there in
@@ -123,7 +123,7 @@ export function applyPreCommit(repo, { replace = false, dryRun = false } = {}) {
   const hook = join(repo, HOOKS_DIR, 'pre-commit');
   if (repoTracksHooks(repo)) {
     return [`Pre-commit hook  ${HOOKS_DIR}/ is tracked by the repository, so no pre-commit hook is installed`,
-            '                 the per-story manifest, Collection Filter conditions, feature toggle reads and Apex class headers are checked only for commits made in Claude Code'];
+            '                 the per-story manifest, Collection Filter conditions, feature toggle reads, before-save triggering record updates and Apex class headers are checked only for commits made in Claude Code'];
   }
   const state = hookState(hook, PRE_COMMIT_SOURCE);
   const write = writesHook(state, replace);
@@ -133,7 +133,7 @@ export function applyPreCommit(repo, { replace = false, dryRun = false } = {}) {
   const live = setPath ? liveGitHooks(repo) : [];
   const out = [`Pre-commit hook  ${hook}`, `                 ${describeHook(state, replace)}`];
   if (!write && state !== 'current' && state !== 'missing') out.push(...keptLines(hook, state));
-  if (live.length) out.push(...hooksPathKeptLines(repo, live, 'manifest check, Collection Filter check, feature toggle check and Apex class header check'));
+  if (live.length) out.push(...hooksPathKeptLines(repo, live, 'manifest check, Collection Filter check, feature toggle check, before-save update check and Apex class header check'));
   if (dryRun) return out;
 
   init();

@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * Runs the four pre-commit checks in one node process, in the order
- * assets/githooks/pre-commit names them. Starting node once instead of four
+ * Runs the five pre-commit checks in one node process, in the order
+ * assets/githooks/pre-commit names them. Starting node once instead of five
  * times shortens every terminal commit.
  *
- * It holds back everything the checks print until all four have run, then
+ * It holds back everything the checks print until all five have run, then
  * prints it and exits PASSED or REFUSED. What would go to standard error goes
  * to file descriptor 3, which the shell hook points at its own standard error
  * while it sends node's to nowhere: a crash of this file prints nothing. Those two codes are the only ones the
  * shell hook takes as a result: any other end (this file cannot load, node
- * crashes, a signal stops it, memory runs out) makes the hook run the four
+ * crashes, a signal stops it, memory runs out) makes the hook run the five
  * checks one by one, as it did before this file existed. Since nothing was
  * printed yet, nothing is printed twice, and a refusal found before the crash
  * still refuses.
@@ -21,7 +21,7 @@
  * instead, so its crash prints and exits exactly as before and skips only that
  * check. The repository's top folder, its branch and whether a merge,
  * cherry-pick, revert or rebase is in progress are read from git once and
- * shared by the four checks.
+ * shared by the five checks.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -33,7 +33,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 // Every check ran: none refused, or one refused. node itself ends with 1 to 14 or with 128 plus a signal.
 export const PASSED = 80;
 export const REFUSED = 83;
-const CHECKS = ['manifest-check.mjs', 'flow-collection-filter.mjs', 'flow-feature-toggle.mjs', 'apex-class-header.mjs'];
+const CHECKS = ['manifest-check.mjs', 'flow-collection-filter.mjs', 'flow-feature-toggle.mjs', 'flow-before-save-update.mjs', 'apex-class-header.mjs'];
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 /** What every check reads first, read once; null when manifest-check.mjs cannot be loaded, and each check reads its own. */
@@ -65,7 +65,7 @@ function ownEnv() {
   return level ? { ...process.env, FORCE_COLOR: level } : process.env;
 }
 
-// What the checks print, in order, until all four have run
+// What the checks print, in order, until all five have run
 const held = [];
 
 /** Write all of chunk to fd; standard error stands in for fd 3 when the hook did not open it. */

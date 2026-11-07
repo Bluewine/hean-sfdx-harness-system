@@ -127,7 +127,7 @@ export const notChecked = reason => `!! The Apex class header check did not run:
  * check itself lets the commit through, as every other "cannot run" case does.
  *
  * runGitHook() returns that exit code instead of exiting, so
- * pre-commit-checks.mjs can run the four pre-commit checks in one node process;
+ * pre-commit-checks.mjs can run the five pre-commit checks in one node process;
  * facts, from repoFacts(), are what the checks share instead of each asking git.
  */
 export function runGitHook(facts) {

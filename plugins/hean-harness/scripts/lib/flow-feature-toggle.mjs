@@ -169,7 +169,7 @@ export function packageInstalled(root, { query = toolingQuery, now = Date.now(),
  * shows. The org is never called: only a cached "installed" answer refuses.
  *
  * runGitHook() returns that exit code instead of exiting, so
- * pre-commit-checks.mjs can run the four pre-commit checks in one node process;
+ * pre-commit-checks.mjs can run the five pre-commit checks in one node process;
  * facts, from repoFacts(), are what the checks share instead of each asking git.
  */
 export function runGitHook(facts) {

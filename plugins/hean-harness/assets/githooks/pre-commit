@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Runs four checks and refuses the commit when any refuses it:
+# Runs five checks and refuses the commit when any refuses it:
 # - the per-story manifest, .claude/manifest/<WORK-ID>.xml, must list what the
 #   commit records; the refusal prints the command that copies the rebuilt
 #   file into place;
@@ -10,6 +10,9 @@
 #   the flow rule "Feature toggles in flows" forbids them, when the toggle
 #   package is installed in the development org (a cached answer; this hook
 #   never calls the org);
+# - a record-triggered before-save flow must not add an Update Records element
+#   on the triggering record, which the flow rule "Triggering record updates"
+#   forbids (it needs no org);
 # - an Apex class must carry a class comment that follows "Class header" in
 #   apex-docstring-comments.md, on a branch whose name holds a work ID.
 # Installed by hean-harness setup in an SFDX repository whose .githooks/
@@ -17,7 +20,7 @@
 # on every run, because the plugin's folder moves when it updates; no folder
 # means the plugin was uninstalled, and this hook does nothing. Only a check's
 # refusal, exit 3, refuses the commit; a check that crashes lets it through.
-# pre-commit-checks.mjs runs all four in one node process and ends 80 (none
+# pre-commit-checks.mjs runs all five in one node process and ends 80 (none
 # refused) or 83 (one refused), printing through descriptor 3; any other end of
 # it runs them one by one below, printing exactly what they print. Claude Code
 # sets CLAUDE_CODE_CHILD_SESSION only in commands it runs itself, not in IDE
@@ -29,6 +32,7 @@ case "$config" in "~") config="$HOME" ;; "~/"*) config="$HOME/${config#\~/}" ;; 
 manifest="$config/hean-harness/hooks/scripts/lib/manifest-check.mjs"
 filter="$config/hean-harness/hooks/scripts/lib/flow-collection-filter.mjs"
 toggle="$config/hean-harness/hooks/scripts/lib/flow-feature-toggle.mjs"
+beforesave="$config/hean-harness/hooks/scripts/lib/flow-before-save-update.mjs"
 header="$config/hean-harness/hooks/scripts/lib/apex-class-header.mjs"
 command -v node >/dev/null 2>&1 || exit 0
 runner="$config/hean-harness/hooks/scripts/lib/pre-commit-checks.mjs"; if [ -f "$runner" ]; then ( node "$runner"; exit $? ) 3>&2 2>/dev/null; case $? in 80) exit 0 ;; 83) exit 1 ;; esac; fi
@@ -43,6 +47,10 @@ if [ -f "$filter" ]; then
 fi
 if [ -f "$toggle" ]; then
   node "$toggle" --git-hook
+  [ $? -eq 3 ] && refused=1
+fi
+if [ -f "$beforesave" ]; then
+  node "$beforesave" --git-hook
   [ $? -eq 3 ] && refused=1
 fi
 if [ -f "$header" ]; then

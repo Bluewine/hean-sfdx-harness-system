@@ -60,7 +60,7 @@ export function operationInProgress(root) {
  * What the checks read about the repository at root, read once, on first use: { root, branch(),
  * inProgress(), settingsFile(), indexFile(), commonDir(), staged() }. One git call answers them all. When it cannot (a detached
  * HEAD, an unborn branch, a git without --path-format), each is asked on its own, as before, and
- * indexFile() is undefined. pre-commit-checks.mjs hands one to all four checks, the hook one per commit.
+ * indexFile() is undefined. pre-commit-checks.mjs hands one to all five checks, the hook one per commit.
  */
 export function factsFor(root, known) {
   let where = known, branch, inProgress, staged;
@@ -280,7 +280,7 @@ export function refusalText(target, result, next, retry = null, { terminal = fal
  * through, as every other "cannot run" case does.
  *
  * runGitHook() returns that exit code instead of exiting, so
- * pre-commit-checks.mjs can run the four pre-commit checks in one node process;
+ * pre-commit-checks.mjs can run the five pre-commit checks in one node process;
  * facts, from repoFacts(), are what the checks share instead of each asking git.
  */
 export function runGitHook(facts) {

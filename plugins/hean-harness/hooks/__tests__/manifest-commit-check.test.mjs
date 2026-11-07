@@ -661,7 +661,7 @@ function terminalRepo(name) {
 function terminal() {
   log('Terminal commits through the git pre-commit hook');
   const { term, TERM_SCRATCH, commit, head } = terminalRepo('terminal');
-  check('the fixed folder holds the file that runs the four checks in one node process',
+  check('the fixed folder holds the file that runs the five checks in one node process',
         existsSync(join(copyDir, 'scripts', 'lib', 'pre-commit-checks.mjs')));
   const TERM_ADD = `git -C '${term}' add ${TM}`;
 
@@ -734,23 +734,23 @@ function terminalThrough() {
   write(term, `${FLOWS}/Toggle.flow-meta.xml`, toggleFlow('RecordAfterSave'));
   git(term, 'add', 'force-app');
   const libDir = join(copyDir, 'scripts', 'lib');
-  const checks = ['manifest-check.mjs', 'flow-collection-filter.mjs', 'flow-feature-toggle.mjs', 'apex-class-header.mjs'];
+  const checks = ['manifest-check.mjs', 'flow-collection-filter.mjs', 'flow-feature-toggle.mjs', 'flow-before-save-update.mjs', 'apex-class-header.mjs'];
   const good = checks.map(f => readFileSync(join(libDir, f), 'utf8'));
   const beforeH = head();
   checks.forEach((f, i) => writeFileSync(join(libDir, f), `import './a-library-the-copy-lacks.mjs';\n${good[i]}`));
   c = commit(['-m', 'H']);
-  check('fixed-path copies of the four checks that fail to load let the commit through', c.status === 0 && head() !== beforeH, c.stderr);
+  check('fixed-path copies of the five checks that fail to load let the commit through', c.status === 0 && head() !== beforeH, c.stderr);
   // each check that cannot be loaded runs as its own node process, whose crash names what it lacks
   has('a check copy that fails to load runs on its own and says what it lacks', c.stderr, 'a-library-the-copy-lacks.mjs');
   checks.forEach((f, i) => writeFileSync(join(libDir, f), good[i]));
-  // a runner that ends any other way than its two results runs the four checks one by one, as before it existed
+  // a runner that ends any other way than its two results runs the five checks one by one, as before it existed
   addClass(term, 'I', 'GH-2');
   git(term, 'add', CLASSES);
   const runnerFile = join(libDir, 'pre-commit-checks.mjs');
   const goodRunner = readFileSync(runnerFile, 'utf8');
   writeFileSync(runnerFile, 'this is not javascript (\n');
   c = commit(['-m', 'I']);
-  check('a damaged runner still runs the four checks, and the manifest check still refuses',
+  check('a damaged runner still runs the five checks, and the manifest check still refuses',
         c.status !== 0 && c.stderr.includes(OUT_OF_DATE) && !c.stderr.includes('SyntaxError'), c.stderr);
   writeFileSync(runnerFile, goodRunner);
   const header = join(libDir, 'apex-class-header.mjs');
